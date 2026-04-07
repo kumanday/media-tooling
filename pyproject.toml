@@ -5,7 +5,8 @@ description = "Reusable media tooling for transcripts, subtitles, and clip plann
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "lightning-whisper-mlx>=0.0.10",
+    "lightning-whisper-mlx>=0.0.10; sys_platform == 'darwin' and platform_machine == 'arm64'",
+    "faster-whisper>=1.1.0; sys_platform != 'darwin' or platform_machine != 'arm64'",
     "pillow>=11.2.1",
 ]
 

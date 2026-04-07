@@ -85,7 +85,7 @@ uv run media-batch-subtitle \
   --audio-dir "$PROJECT_DIR/assets/audio" \
   --transcripts-dir "$PROJECT_DIR/transcripts" \
   --subtitles-dir "$PROJECT_DIR/subtitles" \
-  --model distil-medium.en \
+  --model small \
   --language en \
   --ffmpeg-bin "$(command -v ffmpeg)" \
   --skip-existing

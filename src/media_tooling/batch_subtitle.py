@@ -36,6 +36,12 @@ def parse_args() -> argparse.Namespace:
         help="Whisper model to use.",
     )
     parser.add_argument(
+        "--backend",
+        choices=["auto", "mlx", "faster-whisper"],
+        default="auto",
+        help="Transcription backend.",
+    )
+    parser.add_argument(
         "--language",
         default=None,
         help="Optional language code such as 'en'.",
@@ -44,13 +50,23 @@ def parse_args() -> argparse.Namespace:
         "--batch-size",
         type=int,
         default=12,
-        help="Batch size passed to lightning-whisper-mlx.",
+        help="Batch size used by the transcription backend.",
     )
     parser.add_argument(
         "--quant",
         choices=["4bit", "8bit"],
         default=None,
-        help="Optional quantization mode for non-distil models.",
+        help="Optional quantization mode for the MLX backend.",
+    )
+    parser.add_argument(
+        "--device",
+        default=None,
+        help="Optional faster-whisper device such as 'cpu' or 'cuda'.",
+    )
+    parser.add_argument(
+        "--compute-type",
+        default=None,
+        help="Optional faster-whisper compute type such as 'int8' or 'float16'.",
     )
     parser.add_argument(
         "--ffmpeg-bin",
@@ -101,9 +117,12 @@ def main() -> int:
             run_transcription_job(
                 input_path=item,
                 model_name=args.model,
+                backend=args.backend,
                 language=args.language,
                 batch_size=args.batch_size,
                 quant=args.quant,
+                device=args.device,
+                compute_type=args.compute_type,
                 audio_path=audio_dir / f"{stem}.m4a",
                 txt_path=transcripts_dir / f"{stem}.txt",
                 srt_path=subtitles_dir / f"{stem}.srt",
@@ -129,4 +148,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

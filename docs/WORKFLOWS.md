@@ -4,6 +4,8 @@ This guide shows how to use the toolkit once you already have raw media for a pr
 
 The examples fit agent harnesses that can inspect local files, run commands, and write project artifacts.
 
+Subtitle commands accept `--backend auto|mlx|faster-whisper`. In normal use, `auto` is the right choice.
+
 ## Core workflow
 
 1. Gather the source corpus.
@@ -61,7 +63,8 @@ Inventory these directly and use them in:
 cd "$TOOLKIT_DIR"
 uv run media-subtitle \
   "/path/to/video.mp4" \
-  --model distil-medium.en \
+  --backend auto \
+  --model small \
   --language en \
   --ffmpeg-bin "$(command -v ffmpeg)" \
   --output-dir "$PROJECT_DIR/transcripts"
@@ -76,7 +79,8 @@ uv run media-batch-subtitle \
   --audio-dir "$PROJECT_DIR/assets/audio" \
   --transcripts-dir "$PROJECT_DIR/transcripts" \
   --subtitles-dir "$PROJECT_DIR/subtitles" \
-  --model distil-medium.en \
+  --backend auto \
+  --model small \
   --language en \
   --ffmpeg-bin "$(command -v ffmpeg)" \
   --skip-existing

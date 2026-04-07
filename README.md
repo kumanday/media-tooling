@@ -11,6 +11,11 @@ It helps with:
 
 It fits podcasts, interviews, tutorials, courses, product videos, shorts, reels, and YouTube uploads.
 
+Transcription uses a platform-appropriate backend:
+
+- Apple Silicon macOS: MLX backend
+- other workstations: faster-whisper backend
+
 ## Quick start
 
 Clone the repository and run the macOS bootstrap script:
@@ -38,7 +43,8 @@ Then use the toolkit from the repository directory:
 cd "$TOOLKIT_DIR"
 uv run media-subtitle \
   "/path/to/video.mp4" \
-  --model distil-medium.en \
+  --backend auto \
+  --model small \
   --language en \
   --ffmpeg-bin "$(command -v ffmpeg)" \
   --output-dir "$PROJECT_DIR/transcripts"
@@ -75,6 +81,8 @@ Shell helpers installed into `~/.zshrc`:
 
 - `extract`
 - `subtitle`
+
+Both subtitle commands accept `--backend auto|mlx|faster-whisper`.
 
 ## Project boundaries
 

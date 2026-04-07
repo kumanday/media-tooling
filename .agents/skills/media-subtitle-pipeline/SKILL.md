@@ -42,7 +42,7 @@ Do not write project artifacts into the toolkit repository.
 
 ## Recommended defaults
 
-- model: `distil-medium.en`
+- model: `small`
 - language: `en`
 - ffmpeg path: `$(command -v ffmpeg)`
 
@@ -52,7 +52,7 @@ Do not write project artifacts into the toolkit repository.
 cd "$TOOLKIT_DIR"
 uv run media-subtitle \
   "/absolute/path/to/video.mp4" \
-  --model distil-medium.en \
+  --model small \
   --language en \
   --ffmpeg-bin "$(command -v ffmpeg)" \
   --output-dir "$PROJECT_DIR/transcripts"
@@ -67,7 +67,7 @@ uv run media-batch-subtitle \
   --audio-dir "$PROJECT_DIR/assets/audio" \
   --transcripts-dir "$PROJECT_DIR/transcripts" \
   --subtitles-dir "$PROJECT_DIR/subtitles" \
-  --model distil-medium.en \
+  --model small \
   --language en \
   --ffmpeg-bin "$(command -v ffmpeg)" \
   --skip-existing

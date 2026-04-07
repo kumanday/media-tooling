@@ -18,6 +18,11 @@ The bootstrap script installs:
 - the local virtual environment
 - the shell helpers from `shell/media-tooling.zsh`
 
+The transcription backend depends on the workstation:
+
+- Apple Silicon macOS installs the MLX backend
+- other systems install the faster-whisper backend
+
 ## Manual setup
 
 If you prefer to do it step by step:
@@ -97,3 +102,4 @@ $PROJECT_DIR/
 - Silent screen recordings belong in the contact-sheet pipeline.
 - Large media batches are more stable when processed sequentially.
 - Project artifacts should stay outside the toolkit repository.
+- Subtitle commands accept `--backend auto|mlx|faster-whisper`.

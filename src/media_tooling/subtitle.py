@@ -3,13 +3,24 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import platform
 import subprocess
 import sys
 from pathlib import Path
 from typing import Any
 
-from lightning_whisper_mlx import LightningWhisperMLX
-from lightning_whisper_mlx.transcribe import transcribe_audio
+try:
+    from lightning_whisper_mlx import LightningWhisperMLX
+    from lightning_whisper_mlx.transcribe import transcribe_audio
+except ImportError:  # pragma: no cover - depends on platform install
+    LightningWhisperMLX = None
+    transcribe_audio = None
+
+try:
+    from faster_whisper import BatchedInferencePipeline, WhisperModel
+except ImportError:  # pragma: no cover - depends on platform install
+    BatchedInferencePipeline = None
+    WhisperModel = None
 
 VIDEO_SUFFIXES = {
     ".avi",
@@ -34,6 +45,7 @@ AUDIO_SUFFIXES = {
 }
 
 DEFAULT_MODEL = "small"
+DEFAULT_BACKEND = "auto"
 
 
 def parse_args() -> argparse.Namespace:
@@ -44,20 +56,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--model",
         default=DEFAULT_MODEL,
-        choices=[
-            "tiny",
-            "base",
-            "small",
-            "medium",
-            "large",
-            "large-v2",
-            "large-v3",
-            "distil-small.en",
-            "distil-medium.en",
-            "distil-large-v2",
-            "distil-large-v3",
-        ],
         help=f"Whisper model to use. Default: {DEFAULT_MODEL}.",
+    )
+    parser.add_argument(
+        "--backend",
+        choices=["auto", "mlx", "faster-whisper"],
+        default=DEFAULT_BACKEND,
+        help=f"Transcription backend. Default: {DEFAULT_BACKEND}.",
     )
     parser.add_argument(
         "--language",
@@ -73,13 +78,23 @@ def parse_args() -> argparse.Namespace:
         "--batch-size",
         type=int,
         default=12,
-        help="Batch size passed to lightning-whisper-mlx. Default: 12.",
+        help="Batch size used by the transcription backend. Default: 12.",
     )
     parser.add_argument(
         "--quant",
         choices=["4bit", "8bit"],
         default=None,
-        help="Optional quantization mode for non-distil models.",
+        help="Optional quantization mode for the MLX backend.",
+    )
+    parser.add_argument(
+        "--device",
+        default=None,
+        help="Optional faster-whisper device such as 'cpu' or 'cuda'.",
+    )
+    parser.add_argument(
+        "--compute-type",
+        default=None,
+        help="Optional faster-whisper compute type such as 'int8', 'float16', or 'float32'.",
     )
     parser.add_argument(
         "--output-dir",
@@ -136,9 +151,12 @@ def main() -> int:
         run_transcription_job(
             input_path=input_path,
             model_name=args.model,
+            backend=args.backend,
             language=args.language,
             batch_size=args.batch_size,
             quant=args.quant,
+            device=args.device,
+            compute_type=args.compute_type,
             audio_path=audio_path,
             txt_path=txt_path,
             srt_path=srt_path,
@@ -158,9 +176,12 @@ def run_transcription_job(
     *,
     input_path: Path,
     model_name: str,
+    backend: str,
     language: str | None,
     batch_size: int,
     quant: str | None,
+    device: str | None,
+    compute_type: str | None,
     audio_path: Path,
     txt_path: Path,
     srt_path: Path,
@@ -189,13 +210,20 @@ def run_transcription_job(
     ffmpeg_parent = str(Path(ffmpeg_bin).expanduser().resolve().parent)
     os.environ["PATH"] = f"{ffmpeg_parent}:{os.environ.get('PATH', '')}"
 
-    print(f"Transcribing {audio_path} with model '{model_name}'", flush=True)
-    model = LightningWhisperMLX(model_name, batch_size=batch_size, quant=quant)
-    result = transcribe_audio(
-        str(audio_path),
-        path_or_hf_repo=f"./mlx_models/{model.name}",
+    resolved_backend = resolve_backend(backend)
+    print(
+        f"Transcribing {audio_path} with model '{model_name}' using backend '{resolved_backend}'",
+        flush=True,
+    )
+    result = transcribe_media(
+        backend=resolved_backend,
+        audio_path=audio_path,
+        model_name=model_name,
         language=language,
         batch_size=batch_size,
+        quant=quant,
+        device=device,
+        compute_type=compute_type,
         initial_prompt=initial_prompt,
     )
     segments = normalize_segments(result.get("segments", []))
@@ -205,6 +233,7 @@ def run_transcription_job(
     payload = {
         "input_path": str(input_path),
         "audio_path": str(audio_path),
+        "backend": resolved_backend,
         "model": model_name,
         "language": result.get("language"),
         "text": result.get("text", "").strip(),
@@ -256,6 +285,148 @@ def resolve_output_paths(
         else output_dir / f"{stem}.json"
     )
     return audio_path, txt_path, srt_path, json_path
+
+
+def resolve_backend(requested_backend: str) -> str:
+    if requested_backend == "auto":
+        if mlx_backend_available():
+            return "mlx"
+        if faster_whisper_available():
+            return "faster-whisper"
+        raise RuntimeError(
+            "No transcription backend is available. Install the platform-specific dependencies with 'uv sync'."
+        )
+
+    if requested_backend == "mlx":
+        if not mlx_backend_available():
+            raise RuntimeError(
+                "The MLX backend requires Apple Silicon and an installation with 'lightning-whisper-mlx' available."
+            )
+        return requested_backend
+
+    if requested_backend == "faster-whisper":
+        if not faster_whisper_available():
+            raise RuntimeError(
+                "The faster-whisper backend is not available in this environment."
+            )
+        return requested_backend
+
+    raise RuntimeError(f"Unsupported backend: {requested_backend}")
+
+
+def mlx_backend_available() -> bool:
+    return (
+        sys.platform == "darwin"
+        and platform.machine() == "arm64"
+        and LightningWhisperMLX is not None
+        and transcribe_audio is not None
+    )
+
+
+def faster_whisper_available() -> bool:
+    return WhisperModel is not None and BatchedInferencePipeline is not None
+
+
+def transcribe_media(
+    *,
+    backend: str,
+    audio_path: Path,
+    model_name: str,
+    language: str | None,
+    batch_size: int,
+    quant: str | None,
+    device: str | None,
+    compute_type: str | None,
+    initial_prompt: str | None,
+) -> dict[str, Any]:
+    if backend == "mlx":
+        return transcribe_with_mlx(
+            audio_path=audio_path,
+            model_name=model_name,
+            language=language,
+            batch_size=batch_size,
+            quant=quant,
+            initial_prompt=initial_prompt,
+        )
+    if backend == "faster-whisper":
+        return transcribe_with_faster_whisper(
+            audio_path=audio_path,
+            model_name=model_name,
+            language=language,
+            batch_size=batch_size,
+            device=device,
+            compute_type=compute_type,
+            initial_prompt=initial_prompt,
+        )
+    raise RuntimeError(f"Unsupported backend: {backend}")
+
+
+def transcribe_with_mlx(
+    *,
+    audio_path: Path,
+    model_name: str,
+    language: str | None,
+    batch_size: int,
+    quant: str | None,
+    initial_prompt: str | None,
+) -> dict[str, Any]:
+    if LightningWhisperMLX is None or transcribe_audio is None:
+        raise RuntimeError("The MLX backend is not available in this environment.")
+
+    model = LightningWhisperMLX(model_name, batch_size=batch_size, quant=quant)
+    return transcribe_audio(
+        str(audio_path),
+        path_or_hf_repo=f"./mlx_models/{model.name}",
+        language=language,
+        batch_size=batch_size,
+        initial_prompt=initial_prompt,
+    )
+
+
+def transcribe_with_faster_whisper(
+    *,
+    audio_path: Path,
+    model_name: str,
+    language: str | None,
+    batch_size: int,
+    device: str | None,
+    compute_type: str | None,
+    initial_prompt: str | None,
+) -> dict[str, Any]:
+    if WhisperModel is None or BatchedInferencePipeline is None:
+        raise RuntimeError("The faster-whisper backend is not available in this environment.")
+
+    unsupported_models = {"distil-small.en", "distil-medium.en"}
+    if model_name in unsupported_models:
+        raise RuntimeError(
+            f"The model '{model_name}' is not a supported faster-whisper preset. "
+            "Use a standard Whisper model such as 'small' or 'medium', or a supported distil checkpoint such as 'distil-large-v3'."
+        )
+
+    resolved_device = device or "cpu"
+    resolved_compute_type = compute_type or ("int8" if resolved_device == "cpu" else "float16")
+    model = WhisperModel(model_name, device=resolved_device, compute_type=resolved_compute_type)
+    pipeline = BatchedInferencePipeline(model=model)
+    segments_iter, info = pipeline.transcribe(
+        str(audio_path),
+        batch_size=batch_size,
+        language=language,
+        initial_prompt=initial_prompt,
+    )
+    segments = [
+        {
+            "start": float(segment.start),
+            "end": float(segment.end),
+            "text": segment.text.strip(),
+        }
+        for segment in segments_iter
+    ]
+    full_text = " ".join(segment["text"] for segment in segments).strip()
+    return {
+        "language": getattr(info, "language", language),
+        "text": full_text,
+        "segments": segments,
+    }
 
 
 def ensure_parent_dirs(*paths: Path) -> None:
