@@ -2,6 +2,16 @@
 
 Media Tooling helps an agent harness turn raw media into production artifacts.
 
+## What it does
+
+Media Tooling gives an agent harness a repeatable media-processing pipeline:
+
+1. Extract audio from spoken video when needed.
+2. Generate timestamped transcripts from spoken audio or video.
+3. Produce `.srt` subtitles and structured transcript metadata.
+4. Generate contact sheets for silent screen recordings and visual demos.
+5. Use transcripts, contact sheets, and screenshots to write inventories, analysis notes, shot lists, storyboards, and rough-cut plans.
+
 It covers:
 
 - transcripts for spoken audio and video
@@ -47,6 +57,17 @@ Typical flow:
 2. Put project-specific outputs in `$PROJECT_DIR`.
 3. Point the harness at the raw media folders.
 4. Ask it to ingest the corpus, process the media, and produce planning artifacts.
+
+## Workflow layers
+
+The toolkit works through three layers:
+
+- prompts
+  You describe the source material, the output you want, and any constraints such as sequential processing.
+- skills
+  The harness uses toolkit-local skills to decide which processing path fits the corpus. The main skills are [`media-corpus-ingest`](./.agents/skills/media-corpus-ingest/SKILL.md) and [`media-subtitle-pipeline`](./.agents/skills/media-subtitle-pipeline/SKILL.md).
+- toolkit commands
+  The skills call the command-line tools that extract audio, generate transcripts and subtitles, or build contact sheets.
 
 ## Prompt patterns
 
@@ -107,7 +128,12 @@ More prompt patterns live in [`docs/WORKFLOWS.md`](./docs/WORKFLOWS.md).
 
 ## Toolkit primitives
 
-These are the commands that the harness uses under the hood:
+These are the commands that the skills use under the hood:
+
+- [`media-corpus-ingest`](./.agents/skills/media-corpus-ingest/SKILL.md)
+  Uses the subtitle and contact-sheet commands to ingest a mixed media corpus into a project workspace.
+- [`media-subtitle-pipeline`](./.agents/skills/media-subtitle-pipeline/SKILL.md)
+  Uses the subtitle commands for spoken-media processing.
 
 - `media-subtitle`
   Generate transcript `.txt`, subtitle `.srt`, and structured `.json` from a single audio or video file.
@@ -154,4 +180,4 @@ Those directories are generated on demand, safe to delete, and ignored by Git.
 Toolkit-local skills live in:
 
 - [`.agents/skills/media-subtitle-pipeline/SKILL.md`](./.agents/skills/media-subtitle-pipeline/SKILL.md)
-- [`.agents/skills/media-launch-kit-ingest/SKILL.md`](./.agents/skills/media-launch-kit-ingest/SKILL.md)
+- [`.agents/skills/media-corpus-ingest/SKILL.md`](./.agents/skills/media-corpus-ingest/SKILL.md)

@@ -1,9 +1,9 @@
 ---
-name: media-launch-kit-ingest
-description: Use when ingesting a new corpus of local media into a project workspace for videos, podcasts, shorts, tutorials, courses, articles, demos, or launch materials. This skill covers the reusable pattern for inventories, spoken-media transcripts and subtitles, silent-video contact sheets, screenshot indexing, and distilled analysis artifacts while keeping reusable tooling separate from project-specific outputs.
+name: media-corpus-ingest
+description: Use when ingesting a new corpus of local media into a project workspace for videos, podcasts, shorts, tutorials, courses, articles, demos, or other productions. This skill covers the reusable pattern for inventories, spoken-media transcripts and subtitles, silent-video contact sheets, screenshot indexing, and distilled analysis artifacts while keeping reusable tooling separate from project-specific outputs.
 ---
 
-# Media Launch Kit Ingest
+# Media Corpus Ingest
 
 Use this skill when a project needs a structured media-ingest pass.
 
