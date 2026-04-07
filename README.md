@@ -1,102 +1,38 @@
 # Media Tooling
 
-Reusable tooling for media production work.
+Media Tooling is a small toolkit for turning raw media into usable production artifacts.
 
-## Installation
+It helps with:
 
-For macOS, the fastest setup is:
+- transcripts for spoken audio and video
+- `.srt` subtitles
+- contact sheets for silent screen recordings and demos
+- project workspaces for inventories, analysis, storyboards, and rough cuts
+
+It fits podcasts, interviews, tutorials, courses, product videos, shorts, reels, and YouTube uploads.
+
+## Quick start
+
+Clone the repository and run the macOS bootstrap script:
 
 ```bash
-cd "$TOOLKIT_DIR"
+git clone <toolkit-repo> "$HOME/dev/media-tooling"
+cd "$HOME/dev/media-tooling"
 ./scripts/bootstrap-macos.sh
 ```
 
-That script installs:
+That installs `uv`, `ffmpeg`, Python 3.12, the local environment, and the `extract` and `subtitle` shell helpers.
 
-- `uv`
-- `ffmpeg`
-- Python 3.12 through `uv`
-- the local virtual environment
-- the shell helpers in `~/.zshrc`
-
-If you want to install the dependencies by hand:
+Create a separate project workspace for each production:
 
 ```bash
-brew install uv ffmpeg
-uv python install 3.12
-cd "$TOOLKIT_DIR"
-uv sync
-./scripts/install-shell-helpers.sh
-source ~/.zshrc
+export TOOLKIT_DIR="$HOME/dev/media-tooling"
+export PROJECT_DIR="$HOME/projects/my-project-media"
+
+mkdir -p "$PROJECT_DIR"/{assets/audio,assets/reference,transcripts,subtitles,inventory,analysis,storyboards,rough-cuts}
 ```
 
-After installation, these helpers should be available in your shell:
-
-- `extract`
-- `subtitle`
-
-## Boundary
-
-This directory is the reusable toolkit layer.
-
-- Reusable code lives here in [`src/media_tooling`](./src/media_tooling)
-- Local package environment lives here in [`.venv`](./.venv)
-- Cached MLX models live here in [`mlx_models`](./mlx_models)
-- Project-specific outputs should live outside this directory
-
-Typical setup:
-
-- toolkit directory: `$HOME/dev/media-tooling`
-- project workspace: `$HOME/projects/my-project-media`
-
-The exact location does not matter. Keep the toolkit and the project workspace separate.
-
-## Components
-
-### CLI tools
-
-- `media-subtitle`
-  Generate transcript `.txt`, subtitle `.srt`, and structured `.json` from an audio or video file.
-- `media-batch-subtitle`
-  Process a manifest of spoken-media files sequentially and resume cleanly with `--skip-existing`.
-- `media-contact-sheet`
-  Generate a lightweight contact sheet `.png` from a video file using evenly spaced frames.
-- `media-batch-contact-sheet`
-  Process a manifest of silent or visual-only videos sequentially into contact sheets.
-
-### Shell helpers
-
-Installed from `shell/media-tooling.zsh`:
-
-- `extract()`
-  Extract `.m4a` audio from a video with `ffmpeg`.
-- `subtitle()`
-  Wrapper that runs subtitle generation from an audio or video input.
-
-### Code layout
-
-- [`src/media_tooling/subtitle.py`](./src/media_tooling/subtitle.py)
-  Single-file transcript and subtitle generation.
-- [`src/media_tooling/batch_subtitle.py`](./src/media_tooling/batch_subtitle.py)
-  Manifest-driven spoken-media batch processing.
-- [`src/media_tooling/contact_sheet.py`](./src/media_tooling/contact_sheet.py)
-  Single-file contact-sheet generation for silent or visual-first media.
-- [`src/media_tooling/batch_contact_sheet.py`](./src/media_tooling/batch_contact_sheet.py)
-  Manifest-driven contact-sheet batch processing.
-
-## Recommended Workflows
-
-### Spoken media
-
-Use when the source has meaningful audio you want to search, subtitle, quote, or caption.
-
-Outputs usually go to:
-
-- `assets/audio/`
-- `transcripts/`
-- `subtitles/`
-
-Single file:
+Then use the toolkit from the repository directory:
 
 ```bash
 cd "$TOOLKIT_DIR"
@@ -108,33 +44,6 @@ uv run media-subtitle \
   --output-dir "$PROJECT_DIR/transcripts"
 ```
 
-Batch:
-
-```bash
-cd "$TOOLKIT_DIR"
-uv run media-batch-subtitle \
-  --inputs-file "$PROJECT_DIR/inventory/spoken-sources.txt" \
-  --audio-dir "$PROJECT_DIR/assets/audio" \
-  --transcripts-dir "$PROJECT_DIR/transcripts" \
-  --subtitles-dir "$PROJECT_DIR/subtitles" \
-  --model distil-medium.en \
-  --language en \
-  --ffmpeg-bin "$(command -v ffmpeg)" \
-  --skip-existing
-```
-
-### Silent or visual-first media
-
-Use when the source is mostly screen recording, demo footage, or visual reference material.
-
-Outputs usually go to:
-
-- `assets/reference/`
-- `inventory/`
-- `analysis/`
-
-Single file:
-
 ```bash
 cd "$TOOLKIT_DIR"
 uv run media-contact-sheet \
@@ -143,72 +52,51 @@ uv run media-contact-sheet \
   --ffprobe-bin "$(command -v ffprobe)"
 ```
 
-Batch:
+## Typical workflow
 
-```bash
-cd "$TOOLKIT_DIR"
-uv run media-batch-contact-sheet \
-  --inputs-file "$PROJECT_DIR/inventory/silent-sources.txt" \
-  --output-dir "$PROJECT_DIR/assets/reference" \
-  --ffmpeg-bin "$(command -v ffmpeg)" \
-  --ffprobe-bin "$(command -v ffprobe)" \
-  --skip-existing
-```
+1. Gather the source corpus.
+2. Split spoken media from silent media and still images.
+3. Generate transcripts and subtitles for spoken media.
+4. Generate contact sheets for silent media.
+5. Write inventories, analysis notes, storyboards, and rough-cut plans in the project workspace.
 
-## Portable setup
+## Core commands
 
-One portable pattern is:
+- `media-subtitle`
+  Generate transcript `.txt`, subtitle `.srt`, and structured `.json` from a single audio or video file.
+- `media-batch-subtitle`
+  Process a manifest of spoken-media files sequentially.
+- `media-contact-sheet`
+  Generate a contact sheet from a single silent or visual-first video.
+- `media-batch-contact-sheet`
+  Process a manifest of silent or visual-only videos sequentially.
 
-```bash
-export TOOLKIT_DIR="$HOME/dev/media-tooling"
-export PROJECT_DIR="$HOME/projects/my-project-media"
+Shell helpers installed into `~/.zshrc`:
 
-cd "$TOOLKIT_DIR"
-uv sync
-```
+- `extract`
+- `subtitle`
 
-This works for podcasts, interviews, tutorials, shorts, product demos, and course materials.
+## Project boundaries
 
-## Common usage
+Keep reusable code in this repository. Keep project outputs in a separate workspace.
 
-Single-file helpers from the shell:
+Typical setup:
 
-```bash
-extract "/path/to/video.mp4"
-subtitle "/path/to/video.mp4" --output-dir "$PROJECT_DIR/transcripts"
-```
+- toolkit directory: `$HOME/dev/media-tooling`
+- project workspace: `$HOME/projects/my-project-media`
 
-Batch work from the toolkit directory:
+This repository also creates a few local-only directories during normal use:
 
-```bash
-cd "$TOOLKIT_DIR"
-uv run media-batch-subtitle \
-  --inputs-file "$PROJECT_DIR/inventory/spoken-sources.txt" \
-  --audio-dir "$PROJECT_DIR/assets/audio" \
-  --transcripts-dir "$PROJECT_DIR/transcripts" \
-  --subtitles-dir "$PROJECT_DIR/subtitles" \
-  --model distil-medium.en \
-  --language en \
-  --ffmpeg-bin "$(command -v ffmpeg)" \
-  --skip-existing
-```
+- `.venv/` for the local Python environment
+- cache directories for downloaded packages and local runtime data
 
-```bash
-cd "$TOOLKIT_DIR"
-uv run media-batch-contact-sheet \
-  --inputs-file "$PROJECT_DIR/inventory/silent-sources.txt" \
-  --output-dir "$PROJECT_DIR/assets/reference" \
-  --ffmpeg-bin "$(command -v ffmpeg)" \
-  --ffprobe-bin "$(command -v ffprobe)" \
-  --skip-existing
-```
+Those directories are generated on demand, safe to delete, and ignored by Git.
 
 ## Documentation
 
+- [`docs/SETUP.md`](./docs/SETUP.md)
+- [`docs/WORKFLOWS.md`](./docs/WORKFLOWS.md)
 - [`docs/EXPORTING.md`](./docs/EXPORTING.md)
-- [`docs/AGENT-HARNESS-USAGE-EXAMPLES.md`](./docs/AGENT-HARNESS-USAGE-EXAMPLES.md)
-- [`docs/GUIDE-EN.md`](./docs/GUIDE-EN.md)
-- [`docs/GUIA-ES.md`](./docs/GUIA-ES.md)
 
 ## Toolkit skills
 
@@ -216,10 +104,3 @@ Toolkit-local skills live in:
 
 - [`.agents/skills/media-subtitle-pipeline/SKILL.md`](./.agents/skills/media-subtitle-pipeline/SKILL.md)
 - [`.agents/skills/media-launch-kit-ingest/SKILL.md`](./.agents/skills/media-launch-kit-ingest/SKILL.md)
-
-## Operational Notes
-
-- Video inputs for subtitle generation are first converted to `.m4a`.
-- Silent videos should generally not go through the subtitle pipeline.
-- For large corpora, prefer sequential batch runs over aggressive parallelization.
-- Keep reusable code here and keep project artifacts in the project workspace.

@@ -21,7 +21,6 @@ That repository should not include:
 
 - `.venv/`
 - `.cache/`
-- `mlx_models/`
 - project-specific transcripts, subtitles, or rough cuts
 
 Those exclusions are already covered in `.gitignore`.
@@ -54,8 +53,9 @@ Example:
 export SOURCE_DIR="$HOME/path/to/current/media-tooling"
 export EXPORT_DIR="$HOME/dev/media-tooling"
 
-rsync -av --exclude '.venv' --exclude '.cache' --exclude 'mlx_models' \
-  "$SOURCE_DIR/" "$EXPORT_DIR/"
+mkdir -p "$EXPORT_DIR"
+cd "$SOURCE_DIR"
+git archive HEAD | tar -x -C "$EXPORT_DIR"
 
 cd "$EXPORT_DIR"
 git init -b main
