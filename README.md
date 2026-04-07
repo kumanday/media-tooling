@@ -10,7 +10,8 @@ Media Tooling gives an agent harness a repeatable media-processing pipeline:
 2. Generate timestamped transcripts from spoken audio or video.
 3. Produce `.srt` subtitles and structured transcript metadata.
 4. Generate contact sheets for silent screen recordings and visual demos.
-5. Use transcripts, contact sheets, and screenshots to write inventories, analysis notes, shot lists, storyboards, and rough-cut plans.
+5. Use transcripts, contact sheets, and screenshots to write inventories, analysis notes, shot lists, storyboards, and rough-cut specs.
+6. Assemble first-pass rough cuts from reusable project-local specs.
 
 It covers:
 
@@ -18,6 +19,7 @@ It covers:
 - `.srt` subtitles
 - contact sheets for silent screen recordings and demos
 - project workspaces for inventories, analysis, storyboards, and rough cuts
+- reusable rough-cut assembly from JSON specs
 
 It fits podcasts, interviews, tutorials, courses, product videos, shorts, reels, and YouTube uploads.
 
@@ -65,9 +67,9 @@ The toolkit works through three layers:
 - prompts
   You describe the source material, the output you want, and any constraints such as sequential processing.
 - skills
-  The harness uses toolkit-local skills to decide which processing path fits the corpus. The main skills are [`media-corpus-ingest`](./.agents/skills/media-corpus-ingest/SKILL.md) and [`media-subtitle-pipeline`](./.agents/skills/media-subtitle-pipeline/SKILL.md).
+  The harness uses toolkit-local skills to decide which processing path fits the corpus. The main skills are [`media-corpus-ingest`](./.agents/skills/media-corpus-ingest/SKILL.md), [`media-subtitle-pipeline`](./.agents/skills/media-subtitle-pipeline/SKILL.md), and [`media-rough-cut-assembly`](./.agents/skills/media-rough-cut-assembly/SKILL.md).
 - toolkit commands
-  The skills call the command-line tools that extract audio, generate transcripts and subtitles, or build contact sheets.
+  The skills call the command-line tools that extract audio, generate transcripts and subtitles, build contact sheets, or assemble rough cuts.
 
 ## Prompt patterns
 
@@ -124,6 +126,19 @@ I want:
 - which sections feel weak or need new A-roll
 ```
 
+### Build a rough cut from a project spec
+
+```text
+The storyboard and clip choices are already approved in $PROJECT_DIR.
+
+Please:
+1. convert the approved sequence into a project-local rough-cut JSON spec
+2. use the media-rough-cut skill and command from the toolkit
+3. generate placeholder cards with explicit target windows and placeholder durations
+4. build the generated clips, concat manifest, and first-pass assembly
+5. keep the toolkit reusable and keep all project-specific sequencing in $PROJECT_DIR
+```
+
 More prompt patterns live in [`docs/WORKFLOWS.md`](./docs/WORKFLOWS.md).
 
 ## Toolkit primitives
@@ -134,6 +149,8 @@ These are the commands that the skills use under the hood:
   Uses the subtitle and contact-sheet commands to ingest a mixed media corpus into a project workspace.
 - [`media-subtitle-pipeline`](./.agents/skills/media-subtitle-pipeline/SKILL.md)
   Uses the subtitle commands for spoken-media processing.
+- [`media-rough-cut-assembly`](./.agents/skills/media-rough-cut-assembly/SKILL.md)
+  Uses a project-local JSON spec to assemble cards, image holds, extracted clips, manifests, and first-pass rough cuts.
 
 - `media-subtitle`
   Generate transcript `.txt`, subtitle `.srt`, and structured `.json` from a single audio or video file.
@@ -143,6 +160,8 @@ These are the commands that the skills use under the hood:
   Generate a contact sheet from a single silent or visual-first video.
 - `media-batch-contact-sheet`
   Process a manifest of silent or visual-only videos sequentially.
+- `media-rough-cut`
+  Build a first-pass rough cut from a project-local JSON spec of cards, image holds, and clip extracts.
 
 Shell helpers installed into `~/.zshrc`:
 
@@ -181,3 +200,4 @@ Toolkit-local skills live in:
 
 - [`.agents/skills/media-subtitle-pipeline/SKILL.md`](./.agents/skills/media-subtitle-pipeline/SKILL.md)
 - [`.agents/skills/media-corpus-ingest/SKILL.md`](./.agents/skills/media-corpus-ingest/SKILL.md)
+- [`.agents/skills/media-rough-cut-assembly/SKILL.md`](./.agents/skills/media-rough-cut-assembly/SKILL.md)

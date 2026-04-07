@@ -12,7 +12,7 @@ Subtitle commands accept `--backend auto|mlx|faster-whisper`. In normal use, `au
 2. Split spoken media from silent media and still images.
 3. Generate transcripts and subtitles for spoken media.
 4. Generate contact sheets for silent media.
-5. Build inventories, analysis notes, storyboards, and rough-cut plans.
+5. Build inventories, analysis notes, storyboards, rough-cut specs, and rough-cut assemblies.
 
 ## Media types
 
@@ -151,7 +151,20 @@ I want:
 - which sections feel weak or need new A-roll
 ```
 
-## Example 6. Prepare final subtitles
+## Example 6. Assemble a rough cut from an approved spec
+
+```text
+The storyboard and clip choices in $PROJECT_DIR are already approved.
+
+Please:
+1. create or update a JSON rough-cut spec in rough-cuts/specs/
+2. use the media-rough-cut assembly skill from the toolkit
+3. generate readable placeholder cards with target windows and placeholder durations
+4. build the generated clips, manifest, and assembly
+5. keep the toolkit reusable and keep project sequencing outside the toolkit repo
+```
+
+## Example 7. Prepare final subtitles
 
 ```text
 The final edit is done.
@@ -219,4 +232,12 @@ uv run media-batch-contact-sheet \
   --ffmpeg-bin "$(command -v ffmpeg)" \
   --ffprobe-bin "$(command -v ffprobe)" \
   --skip-existing
+```
+
+### Rough cut from a JSON spec
+
+```bash
+cd "$TOOLKIT_DIR"
+uv run media-rough-cut \
+  --spec "$PROJECT_DIR/rough-cuts/specs/episode-v1.json"
 ```
