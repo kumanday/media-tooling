@@ -1,8 +1,8 @@
 # Media Tooling
 
-Media Tooling is a small toolkit for turning raw media into usable production artifacts.
+Media Tooling helps an agent harness turn raw media into production artifacts.
 
-It helps with:
+It covers:
 
 - transcripts for spoken audio and video
 - `.srt` subtitles
@@ -13,8 +13,8 @@ It fits podcasts, interviews, tutorials, courses, product videos, shorts, reels,
 
 Transcription uses a platform-appropriate backend:
 
-- Apple Silicon macOS: MLX backend
-- other workstations: faster-whisper backend
+- Apple Silicon macOS: MLX
+- other workstations: faster-whisper
 
 ## Quick start
 
@@ -37,36 +37,77 @@ export PROJECT_DIR="$HOME/projects/my-project-media"
 mkdir -p "$PROJECT_DIR"/{assets/audio,assets/reference,transcripts,subtitles,inventory,analysis,storyboards,rough-cuts}
 ```
 
-Then use the toolkit from the repository directory:
+## Primary workflow
 
-```bash
-cd "$TOOLKIT_DIR"
-uv run media-subtitle \
-  "/path/to/video.mp4" \
-  --backend auto \
-  --model small \
-  --language en \
-  --ffmpeg-bin "$(command -v ffmpeg)" \
-  --output-dir "$PROJECT_DIR/transcripts"
+The usual workflow is prompt-driven. You give an agent harness the toolkit, a project workspace, and a source corpus. The harness uses the toolkit commands under the hood and writes project artifacts into the project workspace.
+
+Typical flow:
+
+1. Put the toolkit in `$TOOLKIT_DIR`.
+2. Put project-specific outputs in `$PROJECT_DIR`.
+3. Point the harness at the raw media folders.
+4. Ask it to ingest the corpus, process the media, and produce planning artifacts.
+
+## Prompt patterns
+
+These prompt patterns are the main entry point for the toolkit.
+
+### Ingest a mixed corpus
+
+```text
+I have a new media project in $PROJECT_DIR.
+
+Source folders:
+- spoken videos: /path/to/spoken
+- silent screen recordings: /path/to/silent
+- screenshots: /path/to/images
+
+Please:
+1. inventory the corpus
+2. separate spoken, silent, and image assets
+3. create manifests for batch processing
+4. process spoken media into transcripts and SRT subtitles
+5. process silent media into contact sheets
+6. produce short analysis notes in $PROJECT_DIR/analysis
+
+Use sequential processing and keep project outputs out of the toolkit repo.
 ```
 
-```bash
-cd "$TOOLKIT_DIR"
-uv run media-contact-sheet \
-  "/path/to/silent-video.mov" \
-  --ffmpeg-bin "$(command -v ffmpeg)" \
-  --ffprobe-bin "$(command -v ffprobe)"
+### Build a shot list after ingestion
+
+```text
+The corpus has already been processed in $PROJECT_DIR.
+
+Please review:
+- transcripts/
+- subtitles/
+- assets/reference/
+- analysis/
+
+Then produce:
+1. a short list of the strongest clips
+2. a shot list with start time, end time, duration, and purpose
+3. a note on what still needs to be recorded
 ```
 
-## Typical workflow
+### Prepare a rough cut
 
-1. Gather the source corpus.
-2. Split spoken media from silent media and still images.
-3. Generate transcripts and subtitles for spoken media.
-4. Generate contact sheets for silent media.
-5. Write inventories, analysis notes, storyboards, and rough-cut plans in the project workspace.
+```text
+Please use the processed artifacts in $PROJECT_DIR to prepare a first-pass rough cut plan.
 
-## Core commands
+I want:
+- a proposed sequence
+- which clips should carry narration
+- which silent clips should be used as B-roll
+- where screenshots are enough
+- which sections feel weak or need new A-roll
+```
+
+More prompt patterns live in [`docs/WORKFLOWS.md`](./docs/WORKFLOWS.md).
+
+## Toolkit primitives
+
+These are the commands that the harness uses under the hood:
 
 - `media-subtitle`
   Generate transcript `.txt`, subtitle `.srt`, and structured `.json` from a single audio or video file.
@@ -83,6 +124,8 @@ Shell helpers installed into `~/.zshrc`:
 - `subtitle`
 
 Both subtitle commands accept `--backend auto|mlx|faster-whisper`.
+
+If you want direct command examples, see [`docs/WORKFLOWS.md`](./docs/WORKFLOWS.md).
 
 ## Project boundaries
 

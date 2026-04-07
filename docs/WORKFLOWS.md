@@ -55,59 +55,6 @@ Inventory these directly and use them in:
 - chapter cards
 - storyboards
 
-## Command examples
-
-### Single spoken file
-
-```bash
-cd "$TOOLKIT_DIR"
-uv run media-subtitle \
-  "/path/to/video.mp4" \
-  --backend auto \
-  --model small \
-  --language en \
-  --ffmpeg-bin "$(command -v ffmpeg)" \
-  --output-dir "$PROJECT_DIR/transcripts"
-```
-
-### Batch spoken media
-
-```bash
-cd "$TOOLKIT_DIR"
-uv run media-batch-subtitle \
-  --inputs-file "$PROJECT_DIR/inventory/spoken-sources.txt" \
-  --audio-dir "$PROJECT_DIR/assets/audio" \
-  --transcripts-dir "$PROJECT_DIR/transcripts" \
-  --subtitles-dir "$PROJECT_DIR/subtitles" \
-  --backend auto \
-  --model small \
-  --language en \
-  --ffmpeg-bin "$(command -v ffmpeg)" \
-  --skip-existing
-```
-
-### Single silent file
-
-```bash
-cd "$TOOLKIT_DIR"
-uv run media-contact-sheet \
-  "/path/to/silent-video.mov" \
-  --ffmpeg-bin "$(command -v ffmpeg)" \
-  --ffprobe-bin "$(command -v ffprobe)"
-```
-
-### Batch silent media
-
-```bash
-cd "$TOOLKIT_DIR"
-uv run media-batch-contact-sheet \
-  --inputs-file "$PROJECT_DIR/inventory/silent-sources.txt" \
-  --output-dir "$PROJECT_DIR/assets/reference" \
-  --ffmpeg-bin "$(command -v ffmpeg)" \
-  --ffprobe-bin "$(command -v ffprobe)" \
-  --skip-existing
-```
-
 ## Prompt patterns for an agent harness
 
 Prompts work best when they include:
@@ -217,4 +164,59 @@ Please help me:
    - description links
    - chapter timestamps
    - subtitle review
+```
+
+## Command examples
+
+These commands are the building blocks that the prompt patterns usually trigger.
+
+### Single spoken file
+
+```bash
+cd "$TOOLKIT_DIR"
+uv run media-subtitle \
+  "/path/to/video.mp4" \
+  --backend auto \
+  --model small \
+  --language en \
+  --ffmpeg-bin "$(command -v ffmpeg)" \
+  --output-dir "$PROJECT_DIR/transcripts"
+```
+
+### Batch spoken media
+
+```bash
+cd "$TOOLKIT_DIR"
+uv run media-batch-subtitle \
+  --inputs-file "$PROJECT_DIR/inventory/spoken-sources.txt" \
+  --audio-dir "$PROJECT_DIR/assets/audio" \
+  --transcripts-dir "$PROJECT_DIR/transcripts" \
+  --subtitles-dir "$PROJECT_DIR/subtitles" \
+  --backend auto \
+  --model small \
+  --language en \
+  --ffmpeg-bin "$(command -v ffmpeg)" \
+  --skip-existing
+```
+
+### Single silent file
+
+```bash
+cd "$TOOLKIT_DIR"
+uv run media-contact-sheet \
+  "/path/to/silent-video.mov" \
+  --ffmpeg-bin "$(command -v ffmpeg)" \
+  --ffprobe-bin "$(command -v ffprobe)"
+```
+
+### Batch silent media
+
+```bash
+cd "$TOOLKIT_DIR"
+uv run media-batch-contact-sheet \
+  --inputs-file "$PROJECT_DIR/inventory/silent-sources.txt" \
+  --output-dir "$PROJECT_DIR/assets/reference" \
+  --ffmpeg-bin "$(command -v ffmpeg)" \
+  --ffprobe-bin "$(command -v ffprobe)" \
+  --skip-existing
 ```
