@@ -23,8 +23,8 @@ It fits podcasts, interviews, tutorials, courses, product videos, shorts, reels,
 
 Transcription uses a platform-appropriate backend:
 
-- Apple Silicon macOS: MLX
-- other workstations: faster-whisper
+- Apple Silicon macOS: `lightning-whisper-mlx`
+- other workstations: `faster-whisper`
 
 ## Quick start
 

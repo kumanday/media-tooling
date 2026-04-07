@@ -20,8 +20,8 @@ The bootstrap script installs:
 
 The transcription backend depends on the workstation:
 
-- Apple Silicon macOS installs the MLX backend
-- other systems install the faster-whisper backend
+- Apple Silicon macOS installs `lightning-whisper-mlx`
+- other systems install `faster-whisper`
 
 ## Manual setup
 
