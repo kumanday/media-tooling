@@ -1,6 +1,8 @@
 # Media Tooling Usage Examples
 
-This guide shows how to use the toolkit with Codex once you already have raw media for a project.
+This guide shows how to use the toolkit with an agent harness once you already have raw media for a project.
+
+The examples fit Codex and other harnesses that can inspect local files, run commands, and write project artifacts.
 
 ## Core workflow
 

@@ -1,6 +1,6 @@
-# Guia practica de Media Tooling y Codex
+# Guia practica de Media Tooling y flujos con agentes
 
-Esta guia explica el flujo de trabajo del toolkit para alguien que ya sabe producir video, trabajar con material audiovisual y usar ChatGPT para pensar ideas, pero que todavia tiene poca experiencia con terminal, Codex o agent harnesses.
+Esta guia explica el flujo de trabajo del toolkit para alguien que ya sabe producir video, trabajar con material audiovisual y usar ChatGPT para pensar ideas, pero que todavia tiene poca experiencia con terminal o agent harnesses.
 
 El objetivo es convertir un corpus grande de audio, video e imagenes en un paquete de trabajo facil de revisar, buscar, clasificar y editar.
 
@@ -37,7 +37,7 @@ source ~/.zshrc
 
 Media Tooling prepara material. Ordena archivos, genera transcripciones, crea subtitulos, resume videos silenciosos con contact sheets y deja una base lista para storyboard, guion y rough cut.
 
-Sirve para muchos formatos:
+Sirve para:
 
 - podcasts
 - entrevistas
@@ -119,8 +119,6 @@ Despues de instalar el toolkit, tendras estas funciones:
 
 Extrae audio `.m4a` desde un video.
 
-Ejemplo:
-
 ```bash
 extract "/ruta/al/video.mp4"
 ```
@@ -129,8 +127,6 @@ extract "/ruta/al/video.mp4"
 
 Genera transcripcion, subtitulos y metadatos desde audio o video.
 
-Ejemplo:
-
 ```bash
 subtitle "/ruta/al/video.mp4" --output-dir "$PROJECT_DIR/transcripts"
 ```
@@ -138,8 +134,6 @@ subtitle "/ruta/al/video.mp4" --output-dir "$PROJECT_DIR/transcripts"
 ## Flujo recomendado
 
 ### 1. Crear el workspace del proyecto
-
-Usa una estructura simple:
 
 ```text
 mi-proyecto-media/
@@ -204,10 +198,6 @@ Con los artefactos tecnicos listos, pasa al trabajo editorial:
 
 ### 7. Armar storyboard y shot list
 
-El storyboard organiza la narracion.
-
-La shot list organiza el uso del material.
-
 Una shot list util puede incluir:
 
 - archivo
@@ -236,7 +226,9 @@ Aqui entra el trabajo fino del editor:
 - tratar color y audio
 - exportar la pieza final
 
-## Ejemplos concretos de uso con Codex
+## Ejemplos concretos con un arnes de agentes
+
+Los ejemplos de abajo funcionan bien con arneses que puedan inspeccionar archivos locales, ejecutar comandos y escribir artefactos del proyecto.
 
 ### Ejemplo 1. Ingesta completa de un proyecto mixto
 
@@ -280,7 +272,7 @@ Quiero:
 ### Ejemplo 3. Tutorial o curso
 
 ```text
-Tengo materiales de un tutorial:
+Tengo materiales de un tutorial que incluyen:
 - lecciones narradas
 - demos silenciosas de pantalla
 - screenshots de apoyo
@@ -313,33 +305,13 @@ Y prepara:
 
 ## Exportar el toolkit a otra Mac
 
-La forma mas limpia es poner `media-tooling` en su propio repo de Git.
-
-El repo debe incluir:
-
-- `README.md`
-- `pyproject.toml`
-- `uv.lock`
-- `src/`
-- `shell/`
-- `scripts/`
-- `docs/`
-- `.gitignore`
-
-El repo no debe incluir:
-
-- `.venv/`
-- `.cache/`
-- `mlx_models/`
-- artefactos de proyectos concretos
-
-La guia detallada esta en:
+La guia de exportacion esta en:
 
 - `docs/EXPORTING.md`
 
 ## Resultado esperado
 
-Un buen flujo deja el proyecto en este estado:
+Un buen flujo deja el proyecto con:
 
 - corpus ordenado
 - transcripciones listas
@@ -349,5 +321,3 @@ Un buen flujo deja el proyecto en este estado:
 - notas de analisis
 - storyboard claro
 - rough cut inicial
-
-Ese punto cambia mucho el trabajo diario. La energia pasa de tareas repetitivas a decisiones editoriales.

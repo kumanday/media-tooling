@@ -1,6 +1,6 @@
-# Practical Guide to Media Tooling and Codex
+# Practical Guide to Media Tooling and Agent Workflows
 
-This guide is for someone who already knows video production, works with audio and visual source material, and uses ChatGPT for ideation, but has less experience with the terminal, Codex, or agent harnesses.
+This guide is for someone who already knows video production, works with audio and visual source material, and uses ChatGPT for ideation, but has less experience with the terminal or agent harnesses.
 
 The goal is to turn a large set of audio, video, and image files into a working package that is easy to search, review, classify, and edit.
 
@@ -96,8 +96,6 @@ If a file contains dialogue, narration, or useful speech, generate:
 - a transcript
 - `.srt` subtitles
 
-That makes it easier to search for quotes, find strong moments, review content without watching the full recording, and publish captions.
-
 ### Silent media
 
 If a file is a screen recording or visual demo without useful speech, a contact sheet is usually the best first step.
@@ -121,8 +119,6 @@ After installation, these helpers should be available in your shell.
 
 Extracts `.m4a` audio from a video.
 
-Example:
-
 ```bash
 extract "/path/to/video.mp4"
 ```
@@ -131,8 +127,6 @@ extract "/path/to/video.mp4"
 
 Generates transcript, subtitles, and metadata from audio or video.
 
-Example:
-
 ```bash
 subtitle "/path/to/video.mp4" --output-dir "$PROJECT_DIR/transcripts"
 ```
@@ -140,8 +134,6 @@ subtitle "/path/to/video.mp4" --output-dir "$PROJECT_DIR/transcripts"
 ## Recommended workflow
 
 ### 1. Create the project workspace
-
-Use a simple structure like this:
 
 ```text
 my-project-media/
@@ -173,8 +165,6 @@ Sort the source material into:
 - spoken
 - silent
 - still images
-
-That makes the next step much easier.
 
 ### 4. Process spoken media
 
@@ -208,10 +198,6 @@ Once the technical artifacts exist, move into editorial work:
 
 ### 7. Build a storyboard and shot list
 
-The storyboard organizes the narrative.
-
-The shot list organizes the source usage.
-
 A useful shot list often includes:
 
 - file
@@ -240,7 +226,9 @@ This is where the editor does the detailed work:
 - treat color and audio
 - export the final piece
 
-## Concrete Codex examples
+## Concrete harness examples
+
+The examples below fit agent harnesses that can inspect local files, run commands, and write project artifacts.
 
 ### Example 1. Full ingest of a mixed project
 
@@ -319,33 +307,15 @@ Then prepare:
 
 The cleanest path is to keep `media-tooling` in its own Git repository.
 
-The repository should include:
-
-- `README.md`
-- `pyproject.toml`
-- `uv.lock`
-- `src/`
-- `shell/`
-- `scripts/`
-- `docs/`
-- `.gitignore`
-
-The repository should leave out:
-
-- `.venv/`
-- `.cache/`
-- `mlx_models/`
-- project-specific artifacts
-
 The export walkthrough lives in:
 
 - `docs/EXPORTING.md`
 
 ## Expected result
 
-A good run leaves the project in this state:
+A good run leaves the project with:
 
-- organized source corpus
+- an organized source corpus
 - ready transcripts
 - base subtitles
 - visual reference for silent clips
@@ -353,5 +323,3 @@ A good run leaves the project in this state:
 - analysis notes
 - a clear storyboard
 - an initial rough cut
-
-At that point, far more energy can go into editorial judgment and less into repetitive setup.

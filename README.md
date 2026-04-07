@@ -206,9 +206,16 @@ uv run media-batch-contact-sheet \
 ## Documentation
 
 - [`docs/EXPORTING.md`](./docs/EXPORTING.md)
-- [`docs/CODEX-USAGE-EXAMPLES.md`](./docs/CODEX-USAGE-EXAMPLES.md)
+- [`docs/AGENT-HARNESS-USAGE-EXAMPLES.md`](./docs/AGENT-HARNESS-USAGE-EXAMPLES.md)
 - [`docs/GUIDE-EN.md`](./docs/GUIDE-EN.md)
 - [`docs/GUIA-ES.md`](./docs/GUIA-ES.md)
+
+## Toolkit skills
+
+Toolkit-local skills live in:
+
+- [`.agents/skills/media-subtitle-pipeline/SKILL.md`](./.agents/skills/media-subtitle-pipeline/SKILL.md)
+- [`.agents/skills/media-launch-kit-ingest/SKILL.md`](./.agents/skills/media-launch-kit-ingest/SKILL.md)
 
 ## Operational Notes
 

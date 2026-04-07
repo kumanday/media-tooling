@@ -70,7 +70,7 @@ cd "$EXPORT_DIR"
 gh repo create your-org/media-tooling --private --source=. --push
 ```
 
-On the editor's Mac:
+On another Mac:
 
 ```bash
 git clone <your-new-repo-url> "$HOME/dev/media-tooling"
@@ -78,9 +78,9 @@ cd "$HOME/dev/media-tooling"
 ./scripts/bootstrap-macos.sh
 ```
 
-## What Diego will need
+## What another editor will need
 
-Diego needs:
+The editor needs:
 
 - a Mac
 - Homebrew
