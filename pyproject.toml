@@ -1,0 +1,20 @@
+[project]
+name = "media-tooling"
+version = "0.1.0"
+description = "Reusable media tooling for transcripts, subtitles, and clip planning"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "lightning-whisper-mlx>=0.0.10",
+    "pillow>=11.2.1",
+]
+
+[project.scripts]
+media-batch-contact-sheet = "media_tooling.batch_contact_sheet:main"
+media-batch-subtitle = "media_tooling.batch_subtitle:main"
+media-contact-sheet = "media_tooling.contact_sheet:main"
+media-subtitle = "media_tooling.subtitle:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

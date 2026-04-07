@@ -1,0 +1,10 @@
+.venv/
+.cache/
+mlx_models/
+dist/
+build/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.DS_Store
