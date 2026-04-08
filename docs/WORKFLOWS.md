@@ -65,6 +65,10 @@ Prompts work best when they include:
 - where outputs should be written
 - any constraints such as sequential processing
 
+Ask for outcomes and deliverables. The skills should handle the lower-level steps unless you are debugging or doing something unusual.
+
+In practice, short prompts usually work better than long procedural ones.
+
 ## Example 1. Ingest a mixed corpus
 
 ```text
@@ -75,15 +79,11 @@ Source folders:
 - silent screen recordings: /path/to/silent
 - screenshots: /path/to/images
 
-Please:
-1. inventory the corpus
-2. separate spoken, silent, and image assets
-3. create manifests for batch processing
-4. process spoken media into transcripts and SRT subtitles
-5. process silent media into contact sheets
-6. produce short analysis notes in $PROJECT_DIR/analysis
-
-Use sequential processing and keep project outputs out of the toolkit repo.
+Please process this source material and leave me with:
+- transcripts and subtitles for the spoken material
+- contact sheets for the silent recordings
+- an inventory of the source material
+- short analysis notes I can use for planning
 ```
 
 ## Example 2. Process a podcast episode
@@ -94,14 +94,11 @@ I have a podcast episode with:
 - one clean audio export
 - three short promo clips
 
-Please:
-1. decide which files belong in the subtitle pipeline
-2. generate transcripts and SRTs
-3. create an inventory of strong segments for:
-   - the full episode
-   - short clips
-   - quote graphics
-4. write the results into analysis and inventory files inside $PROJECT_DIR
+Please process the episode and give me:
+- transcripts and subtitles
+- a shortlist of strong moments for the full episode
+- candidate clips for shorts
+- quote-worthy sections for graphics or social posts
 ```
 
 ## Example 3. Process tutorial material
@@ -112,13 +109,12 @@ I have tutorial materials that include:
 - silent screen captures of product flows
 - screenshots for reference
 
-Please ingest the corpus and produce:
-- transcripts and subtitles for narrated recordings
-- contact sheets for silent recordings
-- a storyboard suggestion for:
-  - one long tutorial
-  - three short promo clips
-  - one companion article
+Please process the materials and give me:
+- transcripts and subtitles for the narrated lessons
+- contact sheets for the silent recordings
+- a suggested storyboard for the main tutorial
+- a shortlist of clips for short-form promos
+- notes that would help with a companion article
 ```
 
 ## Example 4. Build a shot list after ingestion
@@ -126,16 +122,10 @@ Please ingest the corpus and produce:
 ```text
 The corpus has already been processed in $PROJECT_DIR.
 
-Please review:
-- transcripts/
-- subtitles/
-- assets/reference/
-- analysis/
-
-Then produce:
-1. a short list of the strongest clips
-2. a shot list with start time, end time, duration, and purpose
-3. a note on what still needs to be recorded
+Please review what is already there and give me:
+- a shortlist of the strongest clips
+- a shot list with timestamps, durations, and purpose
+- a note on what still needs to be recorded
 ```
 
 ## Example 5. Prepare a rough cut
@@ -143,7 +133,7 @@ Then produce:
 ```text
 Please use the processed artifacts in $PROJECT_DIR to prepare a first-pass rough cut plan.
 
-I want:
+Please include:
 - a proposed sequence
 - which clips should carry narration
 - which silent clips should be used as B-roll
@@ -156,12 +146,7 @@ I want:
 ```text
 The storyboard and clip choices in $PROJECT_DIR are already approved.
 
-Please:
-1. create or update a JSON rough-cut spec in rough-cuts/specs/
-2. use the media-rough-cut assembly skill from the toolkit
-3. generate readable placeholder cards with target windows and placeholder durations
-4. build the generated clips, manifest, and assembly
-5. keep the toolkit reusable and keep project sequencing outside the toolkit repo
+Please turn that approved sequence into a first-pass rough cut, including readable placeholder cards for anything that still needs to be recorded.
 ```
 
 ## Example 7. Prepare final subtitles
@@ -169,14 +154,10 @@ Please:
 ```text
 The final edit is done.
 
-Please help me:
-1. review the existing subtitles
-2. identify which ones need manual correction
-3. produce a checklist for final upload:
-   - title
-   - description links
-   - chapter timestamps
-   - subtitle review
+Please help me prepare this for upload:
+- review the existing subtitles
+- identify which ones need manual correction
+- produce a final checklist for title, description links, chapter timestamps, and subtitle review
 ```
 
 ## Command examples

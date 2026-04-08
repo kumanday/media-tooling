@@ -1,8 +1,12 @@
 # Media Tooling
 
-Media Tooling helps an agent harness turn raw media into production artifacts.
+Media Tooling helps an agent harness turn raw media into planning and editing artifacts.
 
 ## What it does
+
+Media Tooling helps convert raw source material into planning and production context.
+
+At a high level, it processes raw videos and audio to produce timestamped transcripts for spoken material and frame captures for visual material. Those processed artifacts are then used to analyze what the source media contains and turn that understanding into production artifacts such as inventories, shot lists, storyboards, rough-cut specs, and first-pass rough cuts.
 
 Media Tooling gives an agent harness a repeatable media-processing pipeline:
 
@@ -10,16 +14,48 @@ Media Tooling gives an agent harness a repeatable media-processing pipeline:
 2. Generate timestamped transcripts from spoken audio or video.
 3. Produce `.srt` subtitles and structured transcript metadata.
 4. Generate contact sheets for silent screen recordings and visual demos.
-5. Use transcripts, contact sheets, and screenshots to write inventories, analysis notes, shot lists, storyboards, and rough-cut specs.
+5. Turn those processed assets into planning artifacts.
 6. Assemble first-pass rough cuts from reusable project-local specs.
 
-It covers:
+The main artifacts it produces are:
 
 - transcripts for spoken audio and video
 - `.srt` subtitles
 - contact sheets for silent screen recordings and demos
-- project workspaces for inventories, analysis, storyboards, and rough cuts
-- reusable rough-cut assembly from JSON specs
+- inventories
+- analysis notes
+- shot lists
+- storyboards
+- rough-cut specs
+- first-pass rough cuts
+
+A "rough cut" is a fast first-pass assembly used to validate structure, pacing, sequencing, and missing material before manual editing.
+
+A "contact sheet" is a single image made from several frames sampled across a video so you can inspect its visual progression quickly without scrubbing through the whole file.
+
+```mermaid
+flowchart TD
+    A["Raw media"] --> B["Classify corpus"]
+    B --> C["Spoken audio or video"]
+    B --> D["Silent video"]
+    B --> E["Screenshots and stills"]
+    C --> F["Audio extraction"]
+    F --> G["Timestamped transcripts"]
+    G --> H["SRT subtitles"]
+    G --> I["Transcript metadata"]
+    D --> J["Contact sheets"]
+    E --> K["Image inventory"]
+    H --> L["Planning artifacts"]
+    I --> L
+    J --> L
+    K --> L
+    L --> M["Inventories"]
+    L --> N["Analysis notes"]
+    L --> O["Shot lists"]
+    L --> P["Storyboards"]
+    L --> Q["Rough-cut specs"]
+    Q --> R["First-pass rough cuts"]
+```
 
 It fits podcasts, interviews, tutorials, courses, product videos, shorts, reels, and YouTube uploads.
 
@@ -33,7 +69,7 @@ Transcription uses a platform-appropriate backend:
 Clone the repository and run the macOS bootstrap script:
 
 ```bash
-git clone <toolkit-repo> "$HOME/dev/media-tooling"
+git clone https://github.com/kumanday/media-tooling "$HOME/dev/media-tooling"
 cd "$HOME/dev/media-tooling"
 ./scripts/bootstrap-macos.sh
 ```
@@ -51,7 +87,7 @@ mkdir -p "$PROJECT_DIR"/{assets/audio,assets/reference,transcripts,subtitles,inv
 
 ## Primary workflow
 
-The usual workflow is prompt-driven. You give an agent harness the toolkit, a project workspace, and a source corpus. The harness uses the toolkit commands under the hood and writes project artifacts into the project workspace.
+The usual workflow is prompt-driven. You give an agent harness the toolkit, a project workspace, and a source corpus. The harness uses the skills and commands under the hood and writes project artifacts into the project workspace.
 
 Typical flow:
 
@@ -75,6 +111,8 @@ The toolkit works through three layers:
 
 These prompt patterns are the main entry point for the toolkit.
 
+Prompt for outcomes, not for toolkit internals. The skills and commands are there to handle classification, batching, extraction, and assembly.
+
 ### Ingest a mixed corpus
 
 ```text
@@ -85,15 +123,11 @@ Source folders:
 - silent screen recordings: /path/to/silent
 - screenshots: /path/to/images
 
-Please:
-1. inventory the corpus
-2. separate spoken, silent, and image assets
-3. create manifests for batch processing
-4. process spoken media into transcripts and SRT subtitles
-5. process silent media into contact sheets
-6. produce short analysis notes in $PROJECT_DIR/analysis
-
-Use sequential processing and keep project outputs out of the toolkit repo.
+Please process this source material and leave me with:
+- transcripts and subtitles for the spoken material
+- contact sheets for the silent recordings
+- a clean inventory of what is in the project
+- short analysis notes I can use for planning
 ```
 
 ### Build a shot list after ingestion
@@ -101,49 +135,39 @@ Use sequential processing and keep project outputs out of the toolkit repo.
 ```text
 The corpus has already been processed in $PROJECT_DIR.
 
-Please review:
-- transcripts/
-- subtitles/
-- assets/reference/
-- analysis/
-
-Then produce:
-1. a short list of the strongest clips
-2. a shot list with start time, end time, duration, and purpose
-3. a note on what still needs to be recorded
+Please review what is already there and give me:
+- a shortlist of the strongest clips
+- a shot list with timestamps, durations, and editorial purpose
+- a note on what still needs to be recorded
 ```
 
 ### Prepare a rough cut
 
 ```text
-Please use the processed artifacts in $PROJECT_DIR to prepare a first-pass rough cut plan.
+Please use the processed artifacts in $PROJECT_DIR to propose a first-pass rough cut.
 
 I want:
-- a proposed sequence
-- which clips should carry narration
-- which silent clips should be used as B-roll
-- where screenshots are enough
-- which sections feel weak or need new A-roll
+- a recommended sequence
+- notes on where narration should carry the section
+- notes on where silent clips or screenshots are enough
+- a short list of weak sections that still need new material
 ```
 
 ### Build a rough cut from a project spec
 
 ```text
-The storyboard and clip choices are already approved in $PROJECT_DIR.
+The storyboard and clip selections in $PROJECT_DIR are approved.
 
-Please:
-1. convert the approved sequence into a project-local rough-cut JSON spec
-2. use the media-rough-cut skill and command from the toolkit
-3. generate placeholder cards with explicit target windows and placeholder durations
-4. build the generated clips, concat manifest, and first-pass assembly
-5. keep the toolkit reusable and keep all project-specific sequencing in $PROJECT_DIR
+Please turn them into a first-pass rough cut with readable placeholder cards for anything that still needs to be recorded.
 ```
 
 More prompt patterns live in [`docs/WORKFLOWS.md`](./docs/WORKFLOWS.md).
 
-## Toolkit primitives
+## Skills and commands
 
-These are the commands that the skills use under the hood:
+Most users will work through prompts. The skills translate those prompts into the command-line steps below.
+
+The main skills are:
 
 - [`media-corpus-ingest`](./.agents/skills/media-corpus-ingest/SKILL.md)
   Uses the subtitle and contact-sheet commands to ingest a mixed media corpus into a project workspace.
@@ -151,6 +175,8 @@ These are the commands that the skills use under the hood:
   Uses the subtitle commands for spoken-media processing.
 - [`media-rough-cut-assembly`](./.agents/skills/media-rough-cut-assembly/SKILL.md)
   Uses a project-local JSON spec to assemble cards, image holds, extracted clips, manifests, and first-pass rough cuts.
+
+The underlying commands are:
 
 - `media-subtitle`
   Generate transcript `.txt`, subtitle `.srt`, and structured `.json` from a single audio or video file.
