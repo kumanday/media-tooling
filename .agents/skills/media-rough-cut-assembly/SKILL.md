@@ -11,7 +11,7 @@ Use this skill when a project already has a storyboard, a shortlist of clips, or
 
 Keep the reusable assembly engine in `media-tooling`.
 
-Keep project-specific items outside the toolkit repo:
+Keep project-specific items in `$PROJECT_DIR`, outside the toolkit repo or install directory:
 
 - storyboards
 - shot lists
@@ -108,8 +108,7 @@ Include:
 ## Example command
 
 ```bash
-cd "$TOOLKIT_DIR"
-uv run media-rough-cut --spec "$PROJECT_DIR/rough-cuts/specs/episode-v1.json"
+media-rough-cut --spec "$PROJECT_DIR/rough-cuts/specs/episode-v1.json"
 ```
 
 ## Guardrails

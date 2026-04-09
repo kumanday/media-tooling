@@ -6,7 +6,7 @@ The examples fit agent harnesses that can inspect local files, run commands, and
 
 Subtitle commands accept `--backend auto|mlx|faster-whisper`. In normal use, `auto` is the right choice.
 
-For MLX transcription, the subtitle commands also run a post-transcription timestamp sanity check. They probe the media duration and compare it to the raw transcript end time. If the duration is a near-integer multiple of the transcript end time, the toolkit auto-corrects the timestamps and records the correction details in the JSON metadata. Use `--disable-timestamp-correction` if you explicitly want the raw backend timestamps.
+For MLX transcription, the subtitle commands also run a post-transcription timestamp sanity check. They probe the media duration and compare it to the raw transcript end time. If the duration is near the observed `10x` MLX compression pattern, the toolkit auto-corrects the timestamps and records the correction details in the JSON metadata. Use `--disable-timestamp-correction` if you explicitly want the raw backend timestamps.
 
 ## Core workflow
 
@@ -164,13 +164,12 @@ Please help me prepare this for upload:
 
 ## Command examples
 
-These commands are the building blocks that the prompt patterns usually trigger.
+These commands are the building blocks that the prompt patterns usually trigger. They assume you installed `media-tooling` with `uv tool install` and are running from the project workspace.
 
 ### Single spoken file
 
 ```bash
-cd "$TOOLKIT_DIR"
-uv run media-subtitle \
+media-subtitle \
   "/path/to/video.mp4" \
   --backend auto \
   --model small \
@@ -182,8 +181,7 @@ uv run media-subtitle \
 ### Batch spoken media
 
 ```bash
-cd "$TOOLKIT_DIR"
-uv run media-batch-subtitle \
+media-batch-subtitle \
   --inputs-file "$PROJECT_DIR/inventory/spoken-sources.txt" \
   --audio-dir "$PROJECT_DIR/assets/audio" \
   --transcripts-dir "$PROJECT_DIR/transcripts" \
@@ -210,8 +208,7 @@ When the sanity check applies a correction, the `.txt`, `.srt`, and `.json` outp
 ### Single silent file
 
 ```bash
-cd "$TOOLKIT_DIR"
-uv run media-contact-sheet \
+media-contact-sheet \
   "/path/to/silent-video.mov" \
   --ffmpeg-bin "$(command -v ffmpeg)" \
   --ffprobe-bin "$(command -v ffprobe)"
@@ -220,8 +217,7 @@ uv run media-contact-sheet \
 ### Batch silent media
 
 ```bash
-cd "$TOOLKIT_DIR"
-uv run media-batch-contact-sheet \
+media-batch-contact-sheet \
   --inputs-file "$PROJECT_DIR/inventory/silent-sources.txt" \
   --output-dir "$PROJECT_DIR/assets/reference" \
   --ffmpeg-bin "$(command -v ffmpeg)" \
@@ -232,7 +228,6 @@ uv run media-batch-contact-sheet \
 ### Rough cut from a JSON spec
 
 ```bash
-cd "$TOOLKIT_DIR"
-uv run media-rough-cut \
+media-rough-cut \
   --spec "$PROJECT_DIR/rough-cuts/specs/episode-v1.json"
 ```

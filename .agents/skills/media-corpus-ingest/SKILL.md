@@ -7,11 +7,15 @@ description: Use when ingesting a new corpus of local media into a project works
 
 Use this skill when a project needs a structured media-ingest pass.
 
-Reusable toolkit root:
+Project workspace:
 
-- `$TOOLKIT_DIR`
+- `$PROJECT_DIR` (the current media project directory)
 
-Project outputs belong in the project workspace, not the toolkit.
+Command posture:
+
+- prefer installed `media-*` commands from `$PROJECT_DIR`
+- keep project outputs in `$PROJECT_DIR`
+- do not write artifacts back into the toolkit repository or install directory
 
 ## Distinguish media types first
 
@@ -79,8 +83,7 @@ When setting up a project workspace, prefer:
 ## Example spoken-media batch
 
 ```bash
-cd "$TOOLKIT_DIR"
-uv run media-batch-subtitle \
+media-batch-subtitle \
   --inputs-file "$PROJECT_DIR/inventory/spoken-sources.txt" \
   --audio-dir "$PROJECT_DIR/assets/audio" \
   --transcripts-dir "$PROJECT_DIR/transcripts" \
@@ -94,8 +97,7 @@ uv run media-batch-subtitle \
 ## Example silent-media batch
 
 ```bash
-cd "$TOOLKIT_DIR"
-uv run media-batch-contact-sheet \
+media-batch-contact-sheet \
   --inputs-file "$PROJECT_DIR/inventory/silent-sources.txt" \
   --output-dir "$PROJECT_DIR/assets/reference" \
   --ffmpeg-bin "$(command -v ffmpeg)" \

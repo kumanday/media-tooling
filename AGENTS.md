@@ -1,40 +1,8 @@
-# Media Tooling Execution Context
+# Media Tooling Development Context
 
-This repository is meant to be used from the repo root.
+This `AGENTS.md` is only for developing `media-tooling` itself.
 
-Treat the repo root as `$TOOLKIT_DIR` when running commands or using the local skills. The reusable engine lives here. Project artifacts do not.
-
-## User posture
-
-- Run toolkit commands from this repo root with `uv run ...`.
-- Keep project outputs outside this repository.
-- Use the local skills in `.agents/skills/` to choose the right workflow.
-
-## Workflow routing
-
-- spoken media:
-  use `media-subtitle` or `media-batch-subtitle`
-- silent or visual-only video:
-  use `media-contact-sheet` or `media-batch-contact-sheet`
-- rough-cut assembly from an approved sequence:
-  use `media-rough-cut`
-
-## Skill usage
-
-- `.agents/skills/media-subtitle-pipeline/`
-  use for transcripts, subtitles, extracted audio, and transcript metadata
-- `.agents/skills/media-corpus-ingest/`
-  use for mixed corpora that need inventory plus spoken and silent media processing
-- `.agents/skills/media-rough-cut-assembly/`
-  use when a project-local storyboard or spec already exists and needs assembly
-
-## Operational defaults
-
-- prefer sequential processing for long media jobs
-- use `--skip-existing` for resumable batches
-- do not write project-local outputs into `media-tooling`
-- summarize useful findings instead of dumping raw transcripts into the main thread
-
-## Developer boundary
-
-Developer-only maintenance notes, quality gates, and repo-internal workflow guidance belong in `docs/DEVELOPMENT.md`, not here.
+- Read [docs/DEVELOPMENT.md](/Users/magos/dev/trilogy/writing/media-tooling/docs/DEVELOPMENT.md) before making substantial changes.
+- Keep user-facing execution guidance out of this file. Project workspaces should get their managed `AGENTS.md` block from [project_AGENTS.md](/Users/magos/dev/trilogy/writing/media-tooling/src/media_tooling/templates/project_AGENTS.md) via `media-tooling-init`.
+- When execution posture changes, update the packaged `.agents/skills/`, the project `AGENTS.md` template, and the user docs together.
+- Run `bash scripts/check.sh` from the repo root before committing.

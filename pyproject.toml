@@ -30,6 +30,7 @@ media-batch-subtitle = "media_tooling.batch_subtitle:main"
 media-contact-sheet = "media_tooling.contact_sheet:main"
 media-rough-cut = "media_tooling.rough_cut:main"
 media-subtitle = "media_tooling.subtitle:main"
+media-tooling-init = "media_tooling.project_init:main"
 
 [tool.ruff]
 target-version = "py312"
@@ -62,6 +63,9 @@ module = [
     "PIL.*",
 ]
 ignore_missing_imports = true
+
+[tool.hatch.build.targets.wheel.force-include]
+".agents" = "media_tooling/.agents"
 
 [build-system]
 requires = ["hatchling"]

@@ -1,90 +1,49 @@
 # Setup
 
-## macOS bootstrap
+## User install
 
-The fastest setup path is:
+Install `uv` and `ffmpeg`, then install `media-tooling` as a command provider:
 
 ```bash
-git clone <toolkit-repo> "$HOME/dev/media-tooling"
-cd "$HOME/dev/media-tooling"
-./scripts/bootstrap-macos.sh
+brew install uv ffmpeg
+uv tool install git+https://github.com/kumanday/media-tooling
 ```
 
-The bootstrap script installs:
+If you prefer one-off execution instead of a persistent tool install, use `uvx` with the same package source:
 
-- `uv`
-- `ffmpeg`
-- Python 3.12 through `uv`
-- the local virtual environment
-- the shell helpers from `shell/media-tooling.zsh`
+```bash
+uvx --from git+https://github.com/kumanday/media-tooling media-tooling-init "$HOME/projects/my-project-media"
+```
+
+For private access or SSH-based installs, use `git+ssh://git@github.com/kumanday/media-tooling`.
 
 The transcription backend depends on the workstation:
 
 - Apple Silicon macOS installs `lightning-whisper-mlx`
 - other systems install `faster-whisper`
 
-## Manual setup
-
-If you prefer to do it step by step:
-
-```bash
-brew install uv ffmpeg
-uv python install 3.12
-cd "$HOME/dev/media-tooling"
-uv sync
-./scripts/install-shell-helpers.sh
-source ~/.zshrc
-```
-
-## Shell helpers
-
-After setup, these helpers should be available in your shell:
-
-### `extract`
-
-Extract audio from a video into `.m4a`.
-
-```bash
-extract "/path/to/video.mp4"
-```
-
-### `subtitle`
-
-Run subtitle generation from audio or video.
-
-```bash
-subtitle "/path/to/video.mp4" --output-dir "$PROJECT_DIR/transcripts"
-```
-
-## Local directories
-
-This repository creates a few local-only directories during normal use.
-
-### `.venv/`
-
-The local Python environment used by `uv`.
-
-### Cache directories
-
-Package caches and downloaded runtime data may appear after the first run.
-
-These files are not source code and they should not be committed.
-
-## Recommended environment variables
-
-Most examples in this repo assume:
-
-```bash
-export TOOLKIT_DIR="$HOME/dev/media-tooling"
-export PROJECT_DIR="$HOME/projects/my-project-media"
-```
-
-## Recommended project workspace
+## Initialize a project workspace
 
 Create one workspace per production:
 
+```bash
+export PROJECT_DIR="$HOME/projects/my-project-media"
+media-tooling-init "$PROJECT_DIR"
+cd "$PROJECT_DIR"
+```
+
+`media-tooling-init` does two things:
+
+- creates the standard project directories
+- writes or refreshes a managed block in `AGENTS.md` that points at the central toolkit skills
+
+If `AGENTS.md` already exists, the command updates only its managed block and preserves the rest of the file.
+
+## Recommended project workspace
+
 ```text
 $PROJECT_DIR/
+  AGENTS.md
   assets/
     audio/
     reference/
@@ -94,12 +53,43 @@ $PROJECT_DIR/
   analysis/
   storyboards/
   rough-cuts/
+    assemblies/
+    generated-clips/
+    manifests/
+    specs/
 ```
+
+## Optional shell helpers for repo checkouts
+
+If you are working from a local checkout and want the convenience shell helpers:
+
+```bash
+cd /absolute/path/to/media-tooling
+./scripts/install-shell-helpers.sh
+source ~/.zshrc
+```
+
+Helpers:
+
+- `extract`
+- `subtitle`
+
+## Developer checkout
+
+If you are changing `media-tooling` itself, use a repo checkout instead of a tool install:
+
+```bash
+git clone <toolkit-repo> "$HOME/dev/media-tooling"
+cd "$HOME/dev/media-tooling"
+./scripts/bootstrap-macos.sh
+```
+
+The bootstrap script installs `uv`, `ffmpeg`, Python 3.12, the local environment, and the shell helpers.
 
 ## Operational notes
 
-- Spoken media belongs in the subtitle pipeline.
-- Silent screen recordings belong in the contact-sheet pipeline.
-- Large media batches are more stable when processed sequentially.
-- Project artifacts should stay outside the toolkit repository.
-- Subtitle commands accept `--backend auto|mlx|faster-whisper`.
+- spoken media belongs in the subtitle pipeline
+- silent screen recordings belong in the contact-sheet pipeline
+- large media batches are more stable when processed sequentially
+- project artifacts should stay in the project workspace, not the toolkit repository
+- subtitle commands accept `--backend auto|mlx|faster-whisper`

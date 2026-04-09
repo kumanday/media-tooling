@@ -7,9 +7,9 @@ description: Use when work involves generating transcripts, SRT subtitles, extra
 
 Use this skill when the task is about spoken media.
 
-Toolkit root:
+Project workspace:
 
-- `$TOOLKIT_DIR`
+- `$PROJECT_DIR` (the current media project directory)
 
 Primary commands:
 
@@ -24,11 +24,12 @@ Shell helpers expected after setup:
 ## Workflow
 
 1. Confirm that the source is spoken media.
-2. Keep project outputs outside the toolkit directory.
-3. For one file, prefer `media-subtitle`.
-4. For many files, create a manifest and use `media-batch-subtitle`.
-5. Prefer sequential processing for larger corpora.
-6. Use `--skip-existing` when resuming an interrupted batch.
+2. Run the installed commands from `$PROJECT_DIR`.
+3. Keep project outputs in the project directory.
+4. For one file, prefer `media-subtitle`.
+5. For many files, create a manifest and use `media-batch-subtitle`.
+6. Prefer sequential processing for larger corpora.
+7. Use `--skip-existing` when resuming an interrupted batch.
 
 ## Default output pattern
 
@@ -49,8 +50,7 @@ Do not write project artifacts into the toolkit repository.
 ## Single-file example
 
 ```bash
-cd "$TOOLKIT_DIR"
-uv run media-subtitle \
+media-subtitle \
   "/absolute/path/to/video.mp4" \
   --model small \
   --language en \
@@ -61,8 +61,7 @@ uv run media-subtitle \
 ## Batch example
 
 ```bash
-cd "$TOOLKIT_DIR"
-uv run media-batch-subtitle \
+media-batch-subtitle \
   --inputs-file "$PROJECT_DIR/inventory/spoken-sources.txt" \
   --audio-dir "$PROJECT_DIR/assets/audio" \
   --transcripts-dir "$PROJECT_DIR/transcripts" \
