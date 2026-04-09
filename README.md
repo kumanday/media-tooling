@@ -2,6 +2,8 @@
 
 Media Tooling helps an agent harness turn raw media into planning and editing artifacts.
 
+Execution context for user-facing runs lives in [`AGENTS.md`](./AGENTS.md). Developer-only maintenance notes and quality gates live in [`docs/DEVELOPMENT.md`](./docs/DEVELOPMENT.md).
+
 ## What it does
 
 Media Tooling helps convert raw source material into planning and production context.

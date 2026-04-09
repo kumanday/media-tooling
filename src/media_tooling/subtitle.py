@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import os
 import platform
 import shutil
 import subprocess
 import sys
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
@@ -218,25 +220,24 @@ def run_transcription_job(
     else:
         audio_path = input_path
 
-    ffmpeg_parent = str(Path(ffmpeg_bin).expanduser().resolve().parent)
-    os.environ["PATH"] = f"{ffmpeg_parent}:{os.environ.get('PATH', '')}"
-
     resolved_backend = resolve_backend(backend)
     print(
         f"Transcribing {audio_path} with model '{model_name}' using backend '{resolved_backend}'",
         flush=True,
     )
-    result = transcribe_media(
-        backend=resolved_backend,
-        audio_path=audio_path,
-        model_name=model_name,
-        language=language,
-        batch_size=batch_size,
-        quant=quant,
-        device=device,
-        compute_type=compute_type,
-        initial_prompt=initial_prompt,
-    )
+    ffmpeg_parent = resolve_command_directory(ffmpeg_bin)
+    with temporarily_prepended_path(ffmpeg_parent):
+        result = transcribe_media(
+            backend=resolved_backend,
+            audio_path=audio_path,
+            model_name=model_name,
+            language=language,
+            batch_size=batch_size,
+            quant=quant,
+            device=device,
+            compute_type=compute_type,
+            initial_prompt=initial_prompt,
+        )
     segments = normalize_segments(result.get("segments", []))
     audio_duration = probe_media_duration(
         input_path=audio_path,
@@ -507,6 +508,32 @@ def extract_audio(input_path: Path, audio_path: Path, ffmpeg_bin: str, overwrite
         f"Copy stderr:\n{copy_result.stderr}\n"
         f"Transcode stderr:\n{transcode_result.stderr}"
     )
+
+
+@contextlib.contextmanager
+def temporarily_prepended_path(directory: str | None) -> Iterator[None]:
+    if not directory:
+        yield
+        return
+
+    previous_path = os.environ.get("PATH", "")
+    os.environ["PATH"] = f"{directory}:{previous_path}" if previous_path else directory
+    try:
+        yield
+    finally:
+        os.environ["PATH"] = previous_path
+
+
+def resolve_command_directory(command_name: str) -> str | None:
+    command_location = shutil.which(command_name)
+    if command_location:
+        return str(Path(command_location).resolve().parent)
+
+    expanded = Path(command_name).expanduser()
+    if expanded.exists():
+        return str(expanded.resolve().parent)
+
+    return None
 
 
 def resolve_ffprobe_bin(ffmpeg_bin: str) -> str:
