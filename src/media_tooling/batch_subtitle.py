@@ -83,6 +83,11 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Skip files when txt, json, and srt already exist.",
     )
+    parser.add_argument(
+        "--disable-timestamp-correction",
+        action="store_true",
+        help="Disable the post-transcription timestamp sanity check and auto-correction.",
+    )
     return parser.parse_args()
 
 
@@ -131,6 +136,7 @@ def main() -> int:
                 overwrite=args.overwrite,
                 skip_existing=args.skip_existing,
                 initial_prompt=None,
+                disable_timestamp_correction=args.disable_timestamp_correction,
             )
         except Exception as exc:  # noqa: BLE001
             failures.append(f"{item}: {exc}")
