@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import re
+from importlib import resources
 from pathlib import Path
 
 PROJECT_SUBDIRECTORIES = (
@@ -24,6 +25,10 @@ SKILL_NAMES = (
 )
 MANAGED_BLOCK_START = "<!-- media-tooling:init:start -->"
 MANAGED_BLOCK_END = "<!-- media-tooling:init:end -->"
+TEMPLATE_PATH = "templates/project_AGENTS.md"
+TEMPLATE_MANAGED_BLOCK_START = "{{MANAGED_BLOCK_START}}"
+TEMPLATE_MANAGED_BLOCK_END = "{{MANAGED_BLOCK_END}}"
+TEMPLATE_SKILL_PATHS = "{{SKILL_PATHS}}"
 
 
 def parse_args() -> argparse.Namespace:
@@ -117,29 +122,11 @@ def upsert_project_agents(*, project_dir: Path, skills_dir: Path) -> tuple[Path,
 def render_project_agents_block(skills_dir: Path) -> str:
     skill_paths = [skills_dir / skill_name / "SKILL.md" for skill_name in SKILL_NAMES]
     skill_lines = "\n".join(f"- {path}" for path in skill_paths)
-    return "\n".join(
-        [
-            MANAGED_BLOCK_START,
-            "# Media Tooling Project Context",
-            "",
-            "This block is managed by `media-tooling-init`.",
-            "Treat this directory as `$PROJECT_DIR` and keep project artifacts inside it.",
-            "",
-            "Read these central media-tooling skills before routing media-processing work:",
-            skill_lines,
-            "",
-            "Use installed toolkit commands from this project directory:",
-            "- spoken media: `media-subtitle` or `media-batch-subtitle`",
-            "- silent or visual-first video: `media-contact-sheet` or `media-batch-contact-sheet`",
-            "- rough-cut assembly: `media-rough-cut`",
-            "",
-            "Operational defaults:",
-            "- prefer sequential processing for long media jobs",
-            "- use `--skip-existing` for resumable batches",
-            "- keep reusable toolkit code and installs outside this project workspace",
-            "- re-run `media-tooling-init` after reinstalling or relocating the toolkit so these skill paths stay current",
-            MANAGED_BLOCK_END,
-        ]
+    template = load_project_agents_template()
+    return (
+        template.replace(TEMPLATE_MANAGED_BLOCK_START, MANAGED_BLOCK_START)
+        .replace(TEMPLATE_MANAGED_BLOCK_END, MANAGED_BLOCK_END)
+        .replace(TEMPLATE_SKILL_PATHS, skill_lines)
     )
 
 
@@ -159,3 +146,14 @@ def resolve_toolkit_skills_dir() -> Path:
         "Could not locate the packaged media-tooling skills. Checked:\n"
         f"{searched}"
     )
+
+
+def load_project_agents_template() -> str:
+    template = resources.files("media_tooling").joinpath(TEMPLATE_PATH).read_text(
+        encoding="utf-8"
+    )
+    if TEMPLATE_SKILL_PATHS not in template:
+        raise ValueError(
+            f"Project AGENTS template is missing the required placeholder: {TEMPLATE_SKILL_PATHS}"
+        )
+    return template.rstrip()

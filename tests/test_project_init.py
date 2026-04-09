@@ -9,6 +9,7 @@ from media_tooling.project_init import (
     MANAGED_BLOCK_START,
     PROJECT_SUBDIRECTORIES,
     ensure_project_directories,
+    load_project_agents_template,
     render_project_agents_block,
     upsert_project_agents,
 )
@@ -106,6 +107,13 @@ class ProjectInitTests(unittest.TestCase):
             "/tmp/toolkit-skills/media-rough-cut-assembly/SKILL.md",
             block,
         )
+
+    def test_project_agents_template_contains_required_placeholder(self) -> None:
+        template = load_project_agents_template()
+
+        self.assertIn("{{SKILL_PATHS}}", template)
+        self.assertIn("{{MANAGED_BLOCK_START}}", template)
+        self.assertIn("{{MANAGED_BLOCK_END}}", template)
 
 
 if __name__ == "__main__":

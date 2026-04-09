@@ -2,7 +2,7 @@
 
 This file is for developers changing `media-tooling` itself.
 
-User-facing execution context lives in project-local `AGENTS.md` files created by `media-tooling-init`, not in this repository root. Keep detailed maintenance guidance here so it does not become default execution context for user-facing runs.
+User-facing execution context lives in project-local `AGENTS.md` files created by `media-tooling-init`. The repo-root `AGENTS.md` stays intentionally minimal and should only point developers back to this file and the packaged project template. Keep detailed maintenance guidance here so it does not become default execution context for user-facing runs.
 
 ## Repo posture
 
@@ -31,14 +31,16 @@ uv run --group dev mypy src tests
 ## What lives where
 
 - `AGENTS.md`
-  intentionally absent from the repo root; user execution context belongs in project workspaces
+  minimal repo-root development context that points back to this file
 - `.agents/skills/`
   central task-routing guidance packaged into installs and referenced from project-local `AGENTS.md`
+- `src/media_tooling/templates/project_AGENTS.md`
+  the managed user-facing `AGENTS.md` block template written into project workspaces
 - `docs/`
   developer-oriented setup, maintenance, and reference material
 
 ## When editing the toolkit
 
 - prefer updating shared helpers instead of duplicating batch logic
-- keep user-facing execution guidance in the project-init managed block rather than the repo root
+- keep user-facing execution guidance in `src/media_tooling/templates/project_AGENTS.md` rather than the repo root
 - keep implementation notes and maintenance guidance here or in other files under `docs/`
