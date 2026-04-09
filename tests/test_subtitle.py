@@ -6,7 +6,7 @@ from media_tooling.subtitle import maybe_correct_suspicious_timestamps
 
 
 class TimestampCorrectionTests(unittest.TestCase):
-    def test_applies_integer_ratio_correction_for_mlx(self) -> None:
+    def test_applies_observed_ten_x_correction_for_mlx(self) -> None:
         segments = [
             {"start": 0.0, "end": 30.0, "text": "one"},
             {"start": 30.0, "end": 286.853, "text": "two"},
@@ -55,6 +55,25 @@ class TimestampCorrectionTests(unittest.TestCase):
 
         self.assertFalse(correction["applied"])
         self.assertEqual(correction["reason"], "ratio-close-to-1")
+        self.assertEqual(corrected, segments)
+
+    def test_skips_other_integer_ratios_for_mlx(self) -> None:
+        segments = [
+            {"start": 0.0, "end": 10.0, "text": "one"},
+            {"start": 10.0, "end": 30.0, "text": "two"},
+        ]
+
+        corrected, correction = maybe_correct_suspicious_timestamps(
+            segments=segments,
+            media_duration=60.0,
+            backend="mlx",
+            enabled=True,
+        )
+
+        self.assertFalse(correction["applied"])
+        self.assertEqual(
+            correction["reason"], "ratio-does-not-match-observed-mlx-compression"
+        )
         self.assertEqual(corrected, segments)
 
 

@@ -50,8 +50,7 @@ AUDIO_SUFFIXES = {
 DEFAULT_MODEL = "small"
 DEFAULT_BACKEND = "auto"
 TIMESTAMP_RATIO_TOLERANCE = 0.02
-TIMESTAMP_INTEGER_RATIO_MIN = 2
-TIMESTAMP_INTEGER_RATIO_MAX = 20
+TIMESTAMP_EXPECTED_MLX_RATIO = 10
 
 
 def parse_args() -> argparse.Namespace:
@@ -619,14 +618,12 @@ def maybe_correct_suspicious_timestamps(
         correction["reason"] = "ratio-close-to-1"
         return segments, correction
 
-    if not (
-        TIMESTAMP_INTEGER_RATIO_MIN <= nearest_integer_ratio <= TIMESTAMP_INTEGER_RATIO_MAX
-    ):
-        correction["reason"] = "ratio-out-of-supported-range"
-        return segments, correction
-
     if abs(ratio - nearest_integer_ratio) > TIMESTAMP_RATIO_TOLERANCE:
         correction["reason"] = "ratio-not-close-enough-to-integer"
+        return segments, correction
+
+    if nearest_integer_ratio != TIMESTAMP_EXPECTED_MLX_RATIO:
+        correction["reason"] = "ratio-does-not-match-observed-mlx-compression"
         return segments, correction
 
     scaled_segments = [
