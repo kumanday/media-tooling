@@ -2,6 +2,8 @@
 
 Media Tooling helps an agent harness turn raw media into planning and editing artifacts.
 
+Execution context for user-facing runs lives in [`AGENTS.md`](./AGENTS.md). Developer-only maintenance notes and quality gates live in [`docs/DEVELOPMENT.md`](./docs/DEVELOPMENT.md).
+
 ## What it does
 
 Media Tooling helps convert raw source material into planning and production context.
@@ -63,6 +65,8 @@ Transcription uses a platform-appropriate backend:
 
 - Apple Silicon macOS: `lightning-whisper-mlx`
 - other workstations: `faster-whisper`
+
+For MLX runs, `media-subtitle` now performs a timestamp sanity check after transcription. It probes the media duration and compares it to the transcript's last segment end time. If the duration is a near-integer multiple of the transcript end time, the toolkit auto-corrects the timestamps and records the correction details in the JSON metadata.
 
 ## Quick start
 
@@ -195,6 +199,8 @@ Shell helpers installed into `~/.zshrc`:
 - `subtitle`
 
 Both subtitle commands accept `--backend auto|mlx|faster-whisper`.
+
+If you need the raw backend timestamps for debugging, pass `--disable-timestamp-correction`.
 
 If you want direct command examples, see [`docs/WORKFLOWS.md`](./docs/WORKFLOWS.md).
 

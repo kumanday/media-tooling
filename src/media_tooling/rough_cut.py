@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -80,9 +81,7 @@ def build_rough_cut(
 
     ffmpeg = ffmpeg_bin or spec.get("ffmpeg_bin", "ffmpeg")
     ffprobe = ffprobe_bin or spec.get("ffprobe_bin", "ffprobe")
-    font = font_file or spec.get(
-        "font_file", "/System/Library/Fonts/Supplemental/Arial Bold.ttf"
-    )
+    font = resolve_font_file(font_file or spec.get("font_file"))
 
     manifest_lines: list[str] = []
     for segment in spec.get("segments", []):
@@ -258,7 +257,8 @@ def build_clip_segment(
         "-i",
         str(input_path),
     ]
-    if not has_audio(input_path=input_path, ffprobe_bin=ffprobe_bin):
+    input_has_audio = has_audio(input_path=input_path, ffprobe_bin=ffprobe_bin)
+    if not input_has_audio:
         command.extend(
             [
                 "-f",
@@ -292,7 +292,7 @@ def build_clip_segment(
             "+faststart",
         ]
     )
-    if not has_audio(input_path=input_path, ffprobe_bin=ffprobe_bin):
+    if not input_has_audio:
         command.append("-shortest")
     command.append(str(output_path))
     run_command(command)
@@ -380,7 +380,7 @@ def render_card_image(*, output_path: Path, text: str, font_file: str) -> None:
 
     def line_height(font: ImageFont.FreeTypeFont) -> int:
         bbox = draw.textbbox((0, 0), "Ag", font=font)
-        return bbox[3] - bbox[1]
+        return int(bbox[3] - bbox[1])
 
     paragraphs = [paragraph.strip() for paragraph in text.strip().split("\n\n") if paragraph.strip()]
     header = paragraphs[0] if paragraphs else ""
@@ -416,6 +416,33 @@ def render_card_image(*, output_path: Path, text: str, font_file: str) -> None:
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     image.save(output_path)
+
+
+def resolve_font_file(font_file: str | None) -> str:
+    candidates: list[str] = []
+    if font_file:
+        candidates.append(font_file)
+
+    candidates.extend(
+        [
+            "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
+            "/System/Library/Fonts/Supplemental/Arial.ttf",
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            "/usr/share/fonts/dejavu/DejaVuSans-Bold.ttf",
+            "/usr/share/fonts/truetype/liberation2/LiberationSans-Bold.ttf",
+            "C:\\Windows\\Fonts\\arialbd.ttf",
+        ]
+    )
+
+    for candidate in candidates:
+        expanded = Path(os.path.expandvars(candidate)).expanduser()
+        if expanded.exists():
+            return str(expanded.resolve())
+
+    raise RuntimeError(
+        "Could not find a usable bold font for rough-cut cards. "
+        "Pass --font-file or set 'font_file' in the spec."
+    )
 
 
 def has_audio(*, input_path: Path, ffprobe_bin: str) -> bool:

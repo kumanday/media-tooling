@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import os
 import platform
+import shutil
 import subprocess
 import sys
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
@@ -46,6 +49,8 @@ AUDIO_SUFFIXES = {
 
 DEFAULT_MODEL = "small"
 DEFAULT_BACKEND = "auto"
+TIMESTAMP_RATIO_TOLERANCE = 0.02
+TIMESTAMP_EXPECTED_MLX_RATIO = 10
 
 
 def parse_args() -> argparse.Namespace:
@@ -136,6 +141,11 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Skip work when transcript, SRT, and JSON outputs already exist.",
     )
+    parser.add_argument(
+        "--disable-timestamp-correction",
+        action="store_true",
+        help="Disable the post-transcription timestamp sanity check and auto-correction.",
+    )
     return parser.parse_args()
 
 
@@ -165,6 +175,7 @@ def main() -> int:
             overwrite=args.overwrite,
             skip_existing=args.skip_existing,
             initial_prompt=args.initial_prompt,
+            disable_timestamp_correction=args.disable_timestamp_correction,
         )
     except (ValueError, FileExistsError, RuntimeError, TypeError) as exc:
         print(str(exc), file=sys.stderr)
@@ -190,6 +201,7 @@ def run_transcription_job(
     overwrite: bool,
     skip_existing: bool,
     initial_prompt: str | None,
+    disable_timestamp_correction: bool,
 ) -> None:
     if skip_existing and txt_path.exists() and srt_path.exists() and json_path.exists():
         print(f"Skipping existing outputs for {input_path}")
@@ -207,26 +219,35 @@ def run_transcription_job(
     else:
         audio_path = input_path
 
-    ffmpeg_parent = str(Path(ffmpeg_bin).expanduser().resolve().parent)
-    os.environ["PATH"] = f"{ffmpeg_parent}:{os.environ.get('PATH', '')}"
-
     resolved_backend = resolve_backend(backend)
     print(
         f"Transcribing {audio_path} with model '{model_name}' using backend '{resolved_backend}'",
         flush=True,
     )
-    result = transcribe_media(
-        backend=resolved_backend,
-        audio_path=audio_path,
-        model_name=model_name,
-        language=language,
-        batch_size=batch_size,
-        quant=quant,
-        device=device,
-        compute_type=compute_type,
-        initial_prompt=initial_prompt,
-    )
+    ffmpeg_parent = resolve_command_directory(ffmpeg_bin)
+    with temporarily_prepended_path(ffmpeg_parent):
+        result = transcribe_media(
+            backend=resolved_backend,
+            audio_path=audio_path,
+            model_name=model_name,
+            language=language,
+            batch_size=batch_size,
+            quant=quant,
+            device=device,
+            compute_type=compute_type,
+            initial_prompt=initial_prompt,
+        )
     segments = normalize_segments(result.get("segments", []))
+    audio_duration = probe_media_duration(
+        input_path=audio_path,
+        ffprobe_bin=resolve_ffprobe_bin(ffmpeg_bin),
+    )
+    segments, timestamp_correction = maybe_correct_suspicious_timestamps(
+        segments=segments,
+        media_duration=audio_duration,
+        backend=resolved_backend,
+        enabled=not disable_timestamp_correction,
+    )
 
     txt_text = build_txt(segments)
     srt_text = build_srt(segments)
@@ -236,6 +257,8 @@ def run_transcription_job(
         "backend": resolved_backend,
         "model": model_name,
         "language": result.get("language"),
+        "audio_duration": audio_duration,
+        "timestamp_correction": timestamp_correction,
         "text": result.get("text", "").strip(),
         "segment_count": len(segments),
         "segments": segments,
@@ -484,6 +507,145 @@ def extract_audio(input_path: Path, audio_path: Path, ffmpeg_bin: str, overwrite
         f"Copy stderr:\n{copy_result.stderr}\n"
         f"Transcode stderr:\n{transcode_result.stderr}"
     )
+
+
+@contextlib.contextmanager
+def temporarily_prepended_path(directory: str | None) -> Iterator[None]:
+    if not directory:
+        yield
+        return
+
+    previous_path = os.environ.get("PATH", "")
+    os.environ["PATH"] = f"{directory}:{previous_path}" if previous_path else directory
+    try:
+        yield
+    finally:
+        os.environ["PATH"] = previous_path
+
+
+def resolve_command_directory(command_name: str) -> str | None:
+    command_location = shutil.which(command_name)
+    if command_location:
+        return str(Path(command_location).resolve().parent)
+
+    expanded = Path(command_name).expanduser()
+    if expanded.exists():
+        return str(expanded.resolve().parent)
+
+    return None
+
+
+def resolve_ffprobe_bin(ffmpeg_bin: str) -> str:
+    ffmpeg_location = shutil.which(ffmpeg_bin)
+    if ffmpeg_location:
+        sibling = Path(ffmpeg_location).with_name("ffprobe")
+        if sibling.exists():
+            return str(sibling)
+
+    expanded = Path(ffmpeg_bin).expanduser()
+    if expanded.exists():
+        sibling = expanded.resolve().with_name("ffprobe")
+        if sibling.exists():
+            return str(sibling)
+
+    return shutil.which("ffprobe") or "ffprobe"
+
+
+def probe_media_duration(input_path: Path, ffprobe_bin: str) -> float | None:
+    try:
+        completed = subprocess.run(
+            [
+                ffprobe_bin,
+                "-v",
+                "error",
+                "-show_entries",
+                "format=duration",
+                "-of",
+                "default=noprint_wrappers=1:nokey=1",
+                str(input_path),
+            ],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+    except (FileNotFoundError, subprocess.CalledProcessError):
+        return None
+
+    output = completed.stdout.strip()
+    if not output:
+        return None
+
+    try:
+        return float(output)
+    except ValueError:
+        return None
+
+
+def maybe_correct_suspicious_timestamps(
+    *,
+    segments: list[dict[str, Any]],
+    media_duration: float | None,
+    backend: str,
+    enabled: bool,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    raw_last_segment_end = segments[-1]["end"] if segments else None
+    correction = {
+        "enabled": enabled,
+        "backend": backend,
+        "media_duration": media_duration,
+        "raw_last_segment_end": raw_last_segment_end,
+        "ratio_to_media_duration": None,
+        "nearest_integer_ratio": None,
+        "applied": False,
+        "scale_factor": None,
+        "corrected_last_segment_end": raw_last_segment_end,
+        "reason": None,
+    }
+
+    if not enabled or backend != "mlx" or not segments or media_duration is None:
+        return segments, correction
+
+    if raw_last_segment_end is None or raw_last_segment_end <= 0:
+        correction["reason"] = "missing-or-invalid-segment-end"
+        return segments, correction
+
+    ratio = media_duration / raw_last_segment_end
+    nearest_integer_ratio = round(ratio)
+    correction["ratio_to_media_duration"] = ratio
+    correction["nearest_integer_ratio"] = nearest_integer_ratio
+
+    if nearest_integer_ratio == 1:
+        correction["reason"] = "ratio-close-to-1"
+        return segments, correction
+
+    if abs(ratio - nearest_integer_ratio) > TIMESTAMP_RATIO_TOLERANCE:
+        correction["reason"] = "ratio-not-close-enough-to-integer"
+        return segments, correction
+
+    if nearest_integer_ratio != TIMESTAMP_EXPECTED_MLX_RATIO:
+        correction["reason"] = "ratio-does-not-match-observed-mlx-compression"
+        return segments, correction
+
+    scaled_segments = [
+        {
+            "start": round(segment["start"] * ratio, 3),
+            "end": round(segment["end"] * ratio, 3),
+            "text": segment["text"],
+        }
+        for segment in segments
+    ]
+    correction["applied"] = True
+    correction["scale_factor"] = ratio
+    correction["corrected_last_segment_end"] = scaled_segments[-1]["end"]
+    correction["reason"] = "media-duration-matched-near-integer-multiple-of-raw-segment-end"
+
+    print(
+        "Timestamp sanity check: "
+        f"media duration {media_duration:.3f}s vs raw transcript end {raw_last_segment_end:.3f}s; "
+        f"applying x{ratio:.6f} correction for MLX timestamps.",
+        flush=True,
+    )
+    return scaled_segments, correction
 
 
 def normalize_segments(raw_segments: list[Any]) -> list[dict[str, Any]]:

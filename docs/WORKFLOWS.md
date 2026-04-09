@@ -6,6 +6,8 @@ The examples fit agent harnesses that can inspect local files, run commands, and
 
 Subtitle commands accept `--backend auto|mlx|faster-whisper`. In normal use, `auto` is the right choice.
 
+For MLX transcription, the subtitle commands also run a post-transcription timestamp sanity check. They probe the media duration and compare it to the raw transcript end time. If the duration is a near-integer multiple of the transcript end time, the toolkit auto-corrects the timestamps and records the correction details in the JSON metadata. Use `--disable-timestamp-correction` if you explicitly want the raw backend timestamps.
+
 ## Core workflow
 
 1. Gather the source corpus.
@@ -192,6 +194,18 @@ uv run media-batch-subtitle \
   --ffmpeg-bin "$(command -v ffmpeg)" \
   --skip-existing
 ```
+
+## Timestamp sanity check
+
+If you are debugging subtitle timing, inspect the JSON metadata:
+
+- `audio_duration`
+- `timestamp_correction.raw_last_segment_end`
+- `timestamp_correction.ratio_to_media_duration`
+- `timestamp_correction.applied`
+- `timestamp_correction.scale_factor`
+
+When the sanity check applies a correction, the `.txt`, `.srt`, and `.json` outputs are already written with the corrected timestamps.
 
 ### Single silent file
 

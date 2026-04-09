@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+from media_tooling.batch_utils import finish_batch, load_manifest_inputs
 from media_tooling.subtitle import run_transcription_job
 
 
@@ -47,6 +48,11 @@ def parse_args() -> argparse.Namespace:
         help="Optional language code such as 'en'.",
     )
     parser.add_argument(
+        "--initial-prompt",
+        default=None,
+        help="Optional glossary/context prompt to improve proper noun recognition.",
+    )
+    parser.add_argument(
         "--batch-size",
         type=int,
         default=12,
@@ -83,18 +89,12 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Skip files when txt, json, and srt already exist.",
     )
+    parser.add_argument(
+        "--disable-timestamp-correction",
+        action="store_true",
+        help="Disable the post-transcription timestamp sanity check and auto-correction.",
+    )
     return parser.parse_args()
-
-
-def iter_inputs(path: Path) -> list[Path]:
-    items: list[Path] = []
-    for line in path.read_text(encoding="utf-8").splitlines():
-        line = line.strip()
-        if not line or line.startswith("#"):
-            continue
-        items.append(Path(line).expanduser().resolve())
-    return items
-
 
 def main() -> int:
     args = parse_args()
@@ -106,7 +106,7 @@ def main() -> int:
     for directory in [audio_dir, transcripts_dir, subtitles_dir]:
         directory.mkdir(parents=True, exist_ok=True)
 
-    items = iter_inputs(inputs_file)
+    items = load_manifest_inputs(inputs_file)
     print(f"Loaded {len(items)} input files from {inputs_file}")
     failures: list[str] = []
 
@@ -130,20 +130,14 @@ def main() -> int:
                 ffmpeg_bin=args.ffmpeg_bin,
                 overwrite=args.overwrite,
                 skip_existing=args.skip_existing,
-                initial_prompt=None,
+                initial_prompt=args.initial_prompt,
+                disable_timestamp_correction=args.disable_timestamp_correction,
             )
         except Exception as exc:  # noqa: BLE001
             failures.append(f"{item}: {exc}")
             print(f"FAILED: {item}\n{exc}")
 
-    if failures:
-        print("\nBatch completed with failures:")
-        for failure in failures:
-            print(f"- {failure}")
-        return 1
-
-    print("\nBatch completed successfully.")
-    return 0
+    return finish_batch(failures)
 
 
 if __name__ == "__main__":
