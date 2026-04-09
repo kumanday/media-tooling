@@ -6,14 +6,16 @@ Install `uv` and `ffmpeg`, then install `media-tooling` as a command provider:
 
 ```bash
 brew install uv ffmpeg
-uv tool install /absolute/path/to/media-tooling
+uv tool install git+https://github.com/kumanday/media-tooling
 ```
 
 If you prefer one-off execution instead of a persistent tool install, use `uvx` with the same package source:
 
 ```bash
-uvx --from /absolute/path/to/media-tooling media-tooling-init "$HOME/projects/my-project-media"
+uvx --from git+https://github.com/kumanday/media-tooling media-tooling-init "$HOME/projects/my-project-media"
 ```
+
+For private access or SSH-based installs, use `git+ssh://git@github.com/kumanday/media-tooling`.
 
 The transcription backend depends on the workstation:
 

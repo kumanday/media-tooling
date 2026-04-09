@@ -74,7 +74,7 @@ Install the commands once, then bootstrap each project workspace:
 
 ```bash
 brew install uv ffmpeg
-uv tool install /absolute/path/to/media-tooling
+uv tool install git+https://github.com/kumanday/media-tooling
 
 export PROJECT_DIR="$HOME/projects/my-project-media"
 media-tooling-init "$PROJECT_DIR"
@@ -86,8 +86,10 @@ cd "$PROJECT_DIR"
 If you prefer ad hoc execution instead of a persistent tool install, run the same bootstrap with `uvx`:
 
 ```bash
-uvx --from /absolute/path/to/media-tooling media-tooling-init "$PROJECT_DIR"
+uvx --from git+https://github.com/kumanday/media-tooling media-tooling-init "$PROJECT_DIR"
 ```
+
+For private access or SSH-based installs, use `git+ssh://git@github.com/kumanday/media-tooling`.
 
 ## Primary workflow
 
@@ -212,7 +214,7 @@ Keep reusable code and installs outside the project workspace. Keep project outp
 
 Typical setup:
 
-- toolkit install: `uv tool install /absolute/path/to/media-tooling`
+- toolkit install: `uv tool install git+https://github.com/kumanday/media-tooling`
 - project workspace: `$HOME/projects/my-project-media`
 
 This repository also creates a few local-only directories during normal use:
