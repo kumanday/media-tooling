@@ -119,7 +119,27 @@ These prompt patterns are the main entry point for the toolkit.
 
 Prompt for outcomes, not for toolkit internals. The skills and commands are there to handle classification, batching, extraction, and assembly.
 
-### Ingest a mixed corpus
+### High-level directives
+
+These short, outcome-oriented prompts are the main use case.
+
+```text
+Create a 5-minute highlight reel with representative samples of the different speakers and the topics discussed.
+```
+
+```text
+Turn this session into a short recap that explains the main workflows, tools, and takeaways.
+```
+
+```text
+Review this processed media project and propose a first-pass rough cut with the strongest clips and any obvious weak spots.
+```
+
+### More explicit workflow prompts
+
+Use these when you want to be more specific about the inputs or deliverables.
+
+#### Ingest a mixed corpus
 
 ```text
 I have a new media project in $PROJECT_DIR.
@@ -136,7 +156,7 @@ Please process this source material and leave me with:
 - short analysis notes I can use for planning
 ```
 
-### Build a shot list after ingestion
+#### Build a shot list after ingestion
 
 ```text
 The corpus has already been processed in $PROJECT_DIR.
@@ -147,7 +167,7 @@ Please review what is already there and give me:
 - a note on what still needs to be recorded
 ```
 
-### Prepare a rough cut
+#### Prepare a rough cut
 
 ```text
 Please use the processed artifacts in $PROJECT_DIR to propose a first-pass rough cut.
@@ -159,7 +179,7 @@ I want:
 - a short list of weak sections that still need new material
 ```
 
-### Build a rough cut from a project spec
+#### Build a rough cut from a project spec
 
 ```text
 The storyboard and clip selections in $PROJECT_DIR are approved.

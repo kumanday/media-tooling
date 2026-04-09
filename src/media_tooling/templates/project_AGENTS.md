@@ -1,7 +1,6 @@
 {{MANAGED_BLOCK_START}}
 # Media Tooling Project Context
 
-This block is managed by `media-tooling-init`.
 Treat this directory as `$PROJECT_DIR` and keep project artifacts inside it.
 
 Read these central media-tooling skills before routing media-processing work:
@@ -13,8 +12,7 @@ Use installed toolkit commands from this project directory:
 - rough-cut assembly: `media-rough-cut`
 
 Operational defaults:
-- prefer sequential processing for long media jobs
+- use sequential processing to reduce resource contention. Have patience for long media jobs
 - use `--skip-existing` for resumable batches
-- keep reusable toolkit code and installs outside this project workspace
 - re-run `media-tooling-init` after reinstalling or relocating the toolkit so these skill paths stay current
 {{MANAGED_BLOCK_END}}
