@@ -637,7 +637,7 @@ def maybe_correct_suspicious_timestamps(
     correction["applied"] = True
     correction["scale_factor"] = ratio
     correction["corrected_last_segment_end"] = scaled_segments[-1]["end"]
-    correction["reason"] = "media-duration-matched-near-integer-multiple-of-raw-segment-end"
+    correction["reason"] = "media-duration-matched-observed-mlx-ten-x-compression"
 
     print(
         "Timestamp sanity check: "
