@@ -162,6 +162,12 @@ Please help me prepare this for upload:
 - produce a final checklist for title, description links, chapter timestamps, and subtitle review
 ```
 
+## Example 8. Translate subtitles safely
+
+```text
+Please translate the subtitles into Spanish, but do not translate cue-by-cue from the English SRT. Use the translation-aware workflow so the Spanish cues are re-segmented naturally within the source timing windows.
+```
+
 ## Command examples
 
 These commands are the building blocks that the prompt patterns usually trigger. They assume you installed `media-tooling` with `uv tool install` and are running from the project workspace.
@@ -192,6 +198,36 @@ media-batch-subtitle \
   --ffmpeg-bin "$(command -v ffmpeg)" \
   --skip-existing
 ```
+
+## Subtitle translation workflow
+
+Use `media-translate-subtitles` when subtitles need translation. This workflow avoids inheriting source-language cue boundaries directly.
+
+### Step 1. Create a translation template
+
+```bash
+media-translate-subtitles \
+  "$PROJECT_DIR/transcripts/session.srt" \
+  --source-language English \
+  --target-language Spanish \
+  --template-out "$PROJECT_DIR/transcripts/session.es.translation.json"
+```
+
+Fill the `translated_text` field for each window semantically. Translate each window as a unit of meaning, not cue-by-cue.
+
+### Step 2. Render translated subtitles
+
+```bash
+media-translate-subtitles \
+  "$PROJECT_DIR/transcripts/session.srt" \
+  --source-language English \
+  --target-language Spanish \
+  --translations-in "$PROJECT_DIR/transcripts/session.es.translation.json" \
+  --srt-out "$PROJECT_DIR/transcripts/session.es.srt" \
+  --json-out "$PROJECT_DIR/transcripts/session.es.json"
+```
+
+This keeps the original timing windows but lets the target language choose its own subtitle cue breaks within each window.
 
 ## Timestamp sanity check
 

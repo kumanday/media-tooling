@@ -1,6 +1,6 @@
 [project]
 name = "media-tooling"
-version = "0.1.0"
+version = "0.1.1"
 description = "Reusable media tooling for transcripts, subtitles, and clip planning"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -31,6 +31,7 @@ media-contact-sheet = "media_tooling.contact_sheet:main"
 media-rough-cut = "media_tooling.rough_cut:main"
 media-subtitle = "media_tooling.subtitle:main"
 media-tooling-init = "media_tooling.project_init:main"
+media-translate-subtitles = "media_tooling.subtitle_translate:main"
 
 [tool.ruff]
 target-version = "py312"
