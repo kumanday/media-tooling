@@ -5,6 +5,7 @@ import contextlib
 import json
 import os
 import platform
+import re
 import shutil
 import subprocess
 import sys
@@ -51,6 +52,11 @@ DEFAULT_MODEL = "small"
 DEFAULT_BACKEND = "auto"
 TIMESTAMP_RATIO_TOLERANCE = 0.02
 TIMESTAMP_EXPECTED_MLX_RATIO = 10
+SUBTITLE_TARGET_DURATION_SECONDS = 4.0
+SUBTITLE_MAX_DURATION_SECONDS = 5.0
+SUBTITLE_MAX_CHARACTERS = 84
+SUBTITLE_MAX_WORDS = 14
+SUBTITLE_LONG_GAP_SECONDS = 0.45
 
 
 def parse_args() -> argparse.Namespace:
@@ -248,6 +254,8 @@ def run_transcription_job(
         backend=resolved_backend,
         enabled=not disable_timestamp_correction,
     )
+    source_segment_count = len(segments)
+    segments, subtitle_segmentation = resegment_for_subtitles(segments)
 
     txt_text = build_txt(segments)
     srt_text = build_srt(segments)
@@ -260,7 +268,9 @@ def run_transcription_job(
         "audio_duration": audio_duration,
         "timestamp_correction": timestamp_correction,
         "text": result.get("text", "").strip(),
+        "source_segment_count": source_segment_count,
         "segment_count": len(segments),
+        "subtitle_segmentation": subtitle_segmentation,
         "segments": segments,
     }
 
@@ -403,6 +413,7 @@ def transcribe_with_mlx(
         language=language,
         batch_size=batch_size,
         initial_prompt=initial_prompt,
+        word_timestamps=True,
     )
 
 
@@ -435,13 +446,10 @@ def transcribe_with_faster_whisper(
         batch_size=batch_size,
         language=language,
         initial_prompt=initial_prompt,
+        word_timestamps=True,
     )
     segments = [
-        {
-            "start": float(segment.start),
-            "end": float(segment.end),
-            "text": segment.text.strip(),
-        }
+        normalize_backend_segment(segment)
         for segment in segments_iter
     ]
     full_text = " ".join(segment["text"] for segment in segments).strip()
@@ -631,6 +639,14 @@ def maybe_correct_suspicious_timestamps(
             "start": round(segment["start"] * ratio, 3),
             "end": round(segment["end"] * ratio, 3),
             "text": segment["text"],
+            "words": [
+                {
+                    "word": word["word"],
+                    "start": round(word["start"] * ratio, 3),
+                    "end": round(word["end"] * ratio, 3),
+                }
+                for word in segment.get("words", [])
+            ],
         }
         for segment in segments
     ]
@@ -652,18 +668,251 @@ def normalize_segments(raw_segments: list[Any]) -> list[dict[str, Any]]:
     normalized = []
     for segment in raw_segments:
         if isinstance(segment, dict):
-            start = float(segment["start"])
-            end = float(segment["end"])
-            text = str(segment["text"]).strip()
+            normalized.append(normalize_backend_segment(segment))
         elif isinstance(segment, (list, tuple)) and len(segment) >= 3:
             start = float(segment[0]) / 1000.0
             end = float(segment[1]) / 1000.0
             text = str(segment[2]).strip()
+            words: list[dict[str, Any]] = []
+            normalized.append({"start": start, "end": end, "text": text, "words": words})
         else:
             raise TypeError(f"Unsupported segment format: {segment!r}")
-
-        normalized.append({"start": start, "end": end, "text": text})
     return normalized
+
+
+def normalize_backend_segment(segment: Any) -> dict[str, Any]:
+    if isinstance(segment, dict):
+        start = float(segment["start"])
+        end = float(segment["end"])
+        text = str(segment["text"]).strip()
+        raw_words = segment.get("words", [])
+    else:
+        start = float(segment.start)
+        end = float(segment.end)
+        text = str(segment.text).strip()
+        raw_words = getattr(segment, "words", None) or []
+
+    return {
+        "start": start,
+        "end": end,
+        "text": text,
+        "words": normalize_words(raw_words),
+    }
+
+
+def normalize_words(raw_words: list[Any]) -> list[dict[str, Any]]:
+    normalized: list[dict[str, Any]] = []
+    for word in raw_words:
+        if isinstance(word, dict):
+            text = str(word["word"])
+            start = word.get("start")
+            end = word.get("end")
+        else:
+            text = str(word.word)
+            start = getattr(word, "start", None)
+            end = getattr(word, "end", None)
+
+        if start is None or end is None:
+            continue
+
+        normalized.append(
+            {
+                "word": text,
+                "start": float(start),
+                "end": float(end),
+            }
+        )
+    return normalized
+
+
+def resegment_for_subtitles(
+    segments: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    refined_segments: list[dict[str, Any]] = []
+    used_word_timestamps = False
+
+    for segment in segments:
+        if segment.get("words"):
+            used_word_timestamps = True
+        refined_segments.extend(split_segment_for_subtitles(segment))
+
+    metadata = {
+        "applied": True,
+        "source_segment_count": len(segments),
+        "segment_count": len(refined_segments),
+        "used_word_timestamps": used_word_timestamps,
+        "target_duration_seconds": SUBTITLE_TARGET_DURATION_SECONDS,
+        "max_duration_seconds": SUBTITLE_MAX_DURATION_SECONDS,
+        "max_characters": SUBTITLE_MAX_CHARACTERS,
+        "max_words": SUBTITLE_MAX_WORDS,
+    }
+    return refined_segments, metadata
+
+
+def split_segment_for_subtitles(segment: dict[str, Any]) -> list[dict[str, Any]]:
+    words = segment.get("words") or build_pseudo_words(segment)
+    if len(words) <= 1:
+        return [minimal_segment(segment["start"], segment["end"], segment["text"])]
+
+    blocks: list[dict[str, Any]] = []
+    block_start_index = 0
+
+    while block_start_index < len(words):
+        committed_block = False
+        best_break_index: int | None = None
+
+        for current_index in range(block_start_index, len(words)):
+            candidate_words = words[block_start_index : current_index + 1]
+            candidate_text = join_words(candidate_words)
+            if not candidate_text:
+                continue
+
+            candidate_start = candidate_words[0]["start"]
+            candidate_end = candidate_words[-1]["end"]
+            candidate_duration = max(0.0, candidate_end - candidate_start)
+            candidate_word_count = count_spoken_words(candidate_words)
+
+            if is_preferred_break(words, current_index):
+                best_break_index = current_index
+
+            if (
+                candidate_duration <= SUBTITLE_MAX_DURATION_SECONDS
+                and len(candidate_text) <= SUBTITLE_MAX_CHARACTERS
+                and candidate_word_count <= SUBTITLE_MAX_WORDS
+            ):
+                if (
+                    candidate_duration >= SUBTITLE_TARGET_DURATION_SECONDS
+                    and is_preferred_break(words, current_index)
+                ):
+                    blocks.append(minimal_segment(candidate_start, candidate_end, candidate_text))
+                    block_start_index = current_index + 1
+                    committed_block = True
+                    break
+                continue
+
+            split_index = best_break_index
+            if split_index is None or split_index < block_start_index:
+                split_index = max(block_start_index, current_index - 1)
+
+            if split_index == current_index and split_index > block_start_index:
+                split_index -= 1
+
+            chosen_words = words[block_start_index : split_index + 1]
+            if not chosen_words:
+                chosen_words = candidate_words
+                split_index = current_index
+
+            blocks.append(
+                minimal_segment(
+                    chosen_words[0]["start"],
+                    chosen_words[-1]["end"],
+                    join_words(chosen_words),
+                )
+            )
+            block_start_index = split_index + 1
+            committed_block = True
+            break
+
+        if committed_block:
+            continue
+
+        trailing_words = words[block_start_index:]
+        blocks.append(
+            minimal_segment(
+                trailing_words[0]["start"],
+                trailing_words[-1]["end"],
+                join_words(trailing_words),
+            )
+        )
+        break
+
+    return merge_tiny_adjacent_blocks(blocks)
+
+
+def build_pseudo_words(segment: dict[str, Any]) -> list[dict[str, Any]]:
+    tokens = segment["text"].split()
+    if not tokens:
+        return []
+
+    start = float(segment["start"])
+    end = float(segment["end"])
+    duration = max(0.0, end - start)
+    step = duration / len(tokens) if tokens else 0.0
+
+    words = []
+    for index, token in enumerate(tokens):
+        token_start = start + step * index
+        token_end = end if index == len(tokens) - 1 else start + step * (index + 1)
+        words.append(
+            {
+                "word": token if index == 0 else f" {token}",
+                "start": round(token_start, 3),
+                "end": round(token_end, 3),
+            }
+        )
+    return words
+
+
+def minimal_segment(start: float, end: float, text: str) -> dict[str, Any]:
+    return {
+        "start": round(start, 3),
+        "end": round(end, 3),
+        "text": collapse_whitespace(text),
+    }
+
+
+def join_words(words: list[dict[str, Any]]) -> str:
+    return collapse_whitespace("".join(word["word"] for word in words))
+
+
+def collapse_whitespace(text: str) -> str:
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def count_spoken_words(words: list[dict[str, Any]]) -> int:
+    return sum(1 for word in words if word["word"].strip())
+
+
+def is_preferred_break(words: list[dict[str, Any]], index: int) -> bool:
+    if index >= len(words) - 1:
+        return True
+
+    current_text = words[index]["word"].strip()
+    if current_text.endswith((".", "?", "!", ";", ":", ",")):
+        return True
+
+    next_start = words[index + 1]["start"]
+    current_end = words[index]["end"]
+    return (next_start - current_end) >= SUBTITLE_LONG_GAP_SECONDS
+
+
+def merge_tiny_adjacent_blocks(blocks: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    if len(blocks) <= 1:
+        return blocks
+
+    merged: list[dict[str, Any]] = []
+    for block in blocks:
+        if not merged:
+            merged.append(block)
+            continue
+
+        duration = block["end"] - block["start"]
+        combined_text = f"{merged[-1]['text']} {block['text']}".strip()
+        combined_duration = block["end"] - merged[-1]["start"]
+        combined_word_count = len(combined_text.split())
+
+        if (
+            duration < 1.0
+            and len(combined_text) <= SUBTITLE_MAX_CHARACTERS
+            and combined_duration <= SUBTITLE_MAX_DURATION_SECONDS
+            and combined_word_count <= SUBTITLE_MAX_WORDS
+        ):
+            merged[-1] = minimal_segment(merged[-1]["start"], block["end"], combined_text)
+            continue
+
+        merged.append(block)
+
+    return merged
 
 
 def build_txt(segments: list[dict[str, Any]]) -> str:
