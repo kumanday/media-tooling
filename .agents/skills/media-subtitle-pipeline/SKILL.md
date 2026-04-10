@@ -15,6 +15,7 @@ Primary commands:
 
 - `media-subtitle`
 - `media-batch-subtitle`
+- `media-translate-subtitles`
 
 Shell helpers expected after setup:
 
@@ -72,8 +73,19 @@ media-batch-subtitle \
   --skip-existing
 ```
 
+## Subtitle translation workflow
+
+Do not translate subtitle cues one-by-one from an English `.srt`. That inherits English syntax and breakpoints into the target language.
+
+Instead:
+
+1. Use `media-translate-subtitles --template-out ...` to generate larger translation windows.
+2. Translate each window semantically in the target language.
+3. Use `media-translate-subtitles --translations-in ... --srt-out ...` to render target-language subtitle cues within the original timing windows.
+
 ## Guardrails
 
 - Silent media belongs in the contact-sheet workflow.
 - Transcript output should stay searchable and project-local.
+- Subtitle translation should happen window-by-window, not source-cue-by-source-cue.
 - For large projects, summarize findings instead of dumping raw transcripts into the main conversation.

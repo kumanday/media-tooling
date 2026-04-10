@@ -208,6 +208,8 @@ The underlying commands are:
   Generate transcript `.txt`, subtitle `.srt`, and structured `.json` from a single audio or video file.
 - `media-batch-subtitle`
   Process a manifest of spoken-media files sequentially.
+- `media-translate-subtitles`
+  Generate translation template windows from a source `.srt`, then render translated subtitles back into target-language cue breaks without inheriting the source cue boundaries.
 - `media-contact-sheet`
   Generate a contact sheet from a single silent or visual-first video.
 - `media-batch-contact-sheet`
@@ -225,6 +227,8 @@ Optional shell helpers for repo-checkout workflows:
 Both subtitle commands accept `--backend auto|mlx|faster-whisper`.
 
 If you need the raw backend timestamps for debugging, pass `--disable-timestamp-correction`.
+
+For translated subtitles, do not translate cue-by-cue from an English `.srt`. Use `media-translate-subtitles` to group source cues into larger translation windows, then re-segment the translated text inside those windows.
 
 If you want direct command examples, see [`docs/WORKFLOWS.md`](./docs/WORKFLOWS.md).
 
