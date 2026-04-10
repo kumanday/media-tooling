@@ -7,7 +7,12 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
-from media_tooling.subtitle import build_srt, collapse_whitespace, write_text
+from media_tooling.subtitle import (
+    build_srt,
+    collapse_whitespace,
+    ensure_parent_dirs,
+    write_text,
+)
 
 TRANSLATION_WINDOW_TARGET_DURATION_SECONDS = 12.0
 TRANSLATION_WINDOW_MAX_DURATION_SECONDS = 18.0
@@ -104,11 +109,14 @@ def main() -> int:
                 target_language=args.target_language,
                 windows=windows,
             )
+            ensure_parent_dirs(template_path)
             write_text(template_path, json.dumps(payload, indent=2), args.overwrite)
             print(f"Translation template: {template_path}")
             return 0
 
         translations_path = Path(args.translations_in).expanduser().resolve()
+        if not translations_path.exists():
+            raise ValueError(f"Translation payload file not found: {translations_path}")
         payload = json.loads(translations_path.read_text(encoding="utf-8"))
         translated_segments = build_translated_segments(
             source_srt=input_path,
@@ -119,11 +127,13 @@ def main() -> int:
         )
 
         srt_path = Path(args.srt_out).expanduser().resolve()
+        ensure_parent_dirs(srt_path)
         write_text(srt_path, build_srt(translated_segments), args.overwrite)
         print(f"Translated subtitles: {srt_path}")
 
         if args.json_out:
             json_path = Path(args.json_out).expanduser().resolve()
+            ensure_parent_dirs(json_path)
             metadata = {
                 "source_srt": str(input_path),
                 "source_language": args.source_language,
