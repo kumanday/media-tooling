@@ -1,7 +1,7 @@
 ---
 tracker:
   kind: linear
-  project_slug: "media-tooling-bb9128c848f0"
+  project_slug: "media-tooling-5fb44e2dc6bc"
   # tracker.api_key is optional here; the loader falls back to LINEAR_API_KEY.
   active_states:
     - Todo
