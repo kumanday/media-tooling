@@ -278,57 +278,57 @@ def run_transcription_job(
         f"Transcribing {audio_path} with model '{effective_model}' using backend '{resolved_backend}'",
         flush=True,
     )
-    ffmpeg_parent = resolve_command_directory(ffmpeg_bin)
-    with temporarily_prepended_path(ffmpeg_parent):
-        result = transcribe_media(
-            backend=resolved_backend,
-            audio_path=audio_path,
-            model_name=model_name,
-            language=language,
-            batch_size=batch_size,
-            quant=quant,
-            device=device,
-            compute_type=compute_type,
-            initial_prompt=initial_prompt,
-        )
-    segments = normalize_segments(result.get("segments", []))
-    audio_duration = probe_media_duration(
-        input_path=audio_path,
-        ffprobe_bin=resolve_ffprobe_bin(ffmpeg_bin),
-    )
-    segments, timestamp_correction = maybe_correct_suspicious_timestamps(
-        segments=segments,
-        media_duration=audio_duration,
-        backend=resolved_backend,
-        enabled=not disable_timestamp_correction,
-    )
-    source_segment_count = len(segments)
-    segments, subtitle_segmentation = resegment_for_subtitles(segments)
-
-    txt_text = build_txt(segments)
-    srt_text = build_srt(segments)
-    payload: dict[str, Any] = {
-        "input_path": str(input_path),
-        "audio_path": str(persistent_audio_path),
-        "backend": resolved_backend,
-        "model": effective_model,
-        "language": result.get("language"),
-        "audio_duration": audio_duration,
-        "timestamp_correction": timestamp_correction,
-        "text": result.get("text", "").strip(),
-        "source_segment_count": source_segment_count,
-        "segment_count": len(segments),
-        "subtitle_segmentation": subtitle_segmentation,
-        # Note: SHA-256 hashes the full source file; adds I/O cost for large
-        # files but ensures cache integrity across all backends (Hard Rule 9).
-        "source_hash": source_hash_value or compute_source_hash(input_path),
-        "segments": segments,
-    }
-
-    if resolved_backend == "elevenlabs":
-        payload["audio_events"] = result.get("audio_events", [])
-
     try:
+        ffmpeg_parent = resolve_command_directory(ffmpeg_bin)
+        with temporarily_prepended_path(ffmpeg_parent):
+            result = transcribe_media(
+                backend=resolved_backend,
+                audio_path=audio_path,
+                model_name=model_name,
+                language=language,
+                batch_size=batch_size,
+                quant=quant,
+                device=device,
+                compute_type=compute_type,
+                initial_prompt=initial_prompt,
+            )
+        segments = normalize_segments(result.get("segments", []))
+        audio_duration = probe_media_duration(
+            input_path=audio_path,
+            ffprobe_bin=resolve_ffprobe_bin(ffmpeg_bin),
+        )
+        segments, timestamp_correction = maybe_correct_suspicious_timestamps(
+            segments=segments,
+            media_duration=audio_duration,
+            backend=resolved_backend,
+            enabled=not disable_timestamp_correction,
+        )
+        source_segment_count = len(segments)
+        segments, subtitle_segmentation = resegment_for_subtitles(segments)
+
+        txt_text = build_txt(segments)
+        srt_text = build_srt(segments)
+        payload: dict[str, Any] = {
+            "input_path": str(input_path),
+            "audio_path": str(persistent_audio_path),
+            "backend": resolved_backend,
+            "model": effective_model,
+            "language": result.get("language"),
+            "audio_duration": audio_duration,
+            "timestamp_correction": timestamp_correction,
+            "text": result.get("text", "").strip(),
+            "source_segment_count": source_segment_count,
+            "segment_count": len(segments),
+            "subtitle_segmentation": subtitle_segmentation,
+            # Note: SHA-256 hashes the full source file; adds I/O cost for large
+            # files but ensures cache integrity across all backends (Hard Rule 9).
+            "source_hash": source_hash_value or compute_source_hash(input_path),
+            "segments": segments,
+        }
+
+        if resolved_backend == "elevenlabs":
+            payload["audio_events"] = result.get("audio_events", [])
+
         write_text(txt_path, txt_text, overwrite)
         write_text(srt_path, srt_text, overwrite)
         write_text(json_path, json.dumps(payload, indent=2), overwrite)
@@ -583,13 +583,18 @@ def call_scribe_api(
         data["language_code"] = language
 
     with open(audio_path, "rb") as f:
-        resp = _requests_module.post(
-            ELEVENLABS_SCRIBE_URL,
-            headers={"xi-api-key": api_key},
-            files={"file": (audio_path.name, f, "audio/wav")},
-            data=data,
-            timeout=1800,
-        )
+        try:
+            resp = _requests_module.post(
+                ELEVENLABS_SCRIBE_URL,
+                headers={"xi-api-key": api_key},
+                files={"file": (audio_path.name, f, "audio/wav")},
+                data=data,
+                timeout=1800,
+            )
+        except Exception as exc:
+            raise RuntimeError(
+                f"ElevenLabs Scribe API request failed: {exc}"
+            ) from exc
 
     if resp.status_code != 200:
         raise RuntimeError(f"ElevenLabs Scribe returned {resp.status_code}: {resp.text[:500]}")
