@@ -431,11 +431,17 @@ def resolve_backend(requested_backend: str, *, api_key: str | None = None) -> st
         return requested_backend
 
     if requested_backend == "elevenlabs":
-        if not elevenlabs_backend_available(api_key=api_key):
+        if _requests_module is None:
             raise RuntimeError(
-                "The elevenlabs backend requires the 'requests' package "
-                "(install with: pip install media-tooling[elevenlabs]) "
-                "and an API key (set ELEVENLABS_API_KEY env var or pass --api-key)."
+                "The elevenlabs backend requires the 'requests' package. "
+                "Install with: pip install media-tooling[elevenlabs]"
+            )
+        resolved_key = (api_key.strip() if api_key is not None
+                        else os.environ.get("ELEVENLABS_API_KEY", "").strip())
+        if not resolved_key:
+            raise RuntimeError(
+                "An API key is required for the elevenlabs backend "
+                "(set ELEVENLABS_API_KEY env var or pass --api-key)."
             )
         return requested_backend
 

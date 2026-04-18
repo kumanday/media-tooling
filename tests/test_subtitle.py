@@ -205,11 +205,20 @@ class BackendDispatchTests(unittest.TestCase):
             result = resolve_backend("auto")
             self.assertEqual(result, "mlx")
 
-    def test_elevenlabs_requires_requests_and_key(self) -> None:
-        with patch("media_tooling.subtitle.elevenlabs_backend_available", return_value=False):
+    def test_elevenlabs_requires_requests(self) -> None:
+        with patch("media_tooling.subtitle._requests_module", None), \
+             patch.dict(os.environ, {}, clear=True):
+            os.environ.pop("ELEVENLABS_API_KEY", None)
             with self.assertRaises(RuntimeError) as ctx:
                 resolve_backend("elevenlabs")
             self.assertIn("requests", str(ctx.exception))
+
+    def test_elevenlabs_requires_api_key(self) -> None:
+        with patch("media_tooling.subtitle._requests_module", MagicMock()), \
+             patch.dict(os.environ, {}, clear=True):
+            os.environ.pop("ELEVENLABS_API_KEY", None)
+            with self.assertRaises(RuntimeError) as ctx:
+                resolve_backend("elevenlabs")
             self.assertIn("ELEVENLABS_API_KEY", str(ctx.exception))
             self.assertIn("--api-key", str(ctx.exception))
 
