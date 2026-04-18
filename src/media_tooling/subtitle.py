@@ -217,9 +217,11 @@ def run_transcription_job(
     disable_timestamp_correction: bool,
 ) -> None:
     resolved_backend = resolve_backend(backend)
+    source_hash_value: str | None = None
 
     if skip_existing and txt_path.exists() and srt_path.exists() and json_path.exists():
-        if source_matches_cache(json_path, input_path, backend=resolved_backend):
+        source_hash_value = compute_source_hash(input_path)
+        if source_matches_cache(json_path, input_path, backend=resolved_backend, computed_hash=source_hash_value):
             print(f"Skipping existing outputs for {input_path}")
             return
         else:
@@ -244,7 +246,6 @@ def run_transcription_job(
                 input_path=input_path,
                 wav_path=wav_audio_path,
                 ffmpeg_bin=ffmpeg_bin,
-                overwrite=overwrite,
             )
             audio_path = wav_audio_path
             wav_cleanup_path = wav_audio_path
@@ -265,15 +266,15 @@ def run_transcription_job(
                 input_path=input_path,
                 wav_path=wav_audio_path,
                 ffmpeg_bin=ffmpeg_bin,
-                overwrite=overwrite,
             )
             audio_path = wav_audio_path
             wav_cleanup_path = wav_audio_path
         else:
             audio_path = input_path
 
+    display_model = "scribe_v1" if resolved_backend == "elevenlabs" else model_name
     print(
-        f"Transcribing {audio_path} with model '{model_name}' using backend '{resolved_backend}'",
+        f"Transcribing {audio_path} with model '{display_model}' using backend '{resolved_backend}'",
         flush=True,
     )
     ffmpeg_parent = resolve_command_directory(ffmpeg_bin)
@@ -305,11 +306,12 @@ def run_transcription_job(
 
     txt_text = build_txt(segments)
     srt_text = build_srt(segments)
+    effective_model = "scribe_v1" if resolved_backend == "elevenlabs" else model_name
     payload: dict[str, Any] = {
         "input_path": str(input_path),
         "audio_path": str(persistent_audio_path),
         "backend": resolved_backend,
-        "model": model_name,
+        "model": effective_model,
         "language": result.get("language"),
         "audio_duration": audio_duration,
         "timestamp_correction": timestamp_correction,
@@ -319,7 +321,7 @@ def run_transcription_job(
         "subtitle_segmentation": subtitle_segmentation,
         # Note: SHA-256 hashes the full source file; adds I/O cost for large
         # files but ensures cache integrity across all backends (Hard Rule 9).
-        "source_hash": compute_source_hash(input_path),
+        "source_hash": source_hash_value or compute_source_hash(input_path),
         "segments": segments,
     }
 
@@ -639,16 +641,15 @@ def extract_audio_pcm_wav(
     input_path: Path,
     wav_path: Path,
     ffmpeg_bin: str,
-    overwrite: bool,
 ) -> None:
-    """Extract audio as mono 16kHz PCM WAV for ElevenLabs Scribe upload."""
-    if wav_path.exists() and not overwrite:
-        print(f"Reusing existing PCM WAV {wav_path}")
-        return
+    """Extract audio as mono 16kHz PCM WAV for ElevenLabs Scribe upload.
 
+    Always overwrites existing PCM WAV files to avoid stale-derived
+    audio after source changes (Hard Rule 9: cache integrity).
+    """
     cmd = [
         ffmpeg_bin,
-        "-y" if overwrite else "-n",
+        "-y",
         "-i", str(input_path),
         "-vn",
         "-ac", "1",
@@ -685,6 +686,7 @@ def source_matches_cache(
     json_path: Path,
     input_path: Path,
     backend: str | None = None,
+    computed_hash: str | None = None,
 ) -> bool:
     if not json_path.exists():
         return False
@@ -700,7 +702,8 @@ def source_matches_cache(
         # Legacy outputs lack source_hash; honor skip-existing by
         # falling back to backend match when hash is absent.
         return True
-    if cached_hash != compute_source_hash(input_path):
+    current_hash = computed_hash or compute_source_hash(input_path)
+    if cached_hash != current_hash:
         return False
     return True
 
