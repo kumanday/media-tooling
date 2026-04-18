@@ -53,13 +53,12 @@ def parse_args() -> argparse.Namespace:
         default="ffmpeg",
         help="Path to ffmpeg.",
     )
-    mutex = parser.add_mutually_exclusive_group()
-    mutex.add_argument(
+    parser.add_argument(
         "--overwrite",
         action="store_true",
         help="Overwrite existing outputs.",
     )
-    mutex.add_argument(
+    parser.add_argument(
         "--skip-existing",
         action="store_true",
         help="Skip files when the output video already exists.",

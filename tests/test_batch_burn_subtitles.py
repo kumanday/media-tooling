@@ -205,12 +205,14 @@ class BatchBurnSubtitlesMainTests(unittest.TestCase):
             self.assertEqual(mock_burn.call_count, 1)
             self.assertEqual(result, 0)
 
-    def test_overwrite_and_skip_existing_mutually_exclusive(self) -> None:
-        """--overwrite and --skip-existing together must be rejected by argparse."""
+    def test_overwrite_and_skip_existing_both_set_skip_wins(self) -> None:
+        """When both --overwrite and --skip-existing are set, skip-existing wins."""
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             inputs_file = self._make_manifest(root, ["a.mp4"])
             output_dir = root / "output"
+            output_dir.mkdir()
+            (output_dir / "a-burned.mp4").touch()
 
             with (
                 patch.object(
@@ -228,11 +230,18 @@ class BatchBurnSubtitlesMainTests(unittest.TestCase):
                         "--skip-existing",
                     ],
                 ),
-                self.assertRaises(SystemExit) as ctx,
+                patch(
+                    "media_tooling.batch_burn_subtitles.burn_subtitles"
+                ) as mock_burn,
             ):
-                main()
+                stream = io.StringIO()
+                with contextlib.redirect_stdout(stream):
+                    result = main()
 
-            self.assertEqual(ctx.exception.code, 2)
+            # Existing output should be skipped, not overwritten
+            self.assertEqual(mock_burn.call_count, 0)
+            self.assertEqual(result, 0)
+            self.assertIn("Skipping existing", stream.getvalue())
 
     def test_style_passed_to_burn_subtitles(self) -> None:
         """--style argument is forwarded to burn_subtitles."""
