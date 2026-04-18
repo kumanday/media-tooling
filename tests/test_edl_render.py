@@ -189,6 +189,28 @@ class ValidateEDLTests(unittest.TestCase):
         edl["ranges"][0]["grade"] = "auto"
         validate_edl(edl)  # should not raise
 
+    def test_top_level_grade_unknown_preset_rejected(self) -> None:
+        edl = _minimal_edl()
+        edl["grade"] = "bad_preset"
+        with self.assertRaises(EDLSchemaError) as ctx:
+            validate_edl(edl)
+        self.assertIn("top-level grade", str(ctx.exception))
+
+    def test_top_level_grade_known_preset_passes(self) -> None:
+        edl = _minimal_edl()
+        edl["grade"] = "subtle"
+        validate_edl(edl)  # should not raise
+
+    def test_top_level_grade_auto_passes(self) -> None:
+        edl = _minimal_edl()
+        edl["grade"] = "auto"
+        validate_edl(edl)  # should not raise
+
+    def test_top_level_grade_raw_filter_passes(self) -> None:
+        edl = _minimal_edl()
+        edl["grade"] = "eq=contrast=1.1:brightness=0.05"
+        validate_edl(edl)  # should not raise
+
     def test_sources_as_dict(self) -> None:
         edl = _minimal_edl()
         edl["sources"] = {"source1.mp4": "/path/to/source1.mp4"}
