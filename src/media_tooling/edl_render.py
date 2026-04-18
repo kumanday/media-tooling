@@ -31,7 +31,7 @@ from typing import Any
 from media_tooling.burn_subtitles import burn_subtitles
 from media_tooling.ffprobe_utils import probe_duration
 from media_tooling.grade import PRESETS, auto_grade_for_clip, get_preset
-from media_tooling.loudnorm import apply_loudnorm_two_pass
+from media_tooling.loudnorm import apply_loudnorm_preview, apply_loudnorm_two_pass
 from media_tooling.rough_cut import quote_concat_path, validate_concat_demuxer_usage
 
 # ── Constants ────────────────────────────────────────────────────────────────
@@ -368,6 +368,67 @@ def extract_segment(
         raise RuntimeError(f"ffmpeg extract failed for {source}: {exc}") from exc
 
 
+def _resolve_segment_bounds(
+    start: float,
+    end: float,
+    src_name: str,
+    edit_dir: Path,
+    source_durations: dict[str, float],
+    warn_label: str = "using raw cut points",
+) -> tuple[float, float, list[dict[str, Any]]]:
+    """Load transcript, snap to word boundary, apply padding.
+
+    Shared by ``extract_all_segments`` and ``build_master_srt`` so that
+    cut-point resolution stays in sync and SRT drift cannot re-occur.
+
+    Returns ``(padded_start, padded_end, words)``.
+    """
+    tr_path = edit_dir / "transcripts" / f"{src_name}.json"
+    words: list[dict[str, Any]] = []
+    if tr_path.exists():
+        try:
+            transcript = json.loads(tr_path.read_text(encoding="utf-8"))
+            words = _words_in_range(transcript, start, end)
+        except (OSError, json.JSONDecodeError, KeyError, TypeError):
+            print(
+                f"  corrupt/unreadable transcript for {src_name}, "
+                f"{warn_label}",
+                file=sys.stderr,
+            )
+        else:
+            start, end = snap_to_word_boundary(start, end, words)
+
+    src_dur = source_durations.get(src_name)
+    padded_start, padded_end = apply_padding(
+        start, end,
+        source_duration=src_dur if src_dur is not None and src_dur != float("inf") else None,
+    )
+    return padded_start, padded_end, words
+
+
+def _copy_to_output(
+    src: Path,
+    dst: Path,
+    ffmpeg_bin: str = "ffmpeg",
+) -> int:
+    """Copy *src* to *dst* via ffmpeg stream copy (preserves faststart).  Returns 0 on success, 1 on failure."""
+    if src.resolve() == dst.resolve():
+        return 0
+    cmd = [ffmpeg_bin, "-y", "-i", str(src), "-c", "copy"]
+    if dst.suffix.lower() == ".mp4":
+        cmd.extend(["-movflags", "+faststart"])
+    cmd.append(str(dst))
+    try:
+        subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+    except FileNotFoundError:
+        print("ffmpeg not found — ensure ffmpeg is installed and on PATH", file=sys.stderr)
+        return 1
+    except subprocess.CalledProcessError as exc:
+        print(f"copy-to-output failed: {exc}", file=sys.stderr)
+        return 1
+    return 0
+
+
 def extract_all_segments(
     edl: dict[str, Any],
     edit_dir: Path,
@@ -436,27 +497,8 @@ def extract_all_segments(
             resolved = default_resolved
         is_auto = resolved == "__AUTO__"
 
-        # Attempt word-boundary alignment from transcript
-        tr_path = edit_dir / "transcripts" / f"{src_name}.json"
-        words: list[dict[str, Any]] = []
-        if tr_path.exists():
-            try:
-                transcript = json.loads(tr_path.read_text(encoding="utf-8"))
-                words = _words_in_range(transcript, start, end)
-            except (OSError, json.JSONDecodeError, KeyError, TypeError):
-                print(
-                    f"  corrupt/unreadable transcript for {src_name}, "
-                    "using raw cut points",
-                    file=sys.stderr,
-                )
-            else:
-                start, end = snap_to_word_boundary(start, end, words)
-
-        # Apply padding (Hard Rule 7), clamped to source duration
-        src_dur = source_durations.get(src_name)
-        padded_start, padded_end = apply_padding(
-            start, end,
-            source_duration=src_dur if src_dur is not None and src_dur != float("inf") else None,
+        padded_start, padded_end, _ = _resolve_segment_bounds(
+            start, end, src_name, edit_dir, source_durations,
         )
         duration = padded_end - padded_start
 
@@ -551,10 +593,9 @@ def build_master_srt(
 
     **Hard Rule 5**: segment offsets must use padded durations that match
     the actual extracted segment timeline, not the raw EDL range durations.
-    This function mirrors the same padding + word-boundary snapping logic
-    as ``extract_all_segments`` so subtitle timestamps stay in sync.
+    Uses ``_resolve_segment_bounds`` so cut-point resolution stays in sync
+    with ``extract_all_segments`` and SRT timestamps never drift.
     """
-    transcripts_dir = edit_dir / "transcripts"
     ranges = edl["ranges"]
 
     # Probe source durations to match extract_all_segments clamping
@@ -578,26 +619,9 @@ def build_master_srt(
             except (RuntimeError, FileNotFoundError, subprocess.CalledProcessError):
                 source_durations[src_name] = float("inf")
 
-        # Mirror extract_all_segments: snap to word boundaries then pad
-        tr_path = transcripts_dir / f"{src_name}.json"
-        words_in_seg: list[dict[str, Any]] = []
-        if tr_path.exists():
-            try:
-                transcript = json.loads(tr_path.read_text(encoding="utf-8"))
-                words_in_seg = _words_in_range(transcript, seg_start, seg_end)
-            except (OSError, json.JSONDecodeError, KeyError, TypeError):
-                print(
-                    f"  corrupt/unreadable transcript for {src_name}, "
-                    "skipping captions for this segment",
-                    file=sys.stderr,
-                )
-            else:
-                seg_start, seg_end = snap_to_word_boundary(seg_start, seg_end, words_in_seg)
-
-        src_dur = source_durations.get(src_name)
-        padded_start, padded_end = apply_padding(
-            seg_start, seg_end,
-            source_duration=src_dur if src_dur is not None and src_dur != float("inf") else None,
+        padded_start, padded_end, words_in_seg = _resolve_segment_bounds(
+            seg_start, seg_end, src_name, edit_dir, source_durations,
+            warn_label="skipping captions for this segment",
         )
         seg_duration = padded_end - padded_start
 
@@ -866,19 +890,7 @@ def render_edl(
     if no_loudnorm:
         # Just copy/rename current to output
         if current_path != output_path:
-            cmd = [ffmpeg_bin, "-y", "-i", str(current_path), "-c", "copy"]
-            if output_path.suffix.lower() == ".mp4":
-                cmd.extend(["-movflags", "+faststart"])
-            cmd.append(str(output_path))
-            try:
-                subprocess.run(
-                    cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE
-                )
-            except FileNotFoundError:
-                print("ffmpeg not found — ensure ffmpeg is installed and on PATH", file=sys.stderr)
-                return 1
-            except subprocess.CalledProcessError as exc:
-                print(f"copy-to-output failed: {exc}", file=sys.stderr)
+            if _copy_to_output(current_path, output_path, ffmpeg_bin) != 0:
                 return 1
     else:
         print("loudness normalization → social-ready (−14 LUFS / −1 dBTP / LRA 11)")
@@ -887,29 +899,6 @@ def render_edl(
                 current_path, output_path,
                 ffmpeg_bin=ffmpeg_bin, ffprobe_bin=ffprobe_bin,
             )
-            if not success:
-                print("loudnorm measurement failed, using preview mode", file=sys.stderr)
-                from media_tooling.loudnorm import apply_loudnorm_preview
-                try:
-                    apply_loudnorm_preview(
-                        current_path, output_path,
-                        ffmpeg_bin=ffmpeg_bin, ffprobe_bin=ffprobe_bin,
-                    )
-                except (FileNotFoundError, subprocess.CalledProcessError, RuntimeError) as exc:
-                    print(f"loudnorm preview fallback failed: {exc}", file=sys.stderr)
-                    # Last resort: copy as-is
-                    cmd = [ffmpeg_bin, "-y", "-i", str(current_path), "-c", "copy"]
-                    if output_path.suffix.lower() == ".mp4":
-                        cmd.extend(["-movflags", "+faststart"])
-                    cmd.append(str(output_path))
-                    try:
-                        subprocess.run(
-                            cmd, check=True,
-                            stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
-                        )
-                    except (FileNotFoundError, subprocess.CalledProcessError) as exc2:
-                        print(f"copy fallback also failed: {exc2}", file=sys.stderr)
-                        return 1
         except FileNotFoundError:
             print("ffmpeg/ffprobe not found — ensure both are installed and on PATH", file=sys.stderr)
             return 1
@@ -919,6 +908,19 @@ def render_edl(
         except RuntimeError as exc:
             print(f"loudnorm probe error: {exc}", file=sys.stderr)
             return 1
+
+        if not success:
+            print("loudnorm measurement failed, using preview mode", file=sys.stderr)
+            try:
+                apply_loudnorm_preview(
+                    current_path, output_path,
+                    ffmpeg_bin=ffmpeg_bin, ffprobe_bin=ffprobe_bin,
+                )
+            except (FileNotFoundError, subprocess.CalledProcessError, RuntimeError) as exc:
+                print(f"loudnorm preview fallback failed: {exc}", file=sys.stderr)
+                # Last resort: copy as-is
+                if _copy_to_output(current_path, output_path, ffmpeg_bin) != 0:
+                    return 1
 
     # Clean up intermediate files (never delete the final output)
     if current_path.resolve() != output_path.resolve():
