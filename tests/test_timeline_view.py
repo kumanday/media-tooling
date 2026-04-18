@@ -437,6 +437,15 @@ class TestRenderFilmstrip(unittest.TestCase):
             x1, span = _render_filmstrip(canvas, frame_paths, n, layout, strip_x0, strip_width)
             self.assertLessEqual(x1, strip_x0 + strip_width, "filmstrip overflows strip_width")
 
+    def test_extreme_n_frames_frame_w_is_at_least_one(self) -> None:
+        """With very large n_frames, frame_w must be at least 1 to avoid Pillow crash."""
+        canvas = Image.new("RGB", (1920, 600), (0, 0, 0))
+        layout = compute_layout()
+        strip_x0 = 50
+        strip_width = 1820
+        x1, span = _render_filmstrip(canvas, [], 500, layout, strip_x0, strip_width)
+        self.assertGreater(span, 0)
+
 
 # ---------------------------------------------------------------------------
 # _render_ruler
@@ -687,6 +696,58 @@ class TestTranscriptRendering(unittest.TestCase):
                 end=10.0,
                 n_frames=3,
                 transcript_path=None,
+                ffmpeg_bin="ffmpeg",
+            )
+
+            self.assertTrue(out_path.exists())
+            # Verify silence legend is absent: pixel at legend position matches background
+            with Image.open(str(out_path)) as result:
+                label_y = compute_layout()["label_y"]
+                legend_pixel = result.getpixel((50, label_y))
+                # BG colour is (18, 18, 22) — no legend text should be drawn
+                assert isinstance(legend_pixel, tuple)
+                self.assertEqual(legend_pixel[:3], (18, 18, 22), "Silence legend should not appear without transcript")
+
+    @patch("media_tooling.timeline_view.probe_duration", return_value=10.0)
+    @patch("media_tooling.timeline_view.extract_frames")
+    @patch("media_tooling.timeline_view.compute_envelope")
+    def test_string_timestamps_handled_gracefully(
+        self,
+        mock_env: MagicMock,
+        mock_frames: MagicMock,
+        mock_dur: MagicMock,
+    ) -> None:
+        """Word labels with string-valued timestamps should be cast to float."""
+        with tempfile.TemporaryDirectory() as tmp:
+            frame_dir = Path(tmp) / "frames"
+            frame_dir.mkdir()
+            frame_paths: list[Path] = []
+            for i in range(3):
+                fp = frame_dir / f"f_{i:03d}.jpg"
+                img = Image.new("RGB", (320, 180), (40, 40, 44))
+                img.save(str(fp), "JPEG")
+                frame_paths.append(fp)
+            mock_frames.return_value = frame_paths
+            mock_env.return_value = np.zeros(2000, dtype=np.float32)
+
+            transcript = {
+                "words": [
+                    {"word": "hello", "start": "0.0", "end": "1.0"},
+                    {"word": " world", "start": "1.0", "end": "3.0"},
+                ],
+            }
+            transcript_path = Path(tmp) / "transcript.json"
+            transcript_path.write_text(json.dumps(transcript))
+
+            out_path = Path(tmp) / "output.png"
+            # Should not raise TypeError from string timestamp arithmetic
+            generate_timeline(
+                input_path=Path("test.mp4"),
+                output_path=out_path,
+                start=0.0,
+                end=10.0,
+                n_frames=3,
+                transcript_path=transcript_path,
                 ffmpeg_bin="ffmpeg",
             )
 
