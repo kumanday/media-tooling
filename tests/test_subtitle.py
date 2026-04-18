@@ -211,6 +211,7 @@ class BackendDispatchTests(unittest.TestCase):
                 resolve_backend("elevenlabs")
             self.assertIn("requests", str(ctx.exception))
             self.assertIn("ELEVENLABS_API_KEY", str(ctx.exception))
+            self.assertIn("--api-key", str(ctx.exception))
 
     def test_elevenlabs_available_when_requests_and_key_present(self) -> None:
         with patch("media_tooling.subtitle._requests_module", MagicMock()), \
@@ -668,6 +669,7 @@ class ElevenLabsErrorHandlingTests(unittest.TestCase):
                     language=None,
                 )
             self.assertIn("ELEVENLABS_API_KEY", str(ctx.exception))
+            self.assertIn("--api-key", str(ctx.exception))
 
     def test_transcribe_with_elevenlabs_calls_scribe_api(self) -> None:
         mock_response = MagicMock()
