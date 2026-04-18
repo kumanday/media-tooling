@@ -591,7 +591,8 @@ def transcribe_with_elevenlabs(
             "The elevenlabs backend requires the 'requests' package. "
             "Install with: pip install media-tooling[elevenlabs]"
         )
-    resolved_key = api_key or os.environ.get("ELEVENLABS_API_KEY", "").strip()
+    resolved_key = (api_key.strip() if api_key is not None
+                    else os.environ.get("ELEVENLABS_API_KEY", "").strip())
     if not resolved_key:
         raise RuntimeError(
             "An API key is required for the elevenlabs backend "
