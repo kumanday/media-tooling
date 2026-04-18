@@ -429,7 +429,7 @@ def resolve_backend(requested_backend: str, *, api_key: str | None = None) -> st
             raise RuntimeError(
                 "The elevenlabs backend requires the 'requests' package "
                 "(install with: pip install media-tooling[elevenlabs]) "
-                "and the ELEVENLABS_API_KEY environment variable."
+                "and an API key (set ELEVENLABS_API_KEY env var or pass --api-key)."
             )
         return requested_backend
 
@@ -588,7 +588,8 @@ def transcribe_with_elevenlabs(
     resolved_key = api_key or os.environ.get("ELEVENLABS_API_KEY", "").strip()
     if not resolved_key:
         raise RuntimeError(
-            "ELEVENLABS_API_KEY environment variable is required for the elevenlabs backend."
+            "An API key is required for the elevenlabs backend "
+            "(set ELEVENLABS_API_KEY env var or pass --api-key)."
         )
     return call_scribe_api(audio_path=audio_path, api_key=resolved_key, language=language)
 
