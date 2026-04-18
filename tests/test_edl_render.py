@@ -277,10 +277,11 @@ class ResolveGradeFilterTests(unittest.TestCase):
         raw = "eq=contrast=1.1:brightness=0.05"
         self.assertEqual(resolve_grade_filter(raw), raw)
 
-    def test_unknown_simple_name_passthrough(self) -> None:
-        # Unknown name without = or , is passed through as-is
-        result = resolve_grade_filter("unknown_preset")
-        self.assertEqual(result, "unknown_preset")
+    def test_unknown_simple_name_raises_valueerror(self) -> None:
+        # Unknown name without = or , raises ValueError (not passed through)
+        with self.assertRaises(ValueError) as ctx:
+            resolve_grade_filter("unknown_preset")
+        self.assertIn("unknown grade preset", str(ctx.exception))
 
 
 # ── Padding tests (Hard Rule 7) ─────────────────────────────────────────────
@@ -1343,6 +1344,60 @@ class RenderEDLTests(unittest.TestCase):
                     no_subtitles=True, no_loudnorm=False,
                 )
         self.assertEqual(result, 1)
+
+    def test_render_edl_oserror_on_read(self) -> None:
+        """OSError when reading EDL file (e.g. permission denied) returns 1."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            edit_dir = Path(tmpdir)
+            edl_path = edit_dir / "unreadable.json"
+            edl_path.write_text(json.dumps(_minimal_edl()), encoding="utf-8")
+            output_path = edit_dir / "output.mp4"
+            from media_tooling.edl_render import render_edl
+            with patch.object(Path, "read_text", side_effect=OSError("Permission denied")):
+                result = render_edl(edl_path, output_path, no_subtitles=True)
+        self.assertEqual(result, 1)
+
+    @patch("media_tooling.edl_render._probe_source_durations")
+    @patch("media_tooling.edl_render.apply_loudnorm_two_pass", return_value=True)
+    @patch("media_tooling.edl_render.concat_segments")
+    @patch("media_tooling.edl_render.extract_all_segments")
+    def test_shared_source_durations_prevent_divergence(
+        self,
+        mock_extract: MagicMock,
+        mock_concat: MagicMock,
+        mock_loudnorm: MagicMock,
+        mock_probe: MagicMock,
+    ) -> None:
+        """render_edl probes durations once and passes the same dict to both
+        extract_all_segments and build_master_srt."""
+        mock_probe.return_value = {"src.mp4": 60.0}
+        mock_extract.return_value = [Path("/tmp/seg_00.mp4")]
+
+        def fake_concat(*a: object, **kw: object) -> None:
+            pass
+        mock_concat.side_effect = fake_concat
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            edit_dir = Path(tmpdir)
+            edl_path = edit_dir / "test_edl.json"
+            edl = _minimal_edl()
+            edl["subtitles"] = "test.srt"
+            edl_path.write_text(json.dumps(edl), encoding="utf-8")
+            # Create the SRT file
+            srt_path = edit_dir / "test.srt"
+            srt_path.write_text("1\n00:00:00,000 --> 00:00:05,000\nTEST\n", encoding="utf-8")
+            output_path = edit_dir / "output.mp4"
+            from media_tooling.edl_render import render_edl
+            with patch("media_tooling.edl_render.burn_subtitles_last"):
+                render_edl(
+                    edl_path, output_path,
+                    build_subtitles=True,
+                )
+        # _probe_source_durations called once
+        self.assertEqual(mock_probe.call_count, 1)
+        # extract_all_segments received source_durations kwarg
+        _, kwargs = mock_extract.call_args
+        self.assertIsNotNone(kwargs.get("source_durations"))
 
 
 if __name__ == "__main__":

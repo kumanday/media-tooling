@@ -175,6 +175,9 @@ def resolve_grade_filter(grade_field: str | None) -> str:
     Returns the filter string to embed in the per-segment ``-vf`` chain.
     For ``"auto"``, returns the sentinel ``"__AUTO__"`` which is resolved
     per-segment during extraction.
+
+    Raises ``ValueError`` for unknown preset names — callers (validate_edl)
+    must validate before this function is reached.
     """
     if not grade_field:
         return ""
@@ -184,7 +187,10 @@ def resolve_grade_filter(grade_field: str | None) -> str:
         try:
             return get_preset(grade_field)
         except KeyError:
-            return grade_field
+            raise ValueError(
+                f"unknown grade preset '{grade_field}'; "
+                f"known presets: {', '.join(sorted(PRESETS))}"
+            ) from None
     return grade_field
 
 
@@ -321,7 +327,8 @@ def extract_segment(
 ) -> None:
     """Extract a cut range as its own MP4 with grade + 30 ms audio fades.
 
-    ``-ss`` before ``-i`` for fast accurate seeking.  Scale to 1080p.
+    ``-ss`` before ``-i`` for fast seeking (keyframe-approximate, compensated by
+    padding window).  Scale to 1080p.
     """
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -429,6 +436,37 @@ def _copy_to_output(
     return 0
 
 
+def _probe_source_durations(
+    edl: dict[str, Any],
+    edit_dir: Path,
+    ffprobe_bin: str = "ffprobe",
+) -> dict[str, float]:
+    """Probe durations for all unique sources in the EDL.
+
+    Returns a dict mapping source name → duration in seconds.
+    If probing fails for a source, its duration is set to ``float("inf")``
+    so that padding clamping will not restrict the right edge.
+    """
+    source_durations: dict[str, float] = {}
+    seen: set[str] = set()
+    for r in edl["ranges"]:
+        src_name = r["source"]
+        if src_name in seen:
+            continue
+        seen.add(src_name)
+        src_path = resolve_source_path(src_name, edl, edit_dir)
+        try:
+            source_durations[src_name] = probe_duration(src_path, ffprobe_bin)
+        except (RuntimeError, FileNotFoundError, subprocess.CalledProcessError):
+            print(
+                f"  warning: could not probe duration for {src_name}, "
+                "padding may overshoot source end",
+                file=sys.stderr,
+            )
+            source_durations[src_name] = float("inf")
+    return source_durations
+
+
 def extract_all_segments(
     edl: dict[str, Any],
     edit_dir: Path,
@@ -437,6 +475,7 @@ def extract_all_segments(
     draft: bool = False,
     ffmpeg_bin: str = "ffmpeg",
     ffprobe_bin: str = "ffprobe",
+    source_durations: dict[str, float] | None = None,
 ) -> list[Path]:
     """Extract every EDL range into *edit_dir*/clips_graded/seg_NN.mp4.
 
@@ -456,6 +495,8 @@ def extract_all_segments(
 
     Source duration is probed via ffprobe so that padding is clamped to
     the actual source bounds, preventing overshoot at the right edge.
+    If *source_durations* is provided, it is used directly instead of
+    probing again (avoids divergence between extraction and SRT building).
     """
     default_resolved = resolve_grade_filter(edl.get("grade"))
 
@@ -465,8 +506,9 @@ def extract_all_segments(
     clips_dir = edit_dir / clips_subdir
     clips_dir.mkdir(parents=True, exist_ok=True)
 
-    # Probe source durations once per unique source
-    source_durations: dict[str, float] = {}
+    # Use pre-probed durations if provided, otherwise probe here
+    if source_durations is None:
+        source_durations = _probe_source_durations(edl, edit_dir, ffprobe_bin)
 
     ranges = edl["ranges"]
     seg_paths: list[Path] = []
@@ -476,18 +518,6 @@ def extract_all_segments(
         src_path = resolve_source_path(src_name, edl, edit_dir)
         start = float(r["start"])
         end = float(r["end"])
-
-        # Probe source duration if not yet cached
-        if src_name not in source_durations:
-            try:
-                source_durations[src_name] = probe_duration(src_path, ffprobe_bin)
-            except (RuntimeError, FileNotFoundError, subprocess.CalledProcessError):
-                print(
-                    f"  warning: could not probe duration for {src_name}, "
-                    "padding may overshoot source end",
-                    file=sys.stderr,
-                )
-                source_durations[src_name] = float("inf")
 
         # Resolve grade: per-range overrides top-level
         range_grade = r.get("grade")
@@ -584,6 +614,7 @@ def build_master_srt(
     out_path: Path,
     *,
     ffprobe_bin: str = "ffprobe",
+    source_durations: dict[str, float] | None = None,
 ) -> None:
     """Build an output-timeline SRT from per-source transcripts.
 
@@ -595,11 +626,15 @@ def build_master_srt(
     the actual extracted segment timeline, not the raw EDL range durations.
     Uses ``_resolve_segment_bounds`` so cut-point resolution stays in sync
     with ``extract_all_segments`` and SRT timestamps never drift.
+
+    If *source_durations* is provided, it is used directly instead of
+    probing again (ensures same durations as extraction phase).
     """
     ranges = edl["ranges"]
 
-    # Probe source durations to match extract_all_segments clamping
-    source_durations: dict[str, float] = {}
+    # Use pre-probed durations if provided, otherwise probe here
+    if source_durations is None:
+        source_durations = _probe_source_durations(edl, edit_dir, ffprobe_bin)
 
     entries: list[tuple[float, float, str]] = []
     seg_offset = 0.0
@@ -610,14 +645,6 @@ def build_master_srt(
         orig_end = float(r["end"])
         seg_start = orig_start
         seg_end = orig_end
-
-        # Probe source duration if not yet cached
-        if src_name not in source_durations:
-            src_path = resolve_source_path(src_name, edl, edit_dir)
-            try:
-                source_durations[src_name] = probe_duration(src_path, ffprobe_bin)
-            except (RuntimeError, FileNotFoundError, subprocess.CalledProcessError):
-                source_durations[src_name] = float("inf")
 
         padded_start, padded_end, words_in_seg = _resolve_segment_bounds(
             seg_start, seg_end, src_name, edit_dir, source_durations,
@@ -793,8 +820,8 @@ def render_edl(
 
     try:
         edl = json.loads(edl_path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as exc:
-        print(f"Invalid EDL JSON: {exc}", file=sys.stderr)
+    except (OSError, json.JSONDecodeError) as exc:
+        print(f"cannot read EDL: {exc}", file=sys.stderr)
         return 1
 
     try:
@@ -805,6 +832,10 @@ def render_edl(
 
     edit_dir = edl_path.parent
 
+    # Probe source durations once — shared by extraction and SRT building
+    # to prevent divergence if ffprobe fails intermittently
+    source_durations = _probe_source_durations(edl, edit_dir, ffprobe_bin)
+
     # 1. Extract per-segment
     print(f"extracting {len(edl['ranges'])} segment(s)")
     try:
@@ -812,8 +843,9 @@ def render_edl(
             edl, edit_dir,
             preview=preview, draft=draft, ffmpeg_bin=ffmpeg_bin,
             ffprobe_bin=ffprobe_bin,
+            source_durations=source_durations,
         )
-    except (OSError, RuntimeError) as exc:
+    except (OSError, RuntimeError, ValueError) as exc:
         print(f"segment extraction failed: {exc}", file=sys.stderr)
         return 1
 
@@ -836,7 +868,11 @@ def render_edl(
         if build_subtitles:
             subs_path = edit_dir / "master.srt"
             try:
-                build_master_srt(edl, edit_dir, subs_path, ffprobe_bin=ffprobe_bin)
+                build_master_srt(
+                    edl, edit_dir, subs_path,
+                    ffprobe_bin=ffprobe_bin,
+                    source_durations=source_durations,
+                )
             except (OSError, RuntimeError) as exc:
                 print(f"subtitle build failed: {exc}", file=sys.stderr)
                 return 1
