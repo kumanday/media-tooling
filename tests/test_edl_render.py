@@ -1003,6 +1003,67 @@ class RenderEDLTests(unittest.TestCase):
             result = render_edl(edl_path, output_path, no_subtitles=True, no_loudnorm=True)
         self.assertEqual(result, 1)
 
+    @patch("media_tooling.edl_render.burn_subtitles_last")
+    @patch("media_tooling.edl_render.concat_segments")
+    @patch("media_tooling.edl_render.extract_all_segments")
+    def test_subtitle_file_not_found_returns_1(
+        self, mock_extract: MagicMock, mock_concat: MagicMock, mock_burn: MagicMock
+    ) -> None:
+        """FileNotFoundError from burn_subtitles is caught and returns 1."""
+        mock_extract.return_value = [Path("/tmp/seg_00.mp4")]
+        mock_burn.side_effect = FileNotFoundError("ffmpeg not found")
+        edl = _minimal_edl()
+        edl["subtitles"] = "subs.srt"
+        with tempfile.TemporaryDirectory() as tmpdir:
+            edit_dir = Path(tmpdir)
+            edl_path = edit_dir / "test_edl.json"
+            edl_path.write_text(json.dumps(edl), encoding="utf-8")
+            # Create fake files so subs_path resolution succeeds
+            (edit_dir / "subs.srt").write_text("", encoding="utf-8")
+            base_path = edit_dir / "base.mp4"
+            base_path.write_bytes(b"\x00" * 100)
+            output_path = edit_dir / "output.mp4"
+            from media_tooling.edl_render import render_edl
+            result = render_edl(edl_path, output_path, no_loudnorm=True)
+        self.assertEqual(result, 1)
+
+    @patch("media_tooling.edl_render.concat_segments")
+    @patch("media_tooling.edl_render.extract_all_segments")
+    def test_dict_subtitles_with_path_resolves_srt(
+        self, mock_extract: MagicMock, mock_concat: MagicMock
+    ) -> None:
+        """Dict-format subtitles with 'path' key resolves the SRT file."""
+        mock_extract.return_value = [Path("/tmp/seg_00.mp4")]
+
+        def fake_concat(*a: object, **kw: object) -> None:
+            pass
+        mock_concat.side_effect = fake_concat
+
+        edl = _minimal_edl()
+        del edl["ranges"][0]["grade"]
+        edl["subtitles"] = {"style": "bold-overlay", "path": "custom.srt"}
+        with tempfile.TemporaryDirectory() as tmpdir:
+            edit_dir = Path(tmpdir)
+            edl_path = edit_dir / "test_edl.json"
+            edl_path.write_text(json.dumps(edl), encoding="utf-8")
+            # Create the SRT file so subs_path.exists() is True
+            (edit_dir / "custom.srt").write_text("1\n00:00:00,000 --> 00:00:01,000\nTEST\n", encoding="utf-8")
+            base_path = edit_dir / "base.mp4"
+            base_path.write_bytes(b"\x00" * 100)
+            output_path = edit_dir / "output.mp4"
+            with patch("media_tooling.edl_render.burn_subtitles_last") as mock_burn:
+                with patch("media_tooling.edl_render.apply_loudnorm_two_pass", return_value=True) as mock_loud:
+                    # loudnorm needs to create the output file
+                    def fake_loudnorm(inp: object, out: Path, **kw: object) -> bool:
+                        out.write_bytes(b"\x00" * 100)
+                        return True
+                    mock_loud.side_effect = fake_loudnorm
+                    from media_tooling.edl_render import render_edl
+                    result = render_edl(edl_path, output_path)
+            # burn_subtitles_last should have been called (dict had path)
+            self.assertTrue(mock_burn.called)
+            self.assertEqual(result, 0)
+
 
 if __name__ == "__main__":
     unittest.main()

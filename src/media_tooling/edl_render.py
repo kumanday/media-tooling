@@ -771,7 +771,7 @@ def render_edl(
             build_master_srt(edl, edit_dir, subs_path)
         elif edl.get("subtitles"):
             subs_val = edl["subtitles"]
-            # subtitles can be a string path or a dict with style info
+            # subtitles can be a string path or a dict with style info + optional path
             if isinstance(subs_val, str):
                 subs_path = resolve_path(subs_val, edit_dir)
                 if not subs_path.exists():
@@ -780,6 +780,16 @@ def render_edl(
                         file=sys.stderr,
                     )
                     subs_path = None
+            elif isinstance(subs_val, dict):
+                dict_path = subs_val.get("path")
+                if dict_path:
+                    subs_path = resolve_path(dict_path, edit_dir)
+                    if not subs_path.exists():
+                        print(
+                            f"warning: subtitles path does not exist: {subs_path}",
+                            file=sys.stderr,
+                        )
+                        subs_path = None
 
     # Determine subtitle style
     sub_style = "bold-overlay"
@@ -800,7 +810,7 @@ def render_edl(
                 style=sub_style, style_args=sub_style_args,
                 ffmpeg_bin=ffmpeg_bin,
             )
-        except (ValueError, RuntimeError) as exc:
+        except (ValueError, RuntimeError, FileNotFoundError) as exc:
             print(f"subtitle burning error: {exc}", file=sys.stderr)
             return 1
         current_path = sub_output
