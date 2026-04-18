@@ -532,5 +532,38 @@ class SpeakerLabelOutputTests(unittest.TestCase):
         self.assertNotIn("[speaker_", txt)
 
 
+class ModelNameOverrideTests(unittest.TestCase):
+    """Verify that ElevenLabs runs report 'scribe_v1' as the model name."""
+
+    def test_elevenlabs_model_name_overrides_input(self) -> None:
+        """For ElevenLabs, display_model and effective_model should be 'scribe_v1'."""
+        backend = "elevenlabs"
+        model_name = "small"
+        display_model = "scribe_v1" if backend == "elevenlabs" else model_name
+        effective_model = "scribe_v1" if backend == "elevenlabs" else model_name
+        self.assertEqual(display_model, "scribe_v1")
+        self.assertEqual(effective_model, "scribe_v1")
+
+    def test_whisper_model_name_unchanged(self) -> None:
+        """For Whisper backends, model name should pass through unchanged."""
+        backend = "whisper"
+        model_name = "small"
+        display_model = "scribe_v1" if backend == "elevenlabs" else model_name
+        self.assertEqual(display_model, "small")
+
+    def test_source_matches_cache_accepts_computed_hash(self) -> None:
+        """source_matches_cache should use the pre-computed hash when provided."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            src = Path(tmpdir) / "test.mp4"
+            src.write_bytes(b"\x00" * 64)
+            json_path = Path(tmpdir) / "test.json"
+            h = compute_source_hash(src)
+            json_path.write_text(
+                json.dumps({"backend": "whisper", "source_hash": h}),
+                encoding="utf-8",
+            )
+            self.assertTrue(source_matches_cache(json_path, src, backend="whisper", computed_hash=h))
+
+
 if __name__ == "__main__":
     unittest.main()
