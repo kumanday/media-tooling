@@ -274,6 +274,27 @@ class ValidateEDLTests(unittest.TestCase):
         edl["ranges"][0]["start"] = "12.34"
         validate_edl(edl)  # float("12.34") works fine
 
+    def test_nan_start_raises_edl_schema_error(self) -> None:
+        edl = _minimal_edl()
+        edl["ranges"][0]["start"] = float("nan")
+        with self.assertRaises(EDLSchemaError) as ctx:
+            validate_edl(edl)
+        self.assertIn("finite", str(ctx.exception))
+
+    def test_infinity_end_raises_edl_schema_error(self) -> None:
+        edl = _minimal_edl()
+        edl["ranges"][0]["end"] = float("inf")
+        with self.assertRaises(EDLSchemaError) as ctx:
+            validate_edl(edl)
+        self.assertIn("finite", str(ctx.exception))
+
+    def test_neg_infinity_start_raises_edl_schema_error(self) -> None:
+        edl = _minimal_edl()
+        edl["ranges"][0]["start"] = float("-inf")
+        with self.assertRaises(EDLSchemaError) as ctx:
+            validate_edl(edl)
+        self.assertIn("finite", str(ctx.exception))
+
 
 # ── Grade resolution tests ──────────────────────────────────────────────────
 

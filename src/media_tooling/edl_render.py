@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import re
 import subprocess
 import sys
@@ -110,6 +111,11 @@ def validate_edl(edl: dict[str, Any]) -> None:
             raise EDLSchemaError(
                 f"range[{i}] start/end must be numeric: {exc}"
             ) from exc
+        if not math.isfinite(start) or not math.isfinite(end):
+            raise EDLSchemaError(
+                f"range[{i}] start/end must be finite numbers, "
+                f"got start={start!r} end={end!r}"
+            )
         if end <= start:
             raise EDLSchemaError(
                 f"range[{i}] end ({end}) must be greater than start ({start})"
@@ -378,7 +384,8 @@ def extract_segment(
     except FileNotFoundError:
         raise RuntimeError(f"{ffmpeg_bin} not found — ensure ffmpeg is installed and on PATH")
     except subprocess.CalledProcessError as exc:
-        raise RuntimeError(f"ffmpeg extract failed for {source}: {exc}") from exc
+        detail = (exc.stderr or b"").decode(errors="replace")[:500]
+        raise RuntimeError(f"ffmpeg extract failed for {source}: {detail}") from exc
 
 
 def _resolve_segment_bounds(
@@ -604,7 +611,8 @@ def concat_segments(
     except FileNotFoundError:
         raise RuntimeError(f"{ffmpeg_bin} not found — ensure ffmpeg is installed and on PATH")
     except subprocess.CalledProcessError as exc:
-        raise RuntimeError(f"ffmpeg concat failed: {exc}") from exc
+        detail = (exc.stderr or b"").decode(errors="replace")[:500]
+        raise RuntimeError(f"ffmpeg concat failed: {detail}") from exc
     finally:
         concat_list.unlink(missing_ok=True)
 
