@@ -162,6 +162,11 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Disable the post-transcription timestamp sanity check and auto-correction.",
     )
+    parser.add_argument(
+        "--api-key",
+        default=None,
+        help="API key for the transcription backend (e.g. ElevenLabs). Falls back to ELEVENLABS_API_KEY env var.",
+    )
     return parser.parse_args()
 
 
@@ -192,6 +197,7 @@ def main() -> int:
             skip_existing=args.skip_existing,
             initial_prompt=args.initial_prompt,
             disable_timestamp_correction=args.disable_timestamp_correction,
+            api_key=args.api_key,
         )
     except (ValueError, FileExistsError, RuntimeError, TypeError) as exc:
         print(str(exc), file=sys.stderr)
