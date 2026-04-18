@@ -328,14 +328,15 @@ def run_transcription_job(
     if resolved_backend == "elevenlabs":
         payload["audio_events"] = result.get("audio_events", [])
 
-    write_text(txt_path, txt_text, overwrite)
-    write_text(srt_path, srt_text, overwrite)
-    write_text(json_path, json.dumps(payload, indent=2), overwrite)
-
-    # Clean up temporary PCM WAV file created for ElevenLabs upload
-    if wav_cleanup_path is not None and wav_cleanup_path.exists():
-        wav_cleanup_path.unlink()
-        print(f"Cleaned up temporary WAV: {wav_cleanup_path}")
+    try:
+        write_text(txt_path, txt_text, overwrite)
+        write_text(srt_path, srt_text, overwrite)
+        write_text(json_path, json.dumps(payload, indent=2), overwrite)
+    finally:
+        # Clean up temporary PCM WAV file created for ElevenLabs upload
+        if wav_cleanup_path is not None and wav_cleanup_path.exists():
+            wav_cleanup_path.unlink()
+            print(f"Cleaned up temporary WAV: {wav_cleanup_path}")
 
     print(f"Transcript: {txt_path}")
     print(f"Subtitles:  {srt_path}")
