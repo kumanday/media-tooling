@@ -523,6 +523,8 @@ class CachingTests(unittest.TestCase):
 
     def test_source_matches_cache_works_for_whisper_with_hash(self) -> None:
         """Whisper skip_existing should work when source_hash is present."""
+        with patch("media_tooling.subtitle.mlx_backend_available", return_value=True):
+            resolved = resolve_backend("whisper")
         with tempfile.TemporaryDirectory() as tmpdir:
             source = Path(tmpdir) / "source.wav"
             source.write_bytes(b"audio data")
@@ -530,9 +532,9 @@ class CachingTests(unittest.TestCase):
             source_hash = compute_source_hash(source)
             json_path.write_text(json.dumps({
                 "source_hash": source_hash,
-                "backend": "whisper",
+                "backend": resolved,
             }))
-            self.assertTrue(source_matches_cache(json_path, source, backend="whisper"))
+            self.assertTrue(source_matches_cache(json_path, source, backend=resolved))
 
     def test_source_matches_cache_returns_false_when_json_missing(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -543,16 +545,18 @@ class CachingTests(unittest.TestCase):
 
     def test_source_matches_cache_accepts_computed_hash(self) -> None:
         """source_matches_cache should use the pre-computed hash when provided."""
+        with patch("media_tooling.subtitle.mlx_backend_available", return_value=True):
+            resolved = resolve_backend("whisper")
         with tempfile.TemporaryDirectory() as tmpdir:
             src = Path(tmpdir) / "test.mp4"
             src.write_bytes(b"\x00" * 64)
             json_path = Path(tmpdir) / "test.json"
             h = compute_source_hash(src)
             json_path.write_text(
-                json.dumps({"backend": "whisper", "source_hash": h}),
+                json.dumps({"backend": resolved, "source_hash": h}),
                 encoding="utf-8",
             )
-            self.assertTrue(source_matches_cache(json_path, src, backend="whisper", computed_hash=h))
+            self.assertTrue(source_matches_cache(json_path, src, backend=resolved, computed_hash=h))
 
     def test_skip_existing_cache_miss_overwrites_stale_files(self) -> None:
         """--skip-existing + cache miss (hash-based) should overwrite stale output files, not raise FileExistsError."""
