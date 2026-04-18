@@ -83,6 +83,11 @@ def main() -> int:
         srt_path = srt_dir / f"{stem}.srt"
         output_path = output_dir / f"{stem}-burned.mp4"
 
+        if not srt_path.exists():
+            failures.append(f"{item}: SRT not found at {srt_path}")
+            print(f"FAILED: {item}\nSRT not found at {srt_path}")
+            continue
+
         if output_path.exists():
             if args.skip_existing:
                 print(f"Skipping existing burned subtitles for {item}")

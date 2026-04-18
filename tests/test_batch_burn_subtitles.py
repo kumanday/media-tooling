@@ -330,6 +330,46 @@ class BatchBurnSubtitlesMainTests(unittest.TestCase):
             self.assertTrue(output_dir.exists())
             self.assertEqual(result, 0)
 
+    def test_missing_srt_reports_clear_error(self) -> None:
+        """Missing SRT file is caught before burn_subtitles with a clear message."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            inputs_file = root / "inputs.txt"
+            video_dir = root / "videos"
+            video_dir.mkdir()
+            video_path = video_dir / "a.mp4"
+            video_path.touch()
+            # No SRT directory at all
+            srt_dir = root / "srt"
+            srt_dir.mkdir()
+            # No SRT file for "a"
+            inputs_file.write_text(str(video_path), encoding="utf-8")
+            output_dir = root / "output"
+
+            with (
+                patch.object(
+                    __import__("sys"),
+                    "argv",
+                    [
+                        "media-batch-burn-subtitles",
+                        "--inputs-file",
+                        str(inputs_file),
+                        "--srt-dir",
+                        str(srt_dir),
+                        "--output-dir",
+                        str(output_dir),
+                    ],
+                ),
+                patch(
+                    "media_tooling.batch_burn_subtitles.burn_subtitles"
+                ) as mock_burn,
+            ):
+                result = main()
+
+            # burn_subtitles should NOT have been called
+            self.assertEqual(mock_burn.call_count, 0)
+            self.assertEqual(result, 1)
+
 
 if __name__ == "__main__":
     unittest.main()
