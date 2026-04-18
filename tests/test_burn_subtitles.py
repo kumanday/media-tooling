@@ -106,6 +106,16 @@ class BuildFilterChainTests(unittest.TestCase):
         self.assertIn("FontSize=28", chain)
         self.assertIn("MarginV=35", chain)
 
+    def test_comma_in_path_is_escaped(self) -> None:
+        """Commas in SRT path must be escaped to avoid breaking the filter chain."""
+        chain = build_filter_chain(
+            srt_path=Path("/tmp/my,file.srt"),
+            style="bold-overlay",
+            extra_filters=None,
+        )
+        self.assertIn("\\,", chain)
+        self.assertNotIn("my,file", chain)  # unescaped comma must not appear
+
 
 if __name__ == "__main__":
     unittest.main()

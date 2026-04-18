@@ -110,7 +110,12 @@ def build_filter_chain(
 
 def _build_subtitle_filter(*, srt_path: Path, style: str) -> str:
     """Return the ffmpeg subtitles filter string for the given style."""
-    escaped_path = str(srt_path).replace("'", "'\\''").replace(":", "\\:")
+    escaped_path = (
+        str(srt_path)
+        .replace("'", "'\\''")
+        .replace(",", "\\,")
+        .replace(":", "\\:")
+    )
     if style == "natural-sentence":
         return (
             f"subtitles='{escaped_path}'"

@@ -10,13 +10,15 @@ from typing import Any
 
 from PIL import Image, ImageDraw, ImageFont
 
+# Only exact-flag indicators are reliable: xfade/acrossfade appear inside
+# filter_complex values (e.g. "[0:v][1:v]xfade=…") as a single arg, so
+# exact-match checks like "xfade" in command never catch them.  Detecting
+# -filter_complex / -lavfi is sufficient to block single-pass filtergraphs.
 SINGLE_PASS_FILTERGRAPH_INDICATORS = (
     "-filter_complex",
     "-lavfi",
-    "xfade",
-    "acrossfade",
 )
-CONCAT_DEMUXER_FLAGS = ("-f", "concat")
+CONCAT_DEMUXER_FLAGS = ("-f",)
 
 
 class AssemblyMethodError(ValueError):
@@ -39,8 +41,7 @@ def validate_concat_demuxer_usage(command: list[str]) -> None:
     is_concat_command = False
     for i, arg in enumerate(command):
         if arg in CONCAT_DEMUXER_FLAGS and i + 1 < len(command):
-            next_arg = command[i + 1]
-            if next_arg == "concat" or (i > 0 and command[i - 1] == "-f" and next_arg == "concat"):
+            if command[i + 1] == "concat":
                 is_concat_command = True
                 break
 

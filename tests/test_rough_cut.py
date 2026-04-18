@@ -51,19 +51,19 @@ class ValidateConcatDemuxerUsageTests(unittest.TestCase):
             validate_concat_demuxer_usage(command)
         self.assertIn("Hard Rule 2", str(ctx.exception))
 
-    def test_concat_with_xfade_raises(self) -> None:
-        """Concat command containing xfade filter violates Hard Rule 2."""
+    def test_concat_with_xfade_in_filter_complex_raises(self) -> None:
+        """xfade inside a -filter_complex value violates Hard Rule 2."""
         command = self._make_valid_concat_command()
-        # Insert xfade as a flag-like arg (simulating it appearing in the command)
-        command.append("xfade")
+        command.extend(["-filter_complex", "[0:v][1:v]xfade=transition=fade:duration=0.5"])
         with self.assertRaises(AssemblyMethodError) as ctx:
             validate_concat_demuxer_usage(command)
         self.assertIn("Hard Rule 2", str(ctx.exception))
+        self.assertIn("-filter_complex", str(ctx.exception))
 
-    def test_concat_with_acrossfade_raises(self) -> None:
-        """Concat command containing acrossfade filter violates Hard Rule 2."""
+    def test_concat_with_acrossfade_in_lavfi_raises(self) -> None:
+        """acrossfade inside a -lavfi value violates Hard Rule 2."""
         command = self._make_valid_concat_command()
-        command.append("acrossfade")
+        command.extend(["-lavfi", "acrossfade=d=1"])
         with self.assertRaises(AssemblyMethodError) as ctx:
             validate_concat_demuxer_usage(command)
         self.assertIn("Hard Rule 2", str(ctx.exception))
