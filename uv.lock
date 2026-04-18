@@ -437,6 +437,7 @@ dependencies = [
     { name = "faster-whisper", marker = "platform_machine != 'arm64' or sys_platform != 'darwin'" },
     { name = "lightning-whisper-mlx", marker = "platform_machine == 'arm64' and sys_platform == 'darwin'" },
     { name = "mlx", marker = "platform_machine == 'arm64' and sys_platform == 'darwin'" },
+    { name = "numpy" },
     { name = "onnxruntime", marker = "platform_machine == 'x86_64' and sys_platform == 'darwin'" },
     { name = "pillow" },
 ]
@@ -452,6 +453,7 @@ requires-dist = [
     { name = "faster-whisper", marker = "platform_machine != 'arm64' or sys_platform != 'darwin'", specifier = ">=1.1.0" },
     { name = "lightning-whisper-mlx", marker = "platform_machine == 'arm64' and sys_platform == 'darwin'", specifier = ">=0.0.10" },
     { name = "mlx", marker = "platform_machine == 'arm64' and sys_platform == 'darwin'", specifier = "<0.29.5" },
+    { name = "numpy", specifier = ">=1.26" },
     { name = "onnxruntime", marker = "platform_machine == 'x86_64' and sys_platform == 'darwin'", specifier = "<1.24" },
     { name = "pillow", specifier = ">=11.2.1" },
 ]
