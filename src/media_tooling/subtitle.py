@@ -258,12 +258,9 @@ def run_transcription_job(
     else:
         if resolved_backend == "elevenlabs":
             # Always convert to mono 16kHz PCM WAV for Scribe API,
-            # even if input is already .wav (user .wav files are rarely mono 16kHz)
-            if audio_path.suffix.lower() == ".wav" and audio_path == input_path:
-                # Rename original to avoid overwriting; restore after upload
-                wav_audio_path = audio_path.with_suffix(".elevenlabs.wav")
-            else:
-                wav_audio_path = audio_path.with_suffix(".wav")
+            # even if input is already .wav (user .wav files are rarely mono 16kHz).
+            # Use .pcm.wav suffix to avoid overwriting the original file.
+            wav_audio_path = audio_path.with_suffix(".pcm.wav")
             extract_audio_pcm_wav(
                 input_path=input_path,
                 wav_path=wav_audio_path,
