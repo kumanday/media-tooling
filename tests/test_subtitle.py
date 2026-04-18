@@ -776,11 +776,14 @@ class ElevenLabsErrorHandlingTests(unittest.TestCase):
             os.unlink(wav_path)
 
     def test_transcribe_with_elevenlabs_retry_after_http_date(self) -> None:
-        """Retry-After header with HTTP-date format should not crash."""
+        """Retry-After header with HTTP-date format computes correct wait."""
+        from datetime import datetime, timezone
+
         mock_429 = MagicMock()
         mock_429.status_code = 429
         mock_429.text = "Rate limited"
-        mock_429.headers = {"Retry-After": "Fri, 18 Apr 2026 11:00:00 GMT"}
+        # Use a future HTTP-date so delta > 0 exercises the actual code path
+        mock_429.headers = {"Retry-After": "Sat, 18 Apr 2026 23:30:00 GMT"}
 
         mock_200 = MagicMock()
         mock_200.status_code = 200
@@ -796,6 +799,9 @@ class ElevenLabsErrorHandlingTests(unittest.TestCase):
         mock_requests = MagicMock()
         mock_requests.post.side_effect = [mock_429, mock_200]
 
+        # Mock datetime.now to return a time 30s before the Retry-After target
+        fake_now = datetime(2026, 4, 18, 23, 29, 30, tzinfo=timezone.utc)
+
         with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
             f.write(b"fake wav data")
             wav_path = Path(f.name)
@@ -803,15 +809,19 @@ class ElevenLabsErrorHandlingTests(unittest.TestCase):
         try:
             with patch("media_tooling.subtitle._requests_module", mock_requests), \
                  patch.dict(os.environ, {"ELEVENLABS_API_KEY": "test-key"}), \
-                 patch("media_tooling.subtitle.time.sleep") as mock_sleep:
+                 patch("media_tooling.subtitle.time.sleep") as mock_sleep, \
+                 patch("media_tooling.subtitle.datetime") as mock_dt:
+                mock_dt.now.return_value = fake_now
+                mock_dt.side_effect = lambda *a, **kw: datetime(*a, **kw)
                 result = transcribe_with_elevenlabs(
                     audio_path=wav_path,
                     language=None,
                 )
                 self.assertEqual(result["text"], "Hello")
                 self.assertEqual(mock_requests.post.call_count, 2)
-                # Should have called sleep with a positive wait time (not crash)
-                self.assertTrue(mock_sleep.call_args_list[0][0][0] > 0)
+                # Should have called sleep with ~30s wait (capped at 60)
+                actual_wait = mock_sleep.call_args_list[0][0][0]
+                self.assertAlmostEqual(actual_wait, 30.0, delta=2.0)
         finally:
             os.unlink(wav_path)
 
