@@ -81,7 +81,7 @@ class ParseMetadataFileTests(unittest.TestCase):
         finally:
             os.unlink(metadata_path)
         self.assertAlmostEqual(result["y_mean"], 0.5)
-        self.assertAlmostEqual(result["y_range"], 0.72)
+        self.assertAlmostEqual(result["y_range"], 0.7)
         self.assertAlmostEqual(result["sat_mean"], 0.25)
 
     def test_parses_signalstats_metadata(self) -> None:
@@ -128,6 +128,27 @@ class ParseMetadataFileTests(unittest.TestCase):
             os.unlink(metadata_path)
         self.assertAlmostEqual(result["y_mean"], 512 / 1023, places=3)
         self.assertAlmostEqual(result["y_range"], (960 - 64) / 1023, places=3)
+
+    def test_zero_bit_depth_no_division_by_zero(self) -> None:
+        """Corrupt metadata with YBITDEPTH=0 does not cause ZeroDivisionError."""
+        metadata_lines = [
+            "lavfi.signalstats.YBITDEPTH=0\n",
+            "lavfi.signalstats.YAVG=128\n",
+            "lavfi.signalstats.YMIN=16\n",
+            "lavfi.signalstats.YMAX=235\n",
+            "lavfi.signalstats.SATAVG=64\n",
+        ]
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
+            metadata_path = f.name
+            for line in metadata_lines:
+                f.write(line)
+        try:
+            result = _parse_metadata_file(metadata_path)
+        finally:
+            os.unlink(metadata_path)
+        # max_val clamped to 1, so all values divided by 1
+        self.assertAlmostEqual(result["y_mean"], 128.0)
+        self.assertAlmostEqual(result["y_range"], 235 - 16)
 
 
 class SampleFrameStatsTests(unittest.TestCase):

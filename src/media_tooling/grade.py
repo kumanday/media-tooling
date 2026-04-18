@@ -124,9 +124,9 @@ def _parse_metadata_file(metadata_path: str) -> dict[str, float]:
                     sat_avgs.append(v)
 
     if not y_avgs:
-        return {"y_mean": 0.5, "y_range": 0.72, "sat_mean": 0.25}
+        return {"y_mean": 0.5, "y_range": 0.7, "sat_mean": 0.25}
 
-    max_val = (2 ** bit_depth) - 1
+    max_val = max(1, (2 ** bit_depth) - 1)
 
     y_mean = (sum(y_avgs) / len(y_avgs)) / max_val
     y_range = (
