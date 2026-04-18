@@ -61,6 +61,12 @@ class HasVideoStreamTests(unittest.TestCase):
         cmd = mock_run.call_args[0][0]
         self.assertEqual(cmd[0], "/usr/local/bin/ffprobe")
 
+    def test_raises_runtime_error_when_ffprobe_fails(self) -> None:
+        mock_result = _mock_subprocess_run_factory(returncode=1, stderr="ffprobe not found")
+        with mock.patch("media_tooling.loudnorm.subprocess.run", return_value=mock_result):
+            with self.assertRaises(RuntimeError):
+                has_video_stream(Path("input.mp4"))
+
 
 class MeasureLoudnessTests(unittest.TestCase):
     def test_parses_json_output_from_stderr(self) -> None:
@@ -78,6 +84,15 @@ class MeasureLoudnessTests(unittest.TestCase):
 
     def test_returns_none_when_no_json_in_stderr(self) -> None:
         mock_result = _mock_subprocess_run_factory(stderr="no json here")
+        with mock.patch("media_tooling.loudnorm.subprocess.run", return_value=mock_result):
+            result = measure_loudness(Path("input.mp4"))
+
+        self.assertIsNone(result)
+
+    def test_returns_none_when_ffmpeg_exits_nonzero(self) -> None:
+        mock_result = _mock_subprocess_run_factory(
+            returncode=1, stderr="Error opening input: No such file"
+        )
         with mock.patch("media_tooling.loudnorm.subprocess.run", return_value=mock_result):
             result = measure_loudness(Path("input.mp4"))
 
@@ -350,6 +365,19 @@ class MainTests(unittest.TestCase):
 
         self.assertEqual(result, 1)
 
+    def test_returns_1_on_ffprobe_failure(self) -> None:
+        measure_result = _mock_subprocess_run_factory(stderr=SAMPLE_MEASUREMENT_JSON)
+        probe_fail = _mock_subprocess_run_factory(returncode=1, stderr="ffprobe not found")
+        with (
+            mock.patch("media_tooling.loudnorm.subprocess.run") as mock_run,
+            mock.patch.object(sys, "argv", ["media-loudnorm", "input.mp4", "-o", "output.mp4"]),
+            mock.patch("pathlib.Path.exists", return_value=True),
+        ):
+            mock_run.side_effect = [measure_result, probe_fail]
+            result = main()
+
+        self.assertEqual(result, 1)
+
 
 @unittest.skipUnless(shutil.which("ffmpeg"), "requires ffmpeg")
 @unittest.skipUnless(shutil.which("ffprobe"), "requires ffprobe")
@@ -376,9 +404,7 @@ class IntegrationTests(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls) -> None:
-        import shutil as shutil_mod
-
-        shutil_mod.rmtree(cls.tmpdir, ignore_errors=True)
+        shutil.rmtree(cls.tmpdir, ignore_errors=True)
 
     def test_two_pass_on_audio_only_input(self) -> None:
         output = Path(self.tmpdir) / "normalized_audio.mp4"

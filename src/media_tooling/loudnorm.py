@@ -17,7 +17,12 @@ def has_video_stream(
     input_path: Path,
     ffprobe_bin: str = "ffprobe",
 ) -> bool:
-    """Return True if input_path contains at least one video stream."""
+    """Return True if input_path contains at least one video stream.
+
+    Raises RuntimeError if ffprobe itself fails (bad binary path, corrupt
+    input, permission error), so the caller does not silently treat a probe
+    failure as "no video".
+    """
     cmd = [
         ffprobe_bin, "-v", "error",
         "-select_streams", "v",
@@ -26,6 +31,10 @@ def has_video_stream(
         str(input_path),
     ]
     proc = subprocess.run(cmd, capture_output=True, text=True)
+    if proc.returncode != 0:
+        raise RuntimeError(
+            f"ffprobe failed (exit {proc.returncode}): {proc.stderr.strip()}"
+        )
     return bool(proc.stdout.strip())
 
 
@@ -81,6 +90,8 @@ def measure_loudness(
         "-vn", "-f", "null", "-",
     ]
     proc = subprocess.run(cmd, capture_output=True, text=True)
+    if proc.returncode != 0:
+        return None
     stderr = proc.stderr
 
     start = stderr.rfind("{")
@@ -200,6 +211,9 @@ def main() -> int:
                 print(f"loudnorm pass 2 (normalizing): → {output_path.name}")
     except subprocess.CalledProcessError as exc:
         print(f"ffmpeg failed: {exc.stderr}", file=sys.stderr)
+        return 1
+    except RuntimeError as exc:
+        print(f"probe error: {exc}", file=sys.stderr)
         return 1
 
     print(f"Output: {output_path}")
