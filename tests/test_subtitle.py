@@ -534,7 +534,7 @@ class CachingTests(unittest.TestCase):
             self.assertTrue(source_matches_cache(json_path, src, backend="whisper", computed_hash=h))
 
     def test_skip_existing_cache_miss_overwrites_stale_files(self) -> None:
-        """--skip-existing + cache miss should overwrite stale output files, not raise FileExistsError."""
+        """--skip-existing + cache miss (hash-based) should overwrite stale output files, not raise FileExistsError."""
         with tempfile.TemporaryDirectory() as tmpdir:
             src = Path(tmpdir) / "test.wav"
             src.write_bytes(b"original audio data")
@@ -542,20 +542,24 @@ class CachingTests(unittest.TestCase):
             srt_path = Path(tmpdir) / "test.srt"
             json_path = Path(tmpdir) / "test.json"
 
-            # Create initial outputs with valid source_hash
+            # Create initial outputs with valid source_hash.
+            # Use the resolved backend so the cache miss is genuinely hash-based
+            # (not triggered by backend name mismatch between "whisper" and
+            # the resolved backend like "mlx" or "faster-whisper").
+            resolved = resolve_backend("whisper")
             source_hash = compute_source_hash(src)
             txt_path.write_text("old transcript", encoding="utf-8")
             srt_path.write_text("old subtitles", encoding="utf-8")
             json_path.write_text(json.dumps({
-                "backend": "whisper",
+                "backend": resolved,
                 "source_hash": source_hash,
             }), encoding="utf-8")
 
             # Modify source file (different content → different hash)
             src.write_bytes(b"modified audio data")
 
-            # Verify cache miss is detected
-            self.assertFalse(source_matches_cache(json_path, src, backend="whisper"))
+            # Verify cache miss is detected (hash changed, backend matches)
+            self.assertFalse(source_matches_cache(json_path, src, backend=resolved))
 
             # Now run transcription with skip_existing=True and overwrite=False.
             # The fix ensures overwrite is forced True on cache miss so stale files are replaced.
