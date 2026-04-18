@@ -323,33 +323,41 @@ class AutoGradeForClipTests(unittest.TestCase):
 
 
 class ApplyGradeTests(unittest.TestCase):
-    @patch("media_tooling.grade.subprocess.run")
-    def test_reencode_command_includes_filter_and_codec(self, mock_run: MagicMock) -> None:
+    def _mock_popen(self, returncode: int = 0) -> MagicMock:
+        """Create a mock Popen process that simulates successful ffmpeg."""
+        mock_proc = MagicMock()
+        mock_proc.stderr = iter([])
+        mock_proc.wait.return_value = None
+        mock_proc.returncode = returncode
+        return mock_proc
+
+    @patch("media_tooling.grade.subprocess.Popen")
+    def test_reencode_command_includes_filter_and_codec(self, mock_popen: MagicMock) -> None:
         """Re-encode path builds the correct ffmpeg command."""
-        mock_run.return_value = MagicMock(returncode=0)
+        mock_popen.return_value = self._mock_popen()
         apply_grade(Path("in.mp4"), Path("out.mp4"), "eq=contrast=1.05")
-        cmd = mock_run.call_args[0][0]
+        cmd = mock_popen.call_args[0][0]
         self.assertIn("libx264", cmd)
         self.assertIn("+faststart", cmd)
         self.assertIn("eq=contrast=1.05", cmd)
 
-    @patch("media_tooling.grade.subprocess.run")
-    def test_stream_copy_command_uses_copy(self, mock_run: MagicMock) -> None:
+    @patch("media_tooling.grade.subprocess.Popen")
+    def test_stream_copy_command_uses_copy(self, mock_popen: MagicMock) -> None:
         """Empty filter string triggers stream-copy path with faststart for MP4."""
-        mock_run.return_value = MagicMock(returncode=0)
+        mock_popen.return_value = self._mock_popen()
         apply_grade(Path("in.mp4"), Path("out.mp4"), "")
-        cmd = mock_run.call_args[0][0]
+        cmd = mock_popen.call_args[0][0]
         self.assertIn("-c", cmd)
         self.assertIn("copy", cmd)
         self.assertIn("+faststart", cmd)
         self.assertNotIn("libx264", cmd)
 
-    @patch("media_tooling.grade.subprocess.run")
-    def test_mkv_output_no_faststart(self, mock_run: MagicMock) -> None:
+    @patch("media_tooling.grade.subprocess.Popen")
+    def test_mkv_output_no_faststart(self, mock_popen: MagicMock) -> None:
         """Non-MP4 containers omit -movflags +faststart."""
-        mock_run.return_value = MagicMock(returncode=0)
+        mock_popen.return_value = self._mock_popen()
         apply_grade(Path("in.mp4"), Path("out.mkv"), "eq=contrast=1.05")
-        cmd = mock_run.call_args[0][0]
+        cmd = mock_popen.call_args[0][0]
         self.assertNotIn("+faststart", cmd)
 
     def test_same_input_output_raises(self) -> None:
@@ -358,19 +366,22 @@ class ApplyGradeTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             apply_grade(p, p, "")
 
-    @patch("media_tooling.grade.subprocess.run", side_effect=FileNotFoundError)
-    def test_ffmpeg_not_found_raises_runtime_error(self, mock_run: MagicMock) -> None:
+    @patch("media_tooling.grade.subprocess.Popen", side_effect=FileNotFoundError)
+    def test_ffmpeg_not_found_raises_runtime_error(self, mock_popen: MagicMock) -> None:
         """Missing ffmpeg raises RuntimeError with actionable message."""
         with self.assertRaises(RuntimeError) as ctx:
             apply_grade(Path("in.mp4"), Path("out.mp4"), "")
         self.assertIn("ffmpeg not found", str(ctx.exception))
 
-    @patch("media_tooling.grade.subprocess.run",
-           side_effect=subprocess.CalledProcessError(1, "ffmpeg"))
-    def test_ffmpeg_failure_raises_runtime_error(self, mock_run: MagicMock) -> None:
+    def test_ffmpeg_failure_raises_runtime_error(self) -> None:
         """ffmpeg failure raises RuntimeError with exit code info."""
-        with self.assertRaises(RuntimeError) as ctx:
-            apply_grade(Path("in.mp4"), Path("out.mp4"), "")
+        mock_proc = MagicMock()
+        mock_proc.stderr = iter(["error line\n"])
+        mock_proc.wait.return_value = None
+        mock_proc.returncode = 1
+        with patch("media_tooling.grade.subprocess.Popen", return_value=mock_proc):
+            with self.assertRaises(RuntimeError) as ctx:
+                apply_grade(Path("in.mp4"), Path("out.mp4"), "")
         self.assertIn("exit code", str(ctx.exception))
 
 

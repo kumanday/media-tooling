@@ -344,15 +344,25 @@ def apply_grade(input_path: Path, output_path: Path, filter_string: str) -> None
             str(output_path),
         ]
     try:
-        subprocess.run(cmd, check=True)
+        proc = subprocess.Popen(cmd, stderr=subprocess.PIPE, text=True)
+        captured_lines: list[str] = []
+        if proc.stderr is not None:
+            for line in proc.stderr:
+                sys.stderr.write(line)
+                captured_lines.append(line)
+        proc.wait()
+        if proc.returncode != 0:
+            stderr_snippet = captured_lines[-1].strip() if captured_lines else ""
+            raise subprocess.CalledProcessError(proc.returncode, cmd, stderr="".join(captured_lines))
     except FileNotFoundError:
         raise RuntimeError(
             "ffmpeg not found — ensure ffmpeg is installed and on PATH"
         )
     except subprocess.CalledProcessError as exc:
+        stderr_snippet = (exc.stderr or "").strip().splitlines()[-1] if exc.stderr else ""
         raise RuntimeError(
             f"ffmpeg failed (exit code {exc.returncode}). "
-            f"Command: {' '.join(cmd)}"
+            f"Command: {' '.join(cmd)}. {stderr_snippet}"
         )
 
 
