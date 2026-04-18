@@ -10,8 +10,8 @@ Two modes:
      per-clip correction. Samples N frames via ffmpeg ``signalstats``, computes
      mean brightness, luminance range, saturation. Emits a bounded filter string
      that corrects under-exposure, flatness, and mild desaturation without
-     applying any creative color shift. All adjustments capped at ±8% on any
-     axis (i.e. every parameter in [0.92, 1.08]).
+     applying any creative color shift. In auto mode, all adjustments are capped
+     at ±8% on any axis (i.e. every parameter in [0.92, 1.08]).
 
      The goal is "make it look clean without looking graded". Never applies
      creative LUTs, teal/orange splits, or filmic curves. For creative looks,
