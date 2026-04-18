@@ -234,6 +234,8 @@ class ValidateConcatDemuxerUsageTests(unittest.TestCase):
 
     def test_non_concat_command_passes(self) -> None:
         """Commands that are not concat assembly commands should not be validated."""
+        # A segment extraction command with -filter_complex is fine
+        # because it's per-segment, not a concat assembly
         command = [
             "ffmpeg",
             "-y",
@@ -256,6 +258,10 @@ class ValidateConcatDemuxerUsageTests(unittest.TestCase):
             "-filter_complex", "[0:v][1:v]concat=n=2:v=1:a=1",
             "/tmp/output.mp4",
         ]
+        # This is NOT using the concat demuxer (-f concat), so the
+        # validation doesn't apply — it's not an assembly command
+        # (though it is an anti-pattern, the guardrail only validates
+        # commands that claim to use the concat demuxer)
         validate_concat_demuxer_usage(command)  # should not raise
 
     def test_empty_command_passes(self) -> None:
