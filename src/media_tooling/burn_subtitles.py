@@ -14,6 +14,11 @@ from media_tooling.subtitle_translate import (
     parse_srt_file,
 )
 
+# Guardrail keywords for Hard Rule 1 enforcement
+
+SUBTITLE_FILTER_KEYWORDS = ("subtitles=", "ass=")
+OVERLAY_FILTER_KEYWORDS = ("overlay=", "setpts=")
+
 # ASS/SSA style constants
 
 BOLD_OVERLAY_FORCE_STYLE = (
@@ -142,6 +147,47 @@ def main() -> int:
     return 0
 
 
+def validate_subtitles_last(filter_string: str, context: str = "filter") -> None:
+    """Validate that no subtitle or overlay filter appears before the end of chain.
+
+    Hard Rule 1 requires subtitles to be applied last. This guardrail inspects
+    a filter string and raises ValueError if it contains a subtitle/overlay
+    filter anywhere in it (since any such filter in user-supplied extras would
+    necessarily come before the subtitles filter we append).
+
+    Raises ValueError with a descriptive message referencing Hard Rule 1.
+    """
+    found_subtitle = None
+    found_overlay = None
+
+    for keyword in SUBTITLE_FILTER_KEYWORDS:
+        if keyword in filter_string:
+            found_subtitle = keyword
+            break
+
+    for keyword in OVERLAY_FILTER_KEYWORDS:
+        if keyword in filter_string:
+            found_overlay = keyword
+            break
+
+    if found_subtitle:
+        raise ValueError(
+            f"Hard Rule 1 violation: subtitles filter '{found_subtitle}' found in "
+            f"{context}. Subtitles must always be the LAST filter in the chain. "
+            "Remove the subtitle filter from pre-filters; it is applied "
+            "automatically at the end."
+        )
+
+    if found_overlay:
+        raise ValueError(
+            f"Hard Rule 1 violation: overlay filter '{found_overlay}' found in "
+            f"{context}. Overlays must be composited BEFORE subtitles, but "
+            "burn_subtitles does not support overlay compositing. Use the EDL "
+            "renderer for overlay + subtitle workflows, or apply overlays in a "
+            "separate pass before running burn-subtitles."
+        )
+
+
 def burn_subtitles(
     *,
     input_path: Path,
@@ -153,6 +199,11 @@ def burn_subtitles(
     ffmpeg_bin: str = "ffmpeg",
     overwrite: bool = False,
 ) -> None:
+    """Burn SRT subtitles into video with customizable styles.
+
+    Rechunks subtitles according to the chosen style, builds a filter chain
+    with subtitles always LAST (Hard Rule 1), and runs ffmpeg.
+    """
     cues = parse_srt_file(srt_path)
     if not cues:
         raise ValueError(f"No subtitle cues found in {srt_path}")
@@ -191,6 +242,43 @@ def burn_subtitles(
         )
     finally:
         tmp_srt_path.unlink(missing_ok=True)
+
+
+def build_video_filter(
+    *,
+    srt_path: Path,
+    force_style: str,
+    pre_filters: str | None = None,
+) -> str:
+    """Build ffmpeg video filter string with subtitles always LAST.
+
+    Hard Rule 1: Subtitles filter is always the last filter in the chain.
+    If pre-filters are supplied, they are validated (must not contain subtitle
+    or overlay filters) and prepended before the subtitles filter.
+    """
+    if pre_filters:
+        validate_subtitles_last(pre_filters, context="pre-filters")
+
+    # Escape path for ffmpeg subtitles filter
+    subs_escaped = (
+        str(srt_path.resolve())
+        .replace("\\", "\\\\")
+        .replace(":", "\\:")
+        .replace(",", "\\,")
+        .replace("'", "\\'")
+        .replace("[", "\\[")
+        .replace("]", "\\]")
+        .replace("%", "\\%")
+        .replace(";", "\\;")
+    )
+
+    force_style_escaped = force_style.replace("'", "\\'")
+    subtitles_filter = f"subtitles='{subs_escaped}':force_style='{force_style_escaped}'"
+
+    if pre_filters:
+        return f"{pre_filters},{subtitles_filter}"
+
+    return subtitles_filter
 
 
 def rechunk_bold_overlay(cues: list[Any]) -> list[dict[str, Any]]:
@@ -370,37 +458,6 @@ def _sentence_case(text: str) -> str:
     if not text:
         return text
     return text[0].upper() + text[1:]
-
-
-def build_video_filter(
-    *,
-    srt_path: Path,
-    force_style: str,
-    pre_filters: str | None = None,
-) -> str:
-    """Build ffmpeg video filter string with subtitles always LAST.
-
-    Hard Rule 1: Subtitles filter is always the last filter in the chain.
-    """
-    # Escape path for ffmpeg subtitles filter
-    subs_escaped = (
-        str(srt_path.resolve())
-        .replace("\\", "\\\\")
-        .replace(":", "\\:")
-        .replace("'", "\\'")
-        .replace("[", "\\[")
-        .replace("]", "\\]")
-        .replace("%", "\\%")
-        .replace(";", "\\;")
-    )
-
-    force_style_escaped = force_style.replace("'", "\\'")
-    subtitles_filter = f"subtitles='{subs_escaped}':force_style='{force_style_escaped}'"
-
-    if pre_filters:
-        return f"{pre_filters},{subtitles_filter}"
-
-    return subtitles_filter
 
 
 def run_ffmpeg(

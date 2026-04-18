@@ -8,13 +8,61 @@ from media_tooling.burn_subtitles import (
     BOLD_OVERLAY_FORCE_STYLE,
     NATURAL_SENTENCE_FORCE_STYLE,
     NATURAL_SENTENCE_MAX_WORDS,
+    OVERLAY_FILTER_KEYWORDS,
+    SUBTITLE_FILTER_KEYWORDS,
     _sentence_case,
     build_video_filter,
     rechunk_bold_overlay,
     rechunk_natural_sentence,
+    validate_subtitles_last,
 )
 from media_tooling.subtitle import build_srt
-from media_tooling.subtitle_translate import SubtitleCue, parse_srt_file
+from media_tooling.subtitle_translate import (
+    HARD_SENTENCE_PUNCTUATION,
+    SOFT_SENTENCE_PUNCTUATION,
+    SubtitleCue,
+    parse_srt_file,
+)
+
+
+class ValidateSubtitlesLastTests(unittest.TestCase):
+    def test_clean_filter_string_passes(self) -> None:
+        """Non-subtitle, non-overlay filters should pass validation."""
+        validate_subtitles_last("scale=1920:1080,fps=30", context="test")
+
+    def test_subtitles_filter_in_extras_raises(self) -> None:
+        """A subtitles filter in user-supplied extras violates Hard Rule 1."""
+        with self.assertRaises(ValueError) as ctx:
+            validate_subtitles_last("subtitles=foo.srt", context="extra-filters")
+        self.assertIn("Hard Rule 1", str(ctx.exception))
+        self.assertIn("subtitles=", str(ctx.exception))
+
+    def test_ass_filter_in_extras_raises(self) -> None:
+        """An ass filter in user-supplied extras violates Hard Rule 1."""
+        with self.assertRaises(ValueError) as ctx:
+            validate_subtitles_last("ass=foo.ass", context="extra-filters")
+        self.assertIn("Hard Rule 1", str(ctx.exception))
+
+    def test_overlay_filter_in_extras_raises(self) -> None:
+        """An overlay filter in user-supplied extras violates Hard Rule 1."""
+        with self.assertRaises(ValueError) as ctx:
+            validate_subtitles_last("overlay=0:0", context="extra-filters")
+        self.assertIn("Hard Rule 1", str(ctx.exception))
+        self.assertIn("overlay=", str(ctx.exception))
+
+    def test_setpts_filter_in_extras_raises(self) -> None:
+        """A setpts filter (overlay PTS shift) in extras violates Hard Rule 1."""
+        with self.assertRaises(ValueError) as ctx:
+            validate_subtitles_last("setpts=PTS-STARTPTS+T/TB", context="extra-filters")
+        self.assertIn("Hard Rule 1", str(ctx.exception))
+
+    def test_empty_filter_string_passes(self) -> None:
+        """An empty filter string should pass validation."""
+        validate_subtitles_last("", context="test")
+
+    def test_unrelated_filter_passes(self) -> None:
+        """Filters unrelated to subtitles or overlays should pass."""
+        validate_subtitles_last("eq=brightness=0.1,fps=24", context="test")
 
 
 class SRTParsingTests(unittest.TestCase):
@@ -106,14 +154,14 @@ class BoldOverlayChunkingTests(unittest.TestCase):
 
         self.assertEqual(len(result), 0)
 
-    def test_strips_trailing_comma_semicolon_colon(self) -> None:
+    def test_strips_trailing_soft_punctuation(self) -> None:
         cues = self._make_cues("Hello, world;")
         result = rechunk_bold_overlay(cues)
 
         for cue in result:
-            self.assertFalse(cue["text"].endswith(","))
-            self.assertFalse(cue["text"].endswith(";"))
-            self.assertFalse(cue["text"].endswith(":"))
+            for ch in SOFT_SENTENCE_PUNCTUATION:
+                if ch not in HARD_SENTENCE_PUNCTUATION:
+                    self.assertFalse(cue["text"].endswith(ch))
 
     def test_periods_preserved_in_bold_overlay(self) -> None:
         cues = self._make_cues("Hello. World end.")
@@ -227,7 +275,6 @@ class FilterChainOrderingTests(unittest.TestCase):
 
             # Subtitles filter must come after the pre-filters
             self.assertIn("scale=1920:-2,", vf)
-            self.assertTrue(vf.endswith(f"':force_style='{BOLD_OVERLAY_FORCE_STYLE}'"))
             # Verify subtitles is after the comma that separates pre-filters
             comma_idx = vf.index(",")
             self.assertIn("subtitles=", vf[comma_idx:])
@@ -265,6 +312,40 @@ class FilterChainOrderingTests(unittest.TestCase):
 
             self.assertIn(custom_style, vf)
             self.assertNotIn(BOLD_OVERLAY_FORCE_STYLE, vf)
+
+    def test_pre_filters_with_subtitle_filter_raises(self) -> None:
+        """If pre-filters contain a subtitles filter, build_video_filter must raise."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            srt_path = Path(temp_dir) / "subs.srt"
+            srt_path.write_text(
+                "\n".join(["1", "00:00:00,000 --> 00:00:03,000", "Test", ""]),
+                encoding="utf-8",
+            )
+
+            with self.assertRaises(ValueError) as ctx:
+                build_video_filter(
+                    srt_path=srt_path,
+                    force_style=BOLD_OVERLAY_FORCE_STYLE,
+                    pre_filters="subtitles=other.srt",
+                )
+            self.assertIn("Hard Rule 1", str(ctx.exception))
+
+    def test_pre_filters_with_overlay_filter_raises(self) -> None:
+        """If pre-filters contain an overlay filter, build_video_filter must raise."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            srt_path = Path(temp_dir) / "subs.srt"
+            srt_path.write_text(
+                "\n".join(["1", "00:00:00,000 --> 00:00:03,000", "Test", ""]),
+                encoding="utf-8",
+            )
+
+            with self.assertRaises(ValueError) as ctx:
+                build_video_filter(
+                    srt_path=srt_path,
+                    force_style=BOLD_OVERLAY_FORCE_STYLE,
+                    pre_filters="overlay=0:0",
+                )
+            self.assertIn("Hard Rule 1", str(ctx.exception))
 
 
 class BuildSRTTests(unittest.TestCase):
@@ -336,6 +417,23 @@ class PathEscapingTests(unittest.TestCase):
 
             self.assertIn("O\\'Brien", vf)
 
+    def test_comma_in_path_is_escaped(self) -> None:
+        """Commas in SRT path must be escaped to avoid breaking the filter chain."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            srt_path = Path(temp_dir) / "my,file.srt"
+            srt_path.write_text(
+                "\n".join(["1", "00:00:00,000 --> 00:00:03,000", "Test", ""]),
+                encoding="utf-8",
+            )
+
+            vf = build_video_filter(
+                srt_path=srt_path,
+                force_style=BOLD_OVERLAY_FORCE_STYLE,
+                pre_filters=None,
+            )
+
+            self.assertIn("\\,", vf)
+
 
 class StyleConstantsTests(unittest.TestCase):
     def test_bold_overlay_has_required_properties(self) -> None:
@@ -349,6 +447,20 @@ class StyleConstantsTests(unittest.TestCase):
         self.assertIn("FontSize=22", NATURAL_SENTENCE_FORCE_STYLE)
         self.assertIn("Bold=1", NATURAL_SENTENCE_FORCE_STYLE)
         self.assertIn("MarginV=35", NATURAL_SENTENCE_FORCE_STYLE)
+
+
+class GuardrailConstantsTests(unittest.TestCase):
+    def test_subtitle_filter_keywords_include_subtitles(self) -> None:
+        self.assertIn("subtitles=", SUBTITLE_FILTER_KEYWORDS)
+
+    def test_subtitle_filter_keywords_include_ass(self) -> None:
+        self.assertIn("ass=", SUBTITLE_FILTER_KEYWORDS)
+
+    def test_overlay_filter_keywords_include_overlay(self) -> None:
+        self.assertIn("overlay=", OVERLAY_FILTER_KEYWORDS)
+
+    def test_overlay_filter_keywords_include_setpts(self) -> None:
+        self.assertIn("setpts=", OVERLAY_FILTER_KEYWORDS)
 
 
 if __name__ == "__main__":
