@@ -56,7 +56,7 @@ def main(argv: list[str] | None = None) -> int:
         words = extract_words(segments)
         phrases = group_into_phrases(words, silence_threshold=args.silence_threshold)
         markdown = render_markdown(phrases, silence_threshold=args.silence_threshold)
-    except (ValueError, KeyError, TypeError) as exc:
+    except (ValueError, KeyError, TypeError, AttributeError) as exc:
         print(f"Malformed transcript data: {exc}", file=sys.stderr)
         return 1
 

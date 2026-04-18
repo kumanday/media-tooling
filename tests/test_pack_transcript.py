@@ -334,6 +334,15 @@ class MainEndToEndTests(unittest.TestCase):
         rc = main([str(json_path), "-o", str(out_path)])
         self.assertEqual(rc, 1)
 
+    def test_non_dict_top_level_json(self) -> None:
+        """A non-dict top-level JSON (e.g., a bare array) returns a clean error."""
+        tmpdir = Path(tempfile.mkdtemp())
+        json_path = tmpdir / "array_transcript.json"
+        json_path.write_text("[1, 2, 3]", encoding="utf-8")
+        out_path = tmpdir / "array_output.md"
+        rc = main([str(json_path), "-o", str(out_path)])
+        self.assertEqual(rc, 1)
+
     def test_size_order_of_magnitude(self) -> None:
         """A 1-hour transcript (~3600s) should produce output on the order of ~12KB."""
         import random
