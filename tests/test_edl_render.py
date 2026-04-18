@@ -255,6 +255,25 @@ class ValidateEDLTests(unittest.TestCase):
         edl["grade"] = "eq=contrast=1.1:brightness=0.05"
         validate_edl(edl)  # should not raise
 
+    def test_non_numeric_start_raises_edl_schema_error(self) -> None:
+        edl = _minimal_edl()
+        edl["ranges"][0]["start"] = "hello"
+        with self.assertRaises(EDLSchemaError) as ctx:
+            validate_edl(edl)
+        self.assertIn("numeric", str(ctx.exception))
+
+    def test_non_numeric_end_raises_edl_schema_error(self) -> None:
+        edl = _minimal_edl()
+        edl["ranges"][0]["end"] = None
+        with self.assertRaises(EDLSchemaError) as ctx:
+            validate_edl(edl)
+        self.assertIn("numeric", str(ctx.exception))
+
+    def test_non_numeric_start_string_number_passes(self) -> None:
+        edl = _minimal_edl()
+        edl["ranges"][0]["start"] = "12.34"
+        validate_edl(edl)  # float("12.34") works fine
+
 
 # ── Grade resolution tests ──────────────────────────────────────────────────
 
@@ -318,6 +337,12 @@ class ApplyPaddingTests(unittest.TestCase):
         start, end = apply_padding(10.0, 20.0, min_pad=0.2, max_pad=0.2)
         self.assertAlmostEqual(start, 9.8, places=2)
         self.assertAlmostEqual(end, 20.2, places=2)
+
+    def test_right_edge_clamp_never_produces_negative_duration(self) -> None:
+        """When source_duration < padded_start, padded_end clamped to padded_start."""
+        start, end = apply_padding(0.04, 0.05, source_duration=0.005)
+        self.assertGreaterEqual(end, start)
+        self.assertEqual(end, start)  # both clamp to padded_start
 
 
 # ── Word-boundary alignment tests (Hard Rule 6) ─────────────────────────────
@@ -914,6 +939,28 @@ class ExtractAllSegmentsTests(unittest.TestCase):
                 if "unreadable transcript" in str(c)
             ]
             self.assertGreater(len(warning_calls), 0)
+
+    @patch("media_tooling.edl_render.probe_duration", return_value=0.005)
+    @patch("media_tooling.edl_render.subprocess.run")
+    def test_zero_duration_segment_raises_runtime_error(
+        self, mock_run: MagicMock, mock_probe: MagicMock
+    ) -> None:
+        """Segment with zero/negative duration after padding raises RuntimeError."""
+        mock_run.return_value = MagicMock(returncode=0)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            edit_dir = Path(tmpdir)
+            # Source duration is 0.005s, range is 0.04-0.05, so padded_end clamps
+            # to padded_start, producing zero duration
+            edl = {
+                "version": 1,
+                "sources": ["source1.mp4"],
+                "ranges": [
+                    {"source": "source1.mp4", "start": 0.04, "end": 0.05},
+                ],
+            }
+            with self.assertRaises(RuntimeError) as ctx:
+                extract_all_segments(edl, edit_dir)
+            self.assertIn("zero/negative duration", str(ctx.exception))
 
 
 # ── Concat tests (Hard Rule 2) ───────────────────────────────────────────────

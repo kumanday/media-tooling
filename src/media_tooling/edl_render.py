@@ -103,8 +103,13 @@ def validate_edl(edl: dict[str, Any]) -> None:
                 f"range[{i}] source '{r['source']}' not found in sources"
             )
 
-        start = float(r["start"])
-        end = float(r["end"])
+        try:
+            start = float(r["start"])
+            end = float(r["end"])
+        except (ValueError, TypeError) as exc:
+            raise EDLSchemaError(
+                f"range[{i}] start/end must be numeric: {exc}"
+            ) from exc
         if end <= start:
             raise EDLSchemaError(
                 f"range[{i}] end ({end}) must be greater than start ({start})"
@@ -226,6 +231,7 @@ def apply_padding(
     # Clamp to source bounds if known
     if source_duration is not None:
         padded_end = min(padded_end, source_duration)
+    padded_end = max(padded_end, padded_start)
 
     return (padded_start, padded_end)
 
@@ -531,6 +537,12 @@ def extract_all_segments(
             start, end, src_name, edit_dir, source_durations,
         )
         duration = padded_end - padded_start
+
+        if duration <= 0:
+            raise RuntimeError(
+                f"segment {i} has zero/negative duration ({duration:.3f}s) "
+                f"after padding — check EDL range and source duration"
+            )
 
         # Resolve grade filter for this segment
         if is_auto:
