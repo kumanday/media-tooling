@@ -12,6 +12,7 @@ from media_tooling.burn_subtitles import (
     SUBTITLE_FILTER_KEYWORDS,
     _sentence_case,
     build_video_filter,
+    main,
     rechunk_bold_overlay,
     rechunk_natural_sentence,
     validate_subtitles_last,
@@ -255,8 +256,10 @@ class NaturalSentenceChunkingTests(unittest.TestCase):
         ]
         result = rechunk_natural_sentence(cues)
 
-        # Should produce chunks from the merged text
-        self.assertTrue(len(result) >= 1)
+        # Merged text "Hello world this is a test" (6 words) -> single chunk
+        self.assertEqual(len(result), 1)
+        self.assertIn("Hello", result[0]["text"])
+        self.assertIn("test", result[0]["text"])
 
     def test_gap_creates_new_segment(self) -> None:
         # Large gap between cues should create separate segments
@@ -266,8 +269,9 @@ class NaturalSentenceChunkingTests(unittest.TestCase):
         ]
         result = rechunk_natural_sentence(cues)
 
-        # First segment's last cue end should be before second segment's start
-        self.assertTrue(len(result) >= 2)
+        # Two separate segments due to gap; each produces one chunk
+        self.assertEqual(len(result), 2)
+        self.assertLess(result[0]["end"], result[1]["start"])
 
 
 class FilterChainOrderingTests(unittest.TestCase):
@@ -473,6 +477,20 @@ class GuardrailConstantsTests(unittest.TestCase):
 
     def test_overlay_filter_keywords_include_setpts(self) -> None:
         self.assertIn("setpts=", OVERLAY_FILTER_KEYWORDS)
+
+
+class CLIValidationTests(unittest.TestCase):
+    def test_overwrite_and_skip_existing_mutually_exclusive(self) -> None:
+        """--overwrite and --skip-existing together must be rejected."""
+        import sys
+        from unittest.mock import patch
+
+        with patch.object(
+            sys, "argv", ["media-burn-subtitles", "input.mp4", "--srt", "subs.srt",
+                          "-o", "output.mp4", "--overwrite", "--skip-existing"]
+        ):
+            result = main()
+        self.assertEqual(result, 1)
 
 
 if __name__ == "__main__":

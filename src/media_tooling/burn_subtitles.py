@@ -114,6 +114,14 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
+
+    if args.overwrite and args.skip_existing:
+        print(
+            "Error: --overwrite and --skip-existing are mutually exclusive.",
+            file=sys.stderr,
+        )
+        return 1
+
     input_path = Path(args.input).expanduser().resolve()
     srt_path = Path(args.srt).expanduser().resolve()
     output_path = Path(args.output).expanduser().resolve()
