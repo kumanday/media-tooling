@@ -228,9 +228,17 @@ def run_transcription_job(
     ensure_parent_dirs(audio_path, txt_path, srt_path, json_path)
 
     wav_cleanup_path: Path | None = None
-    persistent_audio_path = audio_path  # original path for JSON/print before WAV reassignment
+    persistent_audio_path = audio_path  # path that survives WAV cleanup
     if is_video_file(input_path):
         if resolved_backend == "elevenlabs":
+            # Extract persistent audio (same as whisper) for user reference
+            extract_audio(
+                input_path=input_path,
+                audio_path=audio_path,
+                ffmpeg_bin=ffmpeg_bin,
+                overwrite=overwrite,
+            )
+            # Also extract temp mono 16kHz PCM WAV for Scribe API upload
             wav_audio_path = audio_path.with_suffix(".wav")
             extract_audio_pcm_wav(
                 input_path=input_path,
@@ -249,6 +257,7 @@ def run_transcription_job(
             )
     else:
         if resolved_backend == "elevenlabs" and audio_path.suffix.lower() != ".wav":
+            # Original audio file persists; create temp WAV for upload
             wav_audio_path = audio_path.with_suffix(".wav")
             extract_audio_pcm_wav(
                 input_path=audio_path,
