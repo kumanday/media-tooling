@@ -375,6 +375,7 @@ class BatchSubtitleBackendChoiceTests(unittest.TestCase):
             self.assertNotEqual(result, 0)
             output = mock_out.getvalue()
             self.assertIn("FAILED", output)
+            self.assertIn("ELEVENLABS_API_KEY", output)
             self.assertIn("--api-key", output)
 
 
