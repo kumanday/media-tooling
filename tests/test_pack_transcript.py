@@ -182,6 +182,16 @@ class GroupIntoPhrasesTests(unittest.TestCase):
         # None speaker should not trigger a break with "A"
         self.assertEqual(len(phrases), 1)
 
+    def test_speaker_change_after_none_preserves_break(self) -> None:
+        words = [
+            {"word": "Hello", "start": 0.0, "end": 1.0, "speaker": None},
+            {"word": "there", "start": 1.1, "end": 2.0, "speaker": "A"},
+            {"word": "Hi", "start": 2.1, "end": 3.0, "speaker": "B"},
+        ]
+        phrases = group_into_phrases(words, silence_threshold=0.5)
+        # A and B are different known speakers → must break
+        self.assertGreaterEqual(len(phrases), 2)
+
 
 class RenderMarkdownTests(unittest.TestCase):
     def test_render_with_phrases(self) -> None:

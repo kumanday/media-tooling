@@ -163,6 +163,8 @@ def group_into_phrases(
 
         if not current_words:
             current_speaker = speaker
+        elif current_speaker is None and speaker is not None:
+            current_speaker = speaker
         current_words.append(w)
         prev_end = end
 
