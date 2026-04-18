@@ -12,6 +12,7 @@ from media_tooling.subtitle import (
     compute_source_hash,
     elevenlabs_backend_available,
     maybe_correct_suspicious_timestamps,
+    merge_tiny_adjacent_blocks,
     parse_scribe_response,
     resegment_for_subtitles,
     resolve_backend,
@@ -308,7 +309,6 @@ class ScribeResponseParsingTests(unittest.TestCase):
 
     def test_merge_tiny_blocks_never_crosses_speaker_boundary(self) -> None:
         """Adjacent tiny blocks from different speakers must NOT be merged."""
-        from media_tooling.subtitle import merge_tiny_adjacent_blocks
         blocks = [
             {"start": 0.0, "end": 0.3, "text": "Hi", "speaker_id": "speaker_0"},
             {"start": 0.3, "end": 0.6, "text": "Hey", "speaker_id": "speaker_1"},

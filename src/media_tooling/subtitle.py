@@ -228,6 +228,7 @@ def run_transcription_job(
     ensure_parent_dirs(audio_path, txt_path, srt_path, json_path)
 
     wav_cleanup_path: Path | None = None
+    persistent_audio_path = audio_path  # original path for JSON/print before WAV reassignment
     if is_video_file(input_path):
         if resolved_backend == "elevenlabs":
             wav_audio_path = audio_path.with_suffix(".wav")
@@ -295,7 +296,7 @@ def run_transcription_job(
     srt_text = build_srt(segments)
     payload: dict[str, Any] = {
         "input_path": str(input_path),
-        "audio_path": str(audio_path),
+        "audio_path": str(persistent_audio_path),
         "backend": resolved_backend,
         "model": model_name,
         "language": result.get("language"),
@@ -325,7 +326,7 @@ def run_transcription_job(
     print(f"Subtitles:  {srt_path}")
     print(f"Metadata:   {json_path}")
     if is_video_file(input_path):
-        print(f"Audio:      {audio_path}")
+        print(f"Audio:      {persistent_audio_path}")
 
 
 def resolve_output_paths(
