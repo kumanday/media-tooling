@@ -27,6 +27,7 @@ DEFAULT_N_FRAMES = 10
 SILENCE_THRESHOLD_SECS = 0.4
 CANVAS_MIN_WIDTH = 1920
 FRAME_HEIGHT = 180
+FRAME_GAP = 4
 MIN_FRAME_WIDTH = 10
 WAVEFORM_HEIGHT = 220
 FONT_CANDIDATES = [
@@ -410,8 +411,7 @@ def _time_to_x(t: float, start: float, end: float, x0: int, span: int) -> int:
 
 def _cap_n_frames(n_frames: int, strip_width: int) -> int:
     """Cap *n_frames* so each frame is at least MIN_FRAME_WIDTH pixels wide."""
-    gap = 4
-    max_n = strip_width // (MIN_FRAME_WIDTH + gap)
+    max_n = strip_width // (MIN_FRAME_WIDTH + FRAME_GAP)
     return min(n_frames, max(1, max_n))
 
 
@@ -425,8 +425,7 @@ def _render_filmstrip(
 ) -> tuple[int, int]:
     """Render filmstrip frames onto *canvas*. Returns (strip_x1, strip_span)."""
     frame_height = layout["frame_height"]
-    gap = 4
-    frame_w = (strip_width - (n_frames - 1) * gap) // n_frames
+    frame_w = (strip_width - (n_frames - 1) * FRAME_GAP) // n_frames
     filmstrip_y = layout["filmstrip_y"]
 
     placed = min(len(frame_paths), n_frames)
@@ -435,10 +434,10 @@ def _render_filmstrip(
         with Image.open(fp) as img:
             resized = img.convert("RGB").resize((frame_w, frame_height), _RESAMPLING)
         canvas.paste(resized, (cursor, filmstrip_y))
-        cursor += frame_w + gap
+        cursor += frame_w + FRAME_GAP
 
     if placed > 0:
-        strip_x1 = cursor - gap  # last frame has no trailing gap
+        strip_x1 = cursor - FRAME_GAP  # last frame has no trailing gap
     else:
         strip_x1 = strip_x0
     return strip_x1, strip_x1 - strip_x0

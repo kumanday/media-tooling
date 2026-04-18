@@ -11,6 +11,7 @@ from PIL import Image, ImageDraw
 
 from media_tooling.ffprobe_utils import probe_duration
 from media_tooling.timeline_view import (
+    FRAME_GAP,
     _cap_n_frames,
     _create_placeholder_frame,
     _render_filmstrip,
@@ -482,10 +483,9 @@ class TestCapNFrames(unittest.TestCase):
 
     def test_cap_produces_readable_frame_width(self) -> None:
         strip_width = 1820
-        gap = 4
         for n in [10, 50, 100, 200, 500]:
             capped = _cap_n_frames(n, strip_width)
-            frame_w = (strip_width - (capped - 1) * gap) // capped
+            frame_w = (strip_width - (capped - 1) * FRAME_GAP) // capped
             self.assertGreaterEqual(frame_w, 10, f"frame_w too small for n={n}, capped={capped}")
 
 
