@@ -40,6 +40,7 @@ FONT_CANDIDATES = [
 BG = (18, 18, 22)
 FG = (235, 235, 235)
 DIM = (110, 110, 120)
+ACCENT = (255, 140, 60)
 SILENCE_FILL = (50, 80, 120, 120)
 WAVE_COLOUR = (140, 180, 255)
 
@@ -400,6 +401,128 @@ def compute_layout(
     }
 
 
+def _time_to_x(t: float, start: float, end: float, x0: int, span: int) -> int:
+    """Map a timestamp *t* to a horizontal pixel position."""
+    frac = (t - start) / max(1e-6, end - start)
+    return int(x0 + frac * span)
+
+
+def _render_filmstrip(
+    canvas: Image.Image,
+    frame_paths: list[Path],
+    n_frames: int,
+    layout: dict[str, int],
+    strip_x0: int,
+    strip_width: int,
+) -> tuple[int, int]:
+    """Render filmstrip frames onto *canvas*. Returns (strip_x1, strip_span)."""
+    frame_height = layout["frame_height"]
+    frame_w = strip_width // n_frames
+    gap = 4
+    filmstrip_y = layout["filmstrip_y"]
+
+    cursor = strip_x0
+    for fp in frame_paths:
+        img = Image.open(fp).convert("RGB")
+        resized = img.resize((frame_w, frame_height), _RESAMPLING)
+        canvas.paste(resized, (cursor, filmstrip_y))
+        cursor += frame_w + gap
+
+    strip_x1 = strip_x0 + n_frames * frame_w + (n_frames - 1) * gap
+    return strip_x1, strip_x1 - strip_x0
+
+
+def _render_waveform(
+    draw: ImageDraw.ImageDraw,
+    envelope: np.ndarray[tuple[int], np.dtype[np.float32]],
+    layout: dict[str, int],
+    strip_x0: int,
+    strip_x1: int,
+    silences: list[tuple[float, float]],
+    words: list[dict[str, Any]],
+    start: float,
+    end: float,
+    small_font: ImageFont.FreeTypeFont | ImageFont.ImageFont,
+) -> None:
+    """Render waveform area: background, silence shading, envelope, and word labels."""
+    wave_y = layout["wave_y"]
+    waveform_height = layout["waveform_height"]
+    strip_span = strip_x1 - strip_x0
+
+    # Background
+    draw.rectangle(
+        (strip_x0, wave_y, strip_x1, wave_y + waveform_height),
+        fill=(28, 28, 34),
+    )
+
+    # Silence shading
+    for gap_start, gap_end in silences:
+        xa = _time_to_x(gap_start, start, end, strip_x0, strip_span)
+        xb = _time_to_x(gap_end, start, end, strip_x0, strip_span)
+        draw.rectangle((xa, wave_y, xb, wave_y + waveform_height), fill=SILENCE_FILL)
+
+    # Envelope
+    mid_y = wave_y + waveform_height // 2
+    max_amp = waveform_height // 2 - 8
+    points_top: list[tuple[int, int]] = []
+    points_bot: list[tuple[int, int]] = []
+    for i, v in enumerate(envelope):
+        xi = strip_x0 + int(i * strip_span / max(1, len(envelope) - 1))
+        a = int(v * max_amp)
+        points_top.append((xi, mid_y - a))
+        points_bot.append((xi, mid_y + a))
+    if points_top:
+        draw.line(points_top, fill=WAVE_COLOUR, width=1, joint="curve")
+        draw.line(points_bot, fill=WAVE_COLOUR, width=1, joint="curve")
+        poly = points_top + list(reversed(points_bot))
+        draw.polygon(poly, fill=(*WAVE_COLOUR, 60))
+
+    # Word labels
+    last_label_x = -9999
+    for w in words:
+        word_text = (w.get("word") or w.get("text") or "").strip()
+        ws = w.get("start")
+        we = w.get("end")
+        if not word_text or ws is None or we is None:
+            continue
+        if (we - ws) < 0.05:
+            continue
+        cx = (_time_to_x(float(ws), start, end, strip_x0, strip_span)
+              + _time_to_x(float(we), start, end, strip_x0, strip_span)) // 2
+        if cx - last_label_x < 28:
+            continue
+        draw.line((cx, wave_y - 4, cx, wave_y), fill=DIM, width=1)
+        draw.text((cx + 2, wave_y - 18), word_text, fill=FG, font=small_font)
+        last_label_x = cx
+
+
+def _render_ruler(
+    draw: ImageDraw.ImageDraw,
+    layout: dict[str, int],
+    start: float,
+    end: float,
+    strip_x0: int,
+    strip_span: int,
+    label_font: ImageFont.FreeTypeFont | ImageFont.ImageFont,
+    silences: list[tuple[float, float]],
+) -> None:
+    """Render time ruler and silence legend."""
+    ruler_y = layout["ruler_y"]
+    n_ticks = 6
+    for i in range(n_ticks + 1):
+        frac = i / n_ticks
+        t = start + frac * (end - start)
+        xi = strip_x0 + int(frac * strip_span)
+        draw.line((xi, ruler_y, xi, ruler_y + 6), fill=DIM, width=1)
+        draw.text((xi - 20, ruler_y + 8), f"{t:.2f}s", fill=DIM, font=label_font)
+
+    # Silence legend
+    label_y = layout["label_y"]
+    if silences:
+        txt = f"shaded bands = silences ≥ 400ms ({len(silences)} gap(s))"
+        draw.text((strip_x0, label_y), txt, fill=DIM, font=label_font)
+
+
 def generate_timeline(
     *,
     input_path: Path,
@@ -412,122 +535,55 @@ def generate_timeline(
 ) -> None:
     """Produce the composite PNG and save to *output_path*."""
     timestamps = compute_frame_timestamps(start, end, n_frames)
-
     layout = compute_layout()
+
+    strip_x0 = 50
+    strip_width = CANVAS_MIN_WIDTH - 100
 
     with tempfile.TemporaryDirectory() as tmp:
         tmp_dir = Path(tmp)
         frame_paths = extract_frames(input_path, timestamps, ffmpeg_bin, tmp_dir)
 
-        # Load and resize frames to uniform dimensions (ensures time alignment)
-        frame_height = layout["frame_height"]
-        strip_x0 = 50
-        strip_width = CANVAS_MIN_WIDTH - 100
-        # Each frame gets an equal share of the strip so time_to_x aligns
-        frame_w = strip_width // n_frames
-        gap = 4
-        imgs: list[Image.Image] = []
-        for fp in frame_paths:
-            img = Image.open(fp).convert("RGB")
-            imgs.append(img.resize((frame_w, frame_height), _RESAMPLING))
-
-        canvas_width = CANVAS_MIN_WIDTH
-
-        canvas = Image.new("RGB", (canvas_width, layout["canvas_height"]), BG)
+        canvas = Image.new("RGB", (CANVAS_MIN_WIDTH, layout["canvas_height"]), BG)
         draw = ImageDraw.Draw(canvas, "RGBA")
 
         header_font = load_font(22)
         label_font = load_font(14)
         small_font = load_font(12)
 
-        # Header
+        # Header (ACCENT highlights the time range for quick scanning)
         draw.text(
             (50, 12),
-            f"{input_path.name}   {start:.2f}s → {end:.2f}s   "
-            f"({(end - start):.2f}s, {n_frames} frames)",
+            f"{input_path.name}   ",
             fill=FG,
             font=header_font,
         )
-
-        # Filmstrip (uniform frame width ensures temporal alignment)
-        filmstrip_y = layout["filmstrip_y"]
-
-        cursor = strip_x0
-        for img in imgs:
-            canvas.paste(img, (cursor, filmstrip_y))
-            cursor += frame_w + gap
-        strip_x1 = strip_x0 + n_frames * frame_w + (n_frames - 1) * gap
-        strip_span = strip_x1 - strip_x0
-
-        def time_to_x(t: float) -> int:
-            frac = (t - start) / max(1e-6, end - start)
-            return int(strip_x0 + frac * strip_span)
-
-        # Waveform background
-        wave_y = layout["wave_y"]
-        waveform_height = layout["waveform_height"]
-        draw.rectangle(
-            (strip_x0, wave_y, strip_x1, wave_y + waveform_height),
-            fill=(28, 28, 34),
+        header_name_w = int(draw.textlength(f"{input_path.name}   ", font=header_font))
+        draw.text(
+            (50 + header_name_w, 12),
+            f"{start:.2f}s → {end:.2f}s   ({(end - start):.2f}s, {n_frames} frames)",
+            fill=ACCENT,
+            font=header_font,
         )
 
-        # Silence shading
+        # Filmstrip
+        strip_x1, strip_span = _render_filmstrip(
+            canvas, frame_paths, n_frames, layout, strip_x0, strip_width,
+        )
+
+        # Transcript / silence data
         words = load_words(transcript_path, start, end)
         silences = find_silences(words, start, end) if words else []
-        for gap_start, gap_end in silences:
-            xa = time_to_x(gap_start)
-            xb = time_to_x(gap_end)
-            draw.rectangle((xa, wave_y, xb, wave_y + waveform_height), fill=SILENCE_FILL)
 
-        # Waveform envelope
+        # Waveform + word labels
         env = compute_envelope(input_path, start, end, ffmpeg_bin, samples=max(strip_span, 200))
-        mid_y = wave_y + waveform_height // 2
-        max_amp = waveform_height // 2 - 8
-        points_top: list[tuple[int, int]] = []
-        points_bot: list[tuple[int, int]] = []
-        for i, v in enumerate(env):
-            xi = strip_x0 + int(i * strip_span / max(1, len(env) - 1))
-            a = int(v * max_amp)
-            points_top.append((xi, mid_y - a))
-            points_bot.append((xi, mid_y + a))
-        if points_top:
-            draw.line(points_top, fill=WAVE_COLOUR, width=1, joint="curve")
-            draw.line(points_bot, fill=WAVE_COLOUR, width=1, joint="curve")
-            poly = points_top + list(reversed(points_bot))
-            draw.polygon(poly, fill=(*WAVE_COLOUR, 60))
+        _render_waveform(
+            draw, env, layout, strip_x0, strip_x1,
+            silences, words, start, end, small_font,
+        )
 
-        # Word labels
-        last_label_x = -9999
-        for w in words:
-            word_text = (w.get("word") or w.get("text") or "").strip()
-            ws = w.get("start")
-            we = w.get("end")
-            if not word_text or ws is None or we is None:
-                continue
-            if (we - ws) < 0.05:
-                continue
-            cx = (time_to_x(float(ws)) + time_to_x(float(we))) // 2
-            if cx - last_label_x < 28:
-                continue
-            draw.line((cx, wave_y - 4, cx, wave_y), fill=DIM, width=1)
-            draw.text((cx + 2, wave_y - 18), word_text, fill=FG, font=small_font)
-            last_label_x = cx
-
-        # Time ruler
-        ruler_y = layout["ruler_y"]
-        n_ticks = 6
-        for i in range(n_ticks + 1):
-            frac = i / n_ticks
-            t = start + frac * (end - start)
-            xi = strip_x0 + int(frac * strip_span)
-            draw.line((xi, ruler_y, xi, ruler_y + 6), fill=DIM, width=1)
-            draw.text((xi - 20, ruler_y + 8), f"{t:.2f}s", fill=DIM, font=label_font)
-
-        # Silence legend
-        label_y = layout["label_y"]
-        if silences:
-            txt = f"shaded bands = silences ≥ 400ms ({len(silences)} gap(s))"
-            draw.text((strip_x0, label_y), txt, fill=DIM, font=label_font)
+        # Time ruler + legend
+        _render_ruler(draw, layout, start, end, strip_x0, strip_span, label_font, silences)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     canvas.save(str(output_path), "PNG", optimize=True)

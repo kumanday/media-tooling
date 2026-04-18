@@ -7,10 +7,14 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageDraw
 
 from media_tooling.ffprobe_utils import probe_duration
 from media_tooling.timeline_view import (
+    _render_filmstrip,
+    _render_ruler,
+    _render_waveform,
+    _time_to_x,
     compute_envelope,
     compute_frame_timestamps,
     compute_layout,
@@ -362,6 +366,80 @@ class TestOutputDimensions(unittest.TestCase):
             self.assertTrue(out_path.exists())
             with Image.open(str(out_path)) as result:
                 self.assertGreaterEqual(result.width, 1920)
+
+
+# ---------------------------------------------------------------------------
+# _time_to_x helper
+# ---------------------------------------------------------------------------
+
+
+class TestTimeToX(unittest.TestCase):
+    def test_start_maps_to_x0(self) -> None:
+        self.assertEqual(_time_to_x(0.0, 0.0, 60.0, 50, 1820), 50)
+
+    def test_end_maps_to_x0_plus_span(self) -> None:
+        self.assertEqual(_time_to_x(60.0, 0.0, 60.0, 50, 1820), 50 + 1820)
+
+    def test_midpoint(self) -> None:
+        result = _time_to_x(30.0, 0.0, 60.0, 50, 1820)
+        self.assertAlmostEqual(result, 50 + 910, delta=1)
+
+
+# ---------------------------------------------------------------------------
+# _render_filmstrip
+# ---------------------------------------------------------------------------
+
+
+class TestRenderFilmstrip(unittest.TestCase):
+    def test_returns_strip_dimensions(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            frame_dir = Path(tmp) / "frames"
+            frame_dir.mkdir()
+            frame_paths: list[Path] = []
+            for i in range(3):
+                fp = frame_dir / f"f_{i:03d}.jpg"
+                img = Image.new("RGB", (320, 180), (40, 40, 44))
+                img.save(str(fp), "JPEG")
+                frame_paths.append(fp)
+
+            canvas = Image.new("RGB", (1920, 600), (0, 0, 0))
+            layout = compute_layout()
+            x1, span = _render_filmstrip(canvas, frame_paths, 3, layout, 50, 1820)
+            self.assertGreater(x1, 50)
+            self.assertGreater(span, 0)
+
+
+# ---------------------------------------------------------------------------
+# _render_ruler
+# ---------------------------------------------------------------------------
+
+
+class TestRenderRuler(unittest.TestCase):
+    def test_ruler_draws_without_error(self) -> None:
+        canvas = Image.new("RGB", (1920, 600), (0, 0, 0))
+        draw = ImageDraw.Draw(canvas, "RGBA")
+        layout = compute_layout()
+        from media_tooling.timeline_view import load_font
+        label_font = load_font(14)
+        _render_ruler(draw, layout, 0.0, 60.0, 50, 1820, label_font, [])
+
+
+# ---------------------------------------------------------------------------
+# _render_waveform
+# ---------------------------------------------------------------------------
+
+
+class TestRenderWaveform(unittest.TestCase):
+    def test_waveform_draws_without_error(self) -> None:
+        canvas = Image.new("RGB", (1920, 600), (0, 0, 0))
+        draw = ImageDraw.Draw(canvas, "RGBA")
+        layout = compute_layout()
+        from media_tooling.timeline_view import load_font
+        small_font = load_font(12)
+        env = np.zeros(2000, dtype=np.float32)
+        _render_waveform(
+            draw, env, layout, 50, 1870, [], [], 0.0, 60.0, small_font,
+        )
 
 
 if __name__ == "__main__":
