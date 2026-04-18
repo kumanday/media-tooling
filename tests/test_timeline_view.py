@@ -326,9 +326,9 @@ class TestOutputDimensions(unittest.TestCase):
             )
 
             self.assertTrue(out_path.exists())
-            result = Image.open(str(out_path))
-            self.assertGreaterEqual(result.width, 1920)
-            self.assertGreater(result.height, 0)
+            with Image.open(str(out_path)) as result:
+                self.assertGreaterEqual(result.width, 1920)
+                self.assertGreater(result.height, 0)
 
 
 if __name__ == "__main__":
