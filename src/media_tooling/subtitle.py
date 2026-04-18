@@ -74,7 +74,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--model",
         default=DEFAULT_MODEL,
-        help=f"Whisper model to use. Default: {DEFAULT_MODEL}.",
+        help=f"Model to use (ignored for elevenlabs backend). Default: {DEFAULT_MODEL}.",
     )
     parser.add_argument(
         "--backend",
