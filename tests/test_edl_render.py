@@ -914,6 +914,11 @@ class ParseArgsTests(unittest.TestCase):
         with self.assertRaises(SystemExit):
             parse_args(["edl.json", "-o", "output.mp4", "--preview", "--draft"])
 
+    def test_build_subtitles_and_no_subtitles_mutually_exclusive(self) -> None:
+        from media_tooling.edl_render import parse_args
+        with self.assertRaises(SystemExit):
+            parse_args(["edl.json", "-o", "output.mp4", "--build-subtitles", "--no-subtitles"])
+
 
 class RenderEDLTests(unittest.TestCase):
     @patch("media_tooling.edl_render.apply_loudnorm_two_pass", return_value=True)

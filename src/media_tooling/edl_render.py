@@ -705,6 +705,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     args = parser.parse_args(argv)
     if args.preview and args.draft:
         parser.error("--preview and --draft are mutually exclusive")
+    if args.build_subtitles and args.no_subtitles:
+        parser.error("--build-subtitles and --no-subtitles are mutually exclusive")
     return args
 
 
@@ -874,8 +876,11 @@ def render_edl(
             clip.unlink(missing_ok=True)
         clips_dir.rmdir()
 
-    size_mb = output_path.stat().st_size / (1024 * 1024)
-    print(f"\ndone: {output_path} ({size_mb:.1f} MB)")
+    if output_path.exists():
+        size_mb = output_path.stat().st_size / (1024 * 1024)
+        print(f"\ndone: {output_path} ({size_mb:.1f} MB)")
+    else:
+        print(f"\ndone: {output_path} (output file missing)")
     return 0
 
 
