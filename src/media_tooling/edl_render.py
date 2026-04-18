@@ -219,20 +219,17 @@ def apply_padding(
     """Apply a working-window pad around cut edges.
 
     Pads *start* backward and *end* forward by *min_pad* (default 30 ms),
-    absorbing 50–100 ms of ASR timestamp drift.  Pads never exceed
-    *max_pad* (200 ms) on either side (safety cap) and are clamped to ``0``
+    absorbing 50–100 ms of ASR timestamp drift.  Pads are clamped to ``0``
     on the left and *source_duration* on the right when available.
 
     Returns ``(padded_start, padded_end)``.
+
+    Raises ``ValueError`` if *min_pad* > *max_pad*.
     """
+    if min_pad > max_pad:
+        raise ValueError(f"min_pad ({min_pad}) must not exceed max_pad ({max_pad})")
     padded_start = max(0.0, start - min_pad)
     padded_end = end + min_pad
-
-    # Cap at max_pad on each side (safety limit)
-    if start - padded_start > max_pad:
-        padded_start = start - max_pad
-    if padded_end - end > max_pad:
-        padded_end = end + max_pad
 
     # Clamp to source bounds if known
     if source_duration is not None:
@@ -444,7 +441,8 @@ def _copy_to_output(
         print("ffmpeg not found — ensure ffmpeg is installed and on PATH", file=sys.stderr)
         return 1
     except subprocess.CalledProcessError as exc:
-        print(f"copy-to-output failed: {exc}", file=sys.stderr)
+        detail = (exc.stderr or b"").decode(errors="replace")[:500]
+        print(f"copy-to-output failed: {detail}", file=sys.stderr)
         return 1
     return 0
 

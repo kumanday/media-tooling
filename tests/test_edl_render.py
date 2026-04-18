@@ -347,11 +347,11 @@ class ApplyPaddingTests(unittest.TestCase):
         self.assertAlmostEqual(start, 9.9, places=2)
         self.assertAlmostEqual(end, 20.1, places=2)
 
-    def test_max_pad_caps_when_min_pad_exceeds(self) -> None:
-        """When min_pad > max_pad, max_pad acts as safety cap."""
-        start, end = apply_padding(10.0, 20.0, min_pad=0.5, max_pad=0.2)
-        self.assertAlmostEqual(start, 9.8, places=2)
-        self.assertAlmostEqual(end, 20.2, places=2)
+    def test_min_pad_exceeds_max_pad_raises_value_error(self) -> None:
+        """When min_pad > max_pad, raises ValueError."""
+        with self.assertRaises(ValueError) as ctx:
+            apply_padding(10.0, 20.0, min_pad=0.5, max_pad=0.2)
+        self.assertIn("min_pad", str(ctx.exception))
 
     def test_max_pad_respected_when_equal(self) -> None:
         """When min_pad == max_pad, pad is exactly that amount."""
