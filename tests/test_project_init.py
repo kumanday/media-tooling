@@ -174,7 +174,7 @@ class ProjectInitTests(unittest.TestCase):
     def test_ensure_project_directories_includes_edit_dir(self) -> None:
         self.assertIn("edit", PROJECT_SUBDIRECTORIES)
 
-    def test_project_memory_initial_content_has_required_sections(self) -> None:
+    def test_project_memory_initial_content_has_title(self) -> None:
         self.assertIn("# Project Memory", PROJECT_MEMORY_INITIAL_CONTENT)
 
     def test_project_agents_template_contains_hard_rules_section(self) -> None:
