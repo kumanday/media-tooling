@@ -219,10 +219,15 @@ def run_transcription_job(
     resolved_backend = resolve_backend(backend)
     source_hash_value: str | None = None
 
-    if skip_existing and txt_path.exists() and srt_path.exists() and json_path.exists():
+    if skip_existing:
         source_hash_value = compute_source_hash(input_path)
+    if skip_existing and txt_path.exists() and srt_path.exists() and json_path.exists():
         if source_matches_cache(json_path, input_path, backend=resolved_backend, computed_hash=source_hash_value):
             print(f"Skipping existing outputs for {input_path}")
+            # Backfill source_hash into legacy JSON that lacks it, so future
+            # runs can detect source changes instead of always falling through.
+            if source_hash_value is not None:
+                _backfill_source_hash(json_path, source_hash_value)
             return
         else:
             print(f"Cache miss for {input_path}; re-transcribing.")
@@ -593,7 +598,7 @@ def call_scribe_api(
                 headers={"xi-api-key": api_key},
                 files={"file": (audio_path.name, f, "audio/wav")},
                 data=data,
-                timeout=1800,
+                timeout=300,
             )
         except Exception as exc:
             raise RuntimeError(
@@ -721,8 +726,11 @@ def source_matches_cache(
     if not cached_hash:
         # Outputs produced without --skip-existing lack source_hash;
         # honor skip-existing by falling back to backend match when
-        # hash is absent.  The caller backfills source_hash into the
-        # JSON so future runs can detect source changes.
+        # hash is absent.  This means a source change after a run
+        # without --skip-existing will not be detected until the
+        # user runs without --skip-existing or with --overwrite.
+        # Users who need full cache integrity should always use
+        # --skip-existing.
         return True
     current_hash = computed_hash or compute_source_hash(input_path)
     if cached_hash != current_hash:
