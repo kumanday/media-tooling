@@ -320,11 +320,15 @@ def run_transcription_job(
             "source_segment_count": source_segment_count,
             "segment_count": len(segments),
             "subtitle_segmentation": subtitle_segmentation,
-            # Note: SHA-256 hashes the full source file; adds I/O cost for large
-            # files but ensures cache integrity across all backends (Hard Rule 9).
-            "source_hash": source_hash_value or compute_source_hash(input_path),
             "segments": segments,
         }
+        if source_hash_value is not None:
+            # Only include source_hash when it was computed for cache
+            # checking (skip_existing=True). Avoids the I/O cost of
+            # SHA-256 hashing large files on every default invocation
+            # while still providing full cache integrity when the user
+            # opts into skip-existing (Hard Rule 9).
+            payload["source_hash"] = source_hash_value
 
         if resolved_backend == "elevenlabs":
             payload["audio_events"] = result.get("audio_events", [])
@@ -715,8 +719,10 @@ def source_matches_cache(
         return False
     cached_hash = cached.get("source_hash")
     if not cached_hash:
-        # Legacy outputs lack source_hash; honor skip-existing by
-        # falling back to backend match when hash is absent.
+        # Outputs produced without --skip-existing lack source_hash;
+        # honor skip-existing by falling back to backend match when
+        # hash is absent.  Users who need full cache integrity should
+        # always run with --skip-existing.
         return True
     current_hash = computed_hash or compute_source_hash(input_path)
     if cached_hash != current_hash:
