@@ -588,8 +588,8 @@ def generate_timeline(
         # Time ruler + legend
         _render_ruler(draw, layout, start, end, strip_x0, strip_span, label_font, silences)
 
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    canvas.save(str(output_path), "PNG", optimize=True)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        canvas.save(str(output_path), "PNG", optimize=True)
 
 
 if __name__ == "__main__":

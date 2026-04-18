@@ -349,22 +349,18 @@ class TestOutputDimensions(unittest.TestCase):
 
     @patch("media_tooling.timeline_view.probe_duration", return_value=60.0)
     @patch("media_tooling.timeline_view.compute_envelope")
-    def test_output_with_real_frame_loading(
+    @patch("media_tooling.timeline_view.subprocess.run")
+    def test_placeholder_frame_loading_through_generate_timeline(
         self,
+        mock_run: MagicMock,
         mock_env: MagicMock,
         mock_dur: MagicMock,
     ) -> None:
-        """Exercise the frame-loading-to-canvas pipeline without mocking extract_frames."""
-        with tempfile.TemporaryDirectory() as tmp:
-            tmp_dir = Path(tmp)
-            frame_dir = tmp_dir / "frames"
-            frame_dir.mkdir()
-            for i in range(3):
-                fp = frame_dir / f"f_{i:03d}.jpg"
-                img = Image.new("RGB", (320, 180), (40 + i * 10, 40, 44))
-                img.save(str(fp), "JPEG")
-            mock_env.return_value = np.zeros(2000, dtype=np.float32)
+        """Exercise frame-loading-to-canvas pipeline via placeholder frames (ffmpeg-failure path)."""
+        mock_run.return_value = MagicMock(returncode=1)
+        mock_env.return_value = np.zeros(2000, dtype=np.float32)
 
+        with tempfile.TemporaryDirectory() as tmp:
             out_path = Path(tmp) / "output.png"
             generate_timeline(
                 input_path=Path("test.mp4"),
