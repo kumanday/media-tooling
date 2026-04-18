@@ -330,6 +330,8 @@ class BatchSubtitleBackendChoiceTests(unittest.TestCase):
 
     def test_backend_elevenlabs_without_key_reports_failure(self) -> None:
         """--backend elevenlabs without --api-key or env var reports failure."""
+        from unittest.mock import MagicMock
+
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             inputs_file = root / "inputs.txt"
@@ -364,7 +366,7 @@ class BatchSubtitleBackendChoiceTests(unittest.TestCase):
                 ),
                 patch(
                     "media_tooling.subtitle._requests_module",
-                    __import__("unittest.mock").MagicMock(),
+                    MagicMock(),
                 ),
             ):
                 result = main()
