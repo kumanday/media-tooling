@@ -28,6 +28,7 @@ required-environments = [
 [project.scripts]
 media-batch-contact-sheet = "media_tooling.batch_contact_sheet:main"
 media-batch-subtitle = "media_tooling.batch_subtitle:main"
+media-burn-subtitles = "media_tooling.burn_subtitles:main"
 media-contact-sheet = "media_tooling.contact_sheet:main"
 media-rough-cut = "media_tooling.rough_cut:main"
 media-subtitle = "media_tooling.subtitle:main"
