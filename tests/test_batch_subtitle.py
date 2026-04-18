@@ -375,7 +375,7 @@ class BatchSubtitleBackendChoiceTests(unittest.TestCase):
             self.assertNotEqual(result, 0)
             output = mock_out.getvalue()
             self.assertIn("FAILED", output)
-            self.assertIn("api_key", output.lower())
+            self.assertIn("--api-key", output)
 
 
 if __name__ == "__main__":
