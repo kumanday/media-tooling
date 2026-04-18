@@ -204,6 +204,33 @@ class ValidateEDLTests(unittest.TestCase):
         edl["sources"] = ["videos/source1.mp4"]
         validate_edl(edl)  # basename "source1.mp4" matches range source
 
+    def test_top_level_unknown_grade_rejected(self) -> None:
+        edl = _minimal_edl()
+        del edl["ranges"][0]["grade"]
+        edl["grade"] = "bad_preset"
+        with self.assertRaises(EDLSchemaError) as ctx:
+            validate_edl(edl)
+        self.assertIn("top-level grade", str(ctx.exception))
+        self.assertIn("bad_preset", str(ctx.exception))
+
+    def test_top_level_known_grade_passes(self) -> None:
+        edl = _minimal_edl()
+        del edl["ranges"][0]["grade"]
+        edl["grade"] = "subtle"
+        validate_edl(edl)  # should not raise
+
+    def test_top_level_auto_grade_passes(self) -> None:
+        edl = _minimal_edl()
+        del edl["ranges"][0]["grade"]
+        edl["grade"] = "auto"
+        validate_edl(edl)  # should not raise
+
+    def test_top_level_raw_filter_grade_passes(self) -> None:
+        edl = _minimal_edl()
+        del edl["ranges"][0]["grade"]
+        edl["grade"] = "eq=contrast=1.1:brightness=0.05"
+        validate_edl(edl)  # should not raise
+
 
 # ── Grade resolution tests ──────────────────────────────────────────────────
 
@@ -711,6 +738,36 @@ class ExtractAllSegmentsTests(unittest.TestCase):
         vf_value = cmd[vf_idx + 1]
         self.assertIn("contrast=1.03", vf_value)
 
+    @patch("media_tooling.edl_render.subprocess.run")
+    def test_corrupt_transcript_falls_back_to_raw_cut_points(
+        self, mock_run: MagicMock
+    ) -> None:
+        """Corrupt transcript JSON in extract_all_segments warns and uses raw cuts."""
+        mock_run.return_value = MagicMock(returncode=0)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            edit_dir = Path(tmpdir)
+            tr_dir = edit_dir / "transcripts"
+            tr_dir.mkdir()
+            # Write corrupt JSON
+            (tr_dir / "source1.mp4.json").write_text("NOT JSON{{{", encoding="utf-8")
+            edl = {
+                "version": 1,
+                "sources": ["source1.mp4"],
+                "ranges": [
+                    {"source": "source1.mp4", "start": 1.0, "end": 5.0},
+                ],
+            }
+            with patch("builtins.print") as mock_print:
+                seg_paths = extract_all_segments(edl, edit_dir)
+            # Should still extract (no crash), with raw cut points
+            self.assertEqual(len(seg_paths), 1)
+            # Should have printed a warning about corrupt transcript
+            warning_calls = [
+                c for c in mock_print.call_args_list
+                if "corrupt transcript" in str(c)
+            ]
+            self.assertGreater(len(warning_calls), 0)
+
 
 # ── Concat tests (Hard Rule 2) ───────────────────────────────────────────────
 
@@ -829,6 +886,11 @@ class ParseArgsTests(unittest.TestCase):
         from media_tooling.edl_render import parse_args
         args = parse_args(["edl.json", "-o", "output.mp4", "--no-loudnorm"])
         self.assertTrue(args.no_loudnorm)
+
+    def test_preview_and_draft_mutually_exclusive(self) -> None:
+        from media_tooling.edl_render import parse_args
+        with self.assertRaises(SystemExit):
+            parse_args(["edl.json", "-o", "output.mp4", "--preview", "--draft"])
 
 
 class RenderEDLTests(unittest.TestCase):

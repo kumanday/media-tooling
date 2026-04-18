@@ -119,6 +119,16 @@ def validate_edl(edl: dict[str, Any]) -> None:
                         f"'auto', or a raw ffmpeg filter string"
                     )
 
+    # Validate top-level grade (fallback for ranges without a per-range grade)
+    top_grade = edl.get("grade")
+    if top_grade is not None:
+        if top_grade != "auto" and top_grade not in PRESETS:
+            if not re.search(r"[=,]", top_grade):
+                raise EDLSchemaError(
+                    f"top-level grade '{top_grade}' is not a known preset, "
+                    f"'auto', or a raw ffmpeg filter string"
+                )
+
 
 # ── Path / source resolution ────────────────────────────────────────────────
 
@@ -692,7 +702,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default="ffprobe",
         help="Path to ffprobe binary. Default: ffprobe.",
     )
-    return parser.parse_args(argv)
+    args = parser.parse_args(argv)
+    if args.preview and args.draft:
+        parser.error("--preview and --draft are mutually exclusive")
+    return args
 
 
 def render_edl(
