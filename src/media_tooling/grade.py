@@ -83,6 +83,67 @@ def _parse_signalstats_value(line: str) -> float | None:
         return None
 
 
+def _parse_metadata_file(metadata_path: str) -> dict[str, float]:
+    """Parse a signalstats metadata file into normalised stats.
+
+    Reads the file produced by ``ffmpeg signalstats,metadata=print`` and
+    returns ``{"y_mean": float, "y_range": float, "sat_mean": float}``
+    with all values normalised to 0..1 regardless of source bit depth.
+
+    If no signalstats lines are found, returns neutral defaults (no correction).
+    """
+    y_avgs: list[float] = []
+    y_mins: list[float] = []
+    y_maxs: list[float] = []
+    sat_avgs: list[float] = []
+    bit_depth: int = 8
+
+    with open(metadata_path) as f:
+        for line in f:
+            line = line.strip()
+            if "lavfi.signalstats.YBITDEPTH" in line:
+                v = _parse_signalstats_value(line)
+                if v is not None:
+                    bit_depth = int(v)
+            elif "lavfi.signalstats.YAVG" in line:
+                v = _parse_signalstats_value(line)
+                if v is not None:
+                    y_avgs.append(v)
+            elif "lavfi.signalstats.YMIN" in line:
+                v = _parse_signalstats_value(line)
+                if v is not None:
+                    y_mins.append(v)
+            elif "lavfi.signalstats.YMAX" in line:
+                v = _parse_signalstats_value(line)
+                if v is not None:
+                    y_maxs.append(v)
+            elif "lavfi.signalstats.SATAVG" in line:
+                v = _parse_signalstats_value(line)
+                if v is not None:
+                    sat_avgs.append(v)
+
+    if not y_avgs:
+        return {"y_mean": 0.5, "y_range": 0.72, "sat_mean": 0.25}
+
+    max_val = (2 ** bit_depth) - 1
+
+    y_mean = (sum(y_avgs) / len(y_avgs)) / max_val
+    y_range = (
+        ((sum(y_maxs) / len(y_maxs)) - (sum(y_mins) / len(y_mins))) / max_val
+        if y_maxs and y_mins
+        else 0.7
+    )
+    sat_mean = (
+        (sum(sat_avgs) / len(sat_avgs)) / max_val if sat_avgs else 0.25
+    )
+
+    return {
+        "y_mean": y_mean,
+        "y_range": y_range,
+        "sat_mean": sat_mean,
+    }
+
+
 def _sample_frame_stats(
     video: Path,
     start: float,
@@ -120,58 +181,7 @@ def _sample_frame_stats(
             cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
         )
 
-        y_avgs: list[float] = []
-        y_mins: list[float] = []
-        y_maxs: list[float] = []
-        sat_avgs: list[float] = []
-        bit_depth: int = 8
-
-        with open(metadata_path) as f:
-            for line in f:
-                line = line.strip()
-                if "lavfi.signalstats.YBITDEPTH" in line:
-                    v = _parse_signalstats_value(line)
-                    if v is not None:
-                        bit_depth = int(v)
-                elif "lavfi.signalstats.YAVG" in line:
-                    v = _parse_signalstats_value(line)
-                    if v is not None:
-                        y_avgs.append(v)
-                elif "lavfi.signalstats.YMIN" in line:
-                    v = _parse_signalstats_value(line)
-                    if v is not None:
-                        y_mins.append(v)
-                elif "lavfi.signalstats.YMAX" in line:
-                    v = _parse_signalstats_value(line)
-                    if v is not None:
-                        y_maxs.append(v)
-                elif "lavfi.signalstats.SATAVG" in line:
-                    v = _parse_signalstats_value(line)
-                    if v is not None:
-                        sat_avgs.append(v)
-
-        if not y_avgs:
-            # Analysis failed — return neutral defaults (no correction)
-            return {"y_mean": 0.5, "y_range": 0.72, "sat_mean": 0.25}
-
-        # Normalize by native bit-depth max value
-        max_val = (2 ** bit_depth) - 1
-
-        y_mean = (sum(y_avgs) / len(y_avgs)) / max_val
-        y_range = (
-            ((sum(y_maxs) / len(y_maxs)) - (sum(y_mins) / len(y_mins))) / max_val
-            if y_maxs and y_mins
-            else 0.7
-        )
-        sat_mean = (
-            (sum(sat_avgs) / len(sat_avgs)) / max_val if sat_avgs else 0.25
-        )
-
-        return {
-            "y_mean": y_mean,
-            "y_range": y_range,
-            "sat_mean": sat_mean,
-        }
+        return _parse_metadata_file(metadata_path)
     finally:
         Path(metadata_path).unlink(missing_ok=True)
 
@@ -207,7 +217,9 @@ def auto_grade_for_clip(
             duration = float(
                 subprocess.check_output(probe_cmd).decode().strip()
             )
-        except Exception:
+        except Exception as exc:
+            if verbose:
+                print(f"  warning: ffprobe failed ({exc}); using 10s window")
             duration = 10.0
 
     stats = _sample_frame_stats(video, start, duration)
@@ -228,24 +240,27 @@ def auto_grade_for_clip(
         t = max(0.0, min(1.0, (y_range - 0.40) / 0.25))
         contrast_adj = 1.08 - 0.06 * t
 
-    # Gamma: target y_mean ≈ 0.48. Lift gently if too dark, pull back if overexposed.
+    # Gamma: target y_mean ~ 0.48. Lift gently if too dark, pull back if overexposed.
     gamma_adj = 1.0
     if y_mean < 0.42:
         # Map [0.30, 0.42] → [1.08, 1.02]
         t = max(0.0, min(1.0, (y_mean - 0.30) / 0.12))
         gamma_adj = 1.08 - 0.06 * t
     elif y_mean > 0.60:
-        # Slightly overexposed — tiny pullback
-        gamma_adj = 0.95
+        # Map [0.60, 0.80] → [0.95, 0.92]
+        t = max(0.0, min(1.0, (y_mean - 0.60) / 0.20))
+        gamma_adj = 0.95 - 0.03 * t
 
-    # Saturation: only adjust if clearly out of normal range.
+    # Saturation: scale proportionally like contrast/gamma.
     sat_adj = 1.0
     if sat_mean < 0.15:
-        # Very desaturated — tiny boost
-        sat_adj = 1.06
+        # Map [0.05, 0.15] → [1.08, 1.02]
+        t = max(0.0, min(1.0, (sat_mean - 0.05) / 0.10))
+        sat_adj = 1.08 - 0.06 * t
     elif sat_mean > 0.40:
-        # Already punchy — mild pullback
-        sat_adj = 0.94
+        # Map [0.40, 0.55] → [0.98, 0.92]
+        t = max(0.0, min(1.0, (sat_mean - 0.40) / 0.15))
+        sat_adj = 0.98 - 0.06 * t
 
     # Clamp all adjustments hard to ±8% → [0.92, 1.08]
     contrast_adj = max(0.92, min(1.08, contrast_adj))
@@ -329,6 +344,18 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Raw ffmpeg filter string. Overrides --preset.",
     )
     parser.add_argument(
+        "--start",
+        type=float,
+        default=0.0,
+        help="Start time (seconds) for auto-grade analysis window.",
+    )
+    parser.add_argument(
+        "--duration",
+        type=float,
+        default=None,
+        help="Duration (seconds) for auto-grade analysis window.",
+    )
+    parser.add_argument(
         "--analyze",
         type=Path,
         default=None,
@@ -370,7 +397,9 @@ def main(argv: list[str] | None = None) -> int:
         if not args.analyze.exists():
             print(f"input not found: {args.analyze}", file=sys.stderr)
             return 1
-        filter_string, stats = auto_grade_for_clip(args.analyze, verbose=True)
+        filter_string, stats = auto_grade_for_clip(
+            args.analyze, start=args.start, duration=args.duration, verbose=True
+        )
         print(f"\nfilter: {filter_string or '(none)'}")
         print(f"stats:  {json.dumps(stats, indent=2)}")
         return 0
@@ -394,7 +423,9 @@ def main(argv: list[str] | None = None) -> int:
         filter_string = get_preset(args.preset)
     else:
         # Auto mode (default)
-        filter_string, _ = auto_grade_for_clip(args.input, verbose=True)
+        filter_string, _ = auto_grade_for_clip(
+            args.input, start=args.start, duration=args.duration, verbose=True
+        )
 
     print(f"grading {args.input.name} → {args.output.name}")
     if filter_string:

@@ -8,6 +8,7 @@ from unittest.mock import MagicMock, patch
 
 from media_tooling.grade import (
     PRESETS,
+    _parse_metadata_file,
     _parse_signalstats_value,
     _sample_frame_stats,
     apply_grade,
@@ -67,31 +68,22 @@ class ParseSignalstatsValueTests(unittest.TestCase):
         self.assertIsNone(_parse_signalstats_value("nonsense"))
 
 
-class SampleFrameStatsTests(unittest.TestCase):
-    @patch("media_tooling.grade.subprocess.run")
-    def test_returns_neutral_defaults_when_no_metadata(self, mock_run: MagicMock) -> None:
-        """When ffmpeg produces no signalstats output, neutral defaults are returned."""
-        mock_run.return_value = MagicMock(returncode=0)
-        # Write a real empty metadata file — tests the actual file-reading path
+class ParseMetadataFileTests(unittest.TestCase):
+    """Test _parse_metadata_file as a pure function — no mocks needed."""
+
+    def test_empty_file_returns_neutral_defaults(self) -> None:
+        """When metadata file is empty, neutral defaults are returned."""
         with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
             metadata_path = f.name
-            # Write nothing — empty file
         try:
-            with patch("media_tooling.grade.tempfile.NamedTemporaryFile") as mock_tf:
-                mock_tf.return_value.__enter__ = MagicMock(return_value=MagicMock(name="f"))
-                mock_tf.return_value.__enter__().name = metadata_path
-                mock_tf.return_value.__exit__ = MagicMock(return_value=False)
-                # Suppress the unlink in the finally block of _sample_frame_stats
-                with patch("media_tooling.grade.Path.unlink"):
-                    result = _sample_frame_stats(Path("test.mp4"), start=0.0, duration=10.0)
+            result = _parse_metadata_file(metadata_path)
         finally:
             os.unlink(metadata_path)
         self.assertAlmostEqual(result["y_mean"], 0.5)
         self.assertAlmostEqual(result["y_range"], 0.72)
         self.assertAlmostEqual(result["sat_mean"], 0.25)
 
-    @patch("media_tooling.grade.subprocess.run")
-    def test_parses_signalstats_metadata(self, mock_run: MagicMock) -> None:
+    def test_parses_signalstats_metadata(self) -> None:
         """Parse a realistic signalstats metadata file."""
         metadata_lines = [
             "lavfi.signalstats.YBITDEPTH=8\n",
@@ -100,29 +92,66 @@ class SampleFrameStatsTests(unittest.TestCase):
             "lavfi.signalstats.YMAX=235\n",
             "lavfi.signalstats.SATAVG=64\n",
         ]
-        mock_run.return_value = MagicMock(returncode=0)
-        # Write real temp file with known content
         with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
             metadata_path = f.name
             for line in metadata_lines:
                 f.write(line)
         try:
+            result = _parse_metadata_file(metadata_path)
+        finally:
+            os.unlink(metadata_path)
+        # 8-bit: max_val = 255
+        # y_mean = 128/255 ~ 0.502
+        self.assertAlmostEqual(result["y_mean"], 128 / 255, places=3)
+        # y_range = (235 - 16)/255 ~ 0.859
+        self.assertAlmostEqual(result["y_range"], (235 - 16) / 255, places=3)
+        # sat_mean = 64/255 ~ 0.251
+        self.assertAlmostEqual(result["sat_mean"], 64 / 255, places=3)
+
+    def test_10bit_metadata(self) -> None:
+        """10-bit video normalises by 1023, not 255."""
+        metadata_lines = [
+            "lavfi.signalstats.YBITDEPTH=10\n",
+            "lavfi.signalstats.YAVG=512\n",
+            "lavfi.signalstats.YMIN=64\n",
+            "lavfi.signalstats.YMAX=960\n",
+            "lavfi.signalstats.SATAVG=256\n",
+        ]
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
+            metadata_path = f.name
+            for line in metadata_lines:
+                f.write(line)
+        try:
+            result = _parse_metadata_file(metadata_path)
+        finally:
+            os.unlink(metadata_path)
+        self.assertAlmostEqual(result["y_mean"], 512 / 1023, places=3)
+        self.assertAlmostEqual(result["y_range"], (960 - 64) / 1023, places=3)
+
+
+class SampleFrameStatsTests(unittest.TestCase):
+    @patch("media_tooling.grade.subprocess.run")
+    def test_delegates_to_parse_metadata_file(self, mock_run: MagicMock) -> None:
+        """_sample_frame_stats runs ffmpeg then delegates parsing."""
+        mock_run.return_value = MagicMock(returncode=0)
+        # Write a real metadata file that the code will read
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
+            metadata_path = f.name
+            f.write("lavfi.signalstats.YBITDEPTH=8\n")
+            f.write("lavfi.signalstats.YAVG=128\n")
+            f.write("lavfi.signalstats.YMIN=16\n")
+            f.write("lavfi.signalstats.YMAX=235\n")
+            f.write("lavfi.signalstats.SATAVG=64\n")
+        try:
             with patch("media_tooling.grade.tempfile.NamedTemporaryFile") as mock_tf:
                 mock_tf.return_value.__enter__ = MagicMock(return_value=MagicMock(name="f"))
                 mock_tf.return_value.__enter__().name = metadata_path
                 mock_tf.return_value.__exit__ = MagicMock(return_value=False)
-                # Suppress the unlink in the finally block of _sample_frame_stats
                 with patch("media_tooling.grade.Path.unlink"):
                     result = _sample_frame_stats(Path("test.mp4"), start=0.0, duration=10.0)
         finally:
             os.unlink(metadata_path)
-        # 8-bit: max_val = 255
-        # y_mean = 128/255 ≈ 0.502
         self.assertAlmostEqual(result["y_mean"], 128 / 255, places=3)
-        # y_range = (235 - 16)/255 ≈ 0.859
-        self.assertAlmostEqual(result["y_range"], (235 - 16) / 255, places=3)
-        # sat_mean = 64/255 ≈ 0.251
-        self.assertAlmostEqual(result["sat_mean"], 64 / 255, places=3)
 
 
 class AutoGradeForClipTests(unittest.TestCase):
@@ -159,11 +188,11 @@ class AutoGradeForClipTests(unittest.TestCase):
     def test_contrast_bounded_to_8_percent(
         self, mock_probe: MagicMock, mock_stats: MagicMock
     ) -> None:
-        """Even extremely flat/dark footage should not exceed ±8% correction."""
-        # Very dark + very flat + low saturation — worst case
+        """Even extremely flat/dark footage should not exceed +/-8% correction."""
+        # Very dark + very flat + low saturation -- worst case
         mock_stats.return_value = {"y_mean": 0.10, "y_range": 0.20, "sat_mean": 0.05}
         filter_string, stats = auto_grade_for_clip(Path("test.mp4"))
-        # Parse the filter to check bounds — every parameter must be in [0.92, 1.08]
+        # Parse the filter to check bounds -- every parameter must be in [0.92, 1.08]
         if filter_string.startswith("eq="):
             parts_str = filter_string[3:]
             parts = parts_str.split(":")
@@ -175,23 +204,46 @@ class AutoGradeForClipTests(unittest.TestCase):
 
     @patch("media_tooling.grade._sample_frame_stats")
     @patch("media_tooling.grade.subprocess.check_output")
-    def test_overexposed_clip_gets_gamma_pullback(
+    def test_overexposed_clip_gets_proportional_gamma_pullback(
         self, mock_probe: MagicMock, mock_stats: MagicMock
     ) -> None:
         mock_stats.return_value = {"y_mean": 0.70, "y_range": 0.72, "sat_mean": 0.25}
         filter_string, stats = auto_grade_for_clip(Path("test.mp4"))
         self.assertIn("gamma=", filter_string)
-        # Should be a pullback (gamma < 1.0)
-        self.assertIn("gamma=0.95", filter_string)
+        # Should be a pullback (gamma < 1.0) and proportional, not fixed
+        gamma_val = float(
+            filter_string.split("gamma=")[1].split(":")[0].split(",")[0]
+        )
+        self.assertLess(gamma_val, 1.0)
+        self.assertGreater(gamma_val, 0.92)  # within bounds
 
     @patch("media_tooling.grade._sample_frame_stats")
     @patch("media_tooling.grade.subprocess.check_output")
-    def test_high_saturation_gets_pullback(
+    def test_high_saturation_gets_proportional_pullback(
         self, mock_probe: MagicMock, mock_stats: MagicMock
     ) -> None:
         mock_stats.return_value = {"y_mean": 0.48, "y_range": 0.72, "sat_mean": 0.45}
         filter_string, stats = auto_grade_for_clip(Path("test.mp4"))
-        self.assertIn("saturation=0.94", filter_string)
+        self.assertIn("saturation=", filter_string)
+        sat_val = float(
+            filter_string.split("saturation=")[1].split(":")[0].split(",")[0]
+        )
+        self.assertLess(sat_val, 1.0)
+        self.assertGreater(sat_val, 0.92)  # within bounds
+
+    @patch("media_tooling.grade._sample_frame_stats")
+    @patch("media_tooling.grade.subprocess.check_output")
+    def test_low_saturation_gets_proportional_boost(
+        self, mock_probe: MagicMock, mock_stats: MagicMock
+    ) -> None:
+        mock_stats.return_value = {"y_mean": 0.48, "y_range": 0.72, "sat_mean": 0.08}
+        filter_string, stats = auto_grade_for_clip(Path("test.mp4"))
+        self.assertIn("saturation=", filter_string)
+        sat_val = float(
+            filter_string.split("saturation=")[1].split(":")[0].split(",")[0]
+        )
+        self.assertGreater(sat_val, 1.0)
+        self.assertLessEqual(sat_val, 1.08)
 
     @patch("media_tooling.grade._sample_frame_stats")
     @patch("media_tooling.grade.subprocess.check_output")
@@ -201,8 +253,18 @@ class AutoGradeForClipTests(unittest.TestCase):
         mock_stats.return_value = {"y_mean": 0.35, "y_range": 0.72, "sat_mean": 0.25}
         with patch("builtins.print") as mock_print:
             auto_grade_for_clip(Path("test.mp4"), verbose=True)
-        # Should have printed stats
         self.assertTrue(mock_print.called)
+
+    @patch("media_tooling.grade.subprocess.check_output", side_effect=Exception("probe fail"))
+    @patch("media_tooling.grade._sample_frame_stats")
+    def test_ffprobe_failure_warns_in_verbose(
+        self, mock_stats: MagicMock, mock_probe: MagicMock
+    ) -> None:
+        mock_stats.return_value = {"y_mean": 0.48, "y_range": 0.72, "sat_mean": 0.25}
+        with patch("builtins.print") as mock_print:
+            auto_grade_for_clip(Path("test.mp4"), verbose=True)
+        printed = " ".join(str(c[0][0]) for c in mock_print.call_args_list if c[0])
+        self.assertIn("warning", printed.lower())
 
 
 class ApplyGradeTests(unittest.TestCase):
@@ -225,7 +287,6 @@ class ApplyGradeTests(unittest.TestCase):
         self.assertIn("-c", cmd)
         self.assertIn("copy", cmd)
         self.assertIn("+faststart", cmd)
-        # Should NOT contain re-encode flags
         self.assertNotIn("libx264", cmd)
 
     def test_same_input_output_raises(self) -> None:
@@ -316,6 +377,37 @@ class CLIMainTests(unittest.TestCase):
         self.assertEqual(result, 0)
         mock_auto.assert_called_once()
         mock_apply.assert_called_once()
+
+    @patch("media_tooling.grade.auto_grade_for_clip")
+    def test_start_and_duration_passed_to_auto_grade(self, mock_auto: MagicMock) -> None:
+        """--start and --duration are forwarded to auto_grade_for_clip."""
+        mock_auto.return_value = ("", {"y_mean": 0.5})
+        with patch("media_tooling.grade.apply_grade"):
+            with patch("builtins.print"):
+                with patch.object(Path, "exists", return_value=True):
+                    result = main([
+                        "input.mp4", "-o", "output.mp4",
+                        "--start", "30", "--duration", "60",
+                    ])
+        self.assertEqual(result, 0)
+        mock_auto.assert_called_once_with(
+            Path("input.mp4"), start=30.0, duration=60.0, verbose=True
+        )
+
+    @patch("media_tooling.grade.auto_grade_for_clip")
+    def test_analyze_uses_start_and_duration(self, mock_auto: MagicMock) -> None:
+        """--analyze also passes --start and --duration."""
+        mock_auto.return_value = ("", {"y_mean": 0.5})
+        with patch("builtins.print"):
+            with patch.object(Path, "exists", return_value=True):
+                result = main([
+                    "--analyze", "input.mp4",
+                    "--start", "10", "--duration", "20",
+                ])
+        self.assertEqual(result, 0)
+        mock_auto.assert_called_once_with(
+            Path("input.mp4"), start=10.0, duration=20.0, verbose=True
+        )
 
     def test_analyze_nonexistent_file_fails(self) -> None:
         with patch.object(Path, "exists", return_value=False):
