@@ -17,7 +17,30 @@ PROJECT_SUBDIRECTORIES = (
     "rough-cuts/generated-clips",
     "rough-cuts/manifests",
     "rough-cuts/specs",
+    "edit",
 )
+
+PROJECT_MEMORY_PATH = "edit/project.md"
+
+PROJECT_MEMORY_INITIAL_CONTENT = """\
+# Project Memory
+
+## Strategy
+
+_(Current approach and goals for this project)_
+
+## Decisions
+
+_(Key choices made and their rationale)_
+
+## Reasoning log
+
+_(Significant inference chains or trade-off evaluations)_
+
+## Outstanding items
+
+_(Unfinished work, open questions, or next actions)_
+"""
 SKILL_NAMES = (
     "media-corpus-ingest",
     "media-subtitle-pipeline",
@@ -44,13 +67,27 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def ensure_project_memory(*, project_dir: Path, create_memory: bool) -> tuple[Path, str]:
+    memory_path = project_dir / PROJECT_MEMORY_PATH
+    if not create_memory or memory_path.exists():
+        return memory_path, "exists"
+    memory_path.parent.mkdir(parents=True, exist_ok=True)
+    memory_path.write_text(PROJECT_MEMORY_INITIAL_CONTENT, encoding="utf-8")
+    return memory_path, "created"
+
+
 def main() -> None:
     args = parse_args()
     project_dir = Path(args.project_dir).expanduser().resolve()
     skills_dir = resolve_toolkit_skills_dir()
+    create_directories = not args.agents_only
     created_dirs = ensure_project_directories(
         project_dir=project_dir,
-        create_directories=not args.agents_only,
+        create_directories=create_directories,
+    )
+    memory_path, memory_action = ensure_project_memory(
+        project_dir=project_dir,
+        create_memory=create_directories,
     )
     agents_path, agents_action = upsert_project_agents(
         project_dir=project_dir,
@@ -66,6 +103,7 @@ def main() -> None:
             print(f"- {path}")
     else:
         print("Standard project directories already existed.")
+    print(f"project.md: {memory_action} {memory_path}")
     print(f"AGENTS.md: {agents_action} {agents_path}")
     print(f"Toolkit skills: {skills_dir}")
 

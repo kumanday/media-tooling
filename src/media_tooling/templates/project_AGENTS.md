@@ -15,4 +15,17 @@ Operational defaults:
 - use sequential processing to reduce resource contention. Have patience for long media jobs
 - use `--skip-existing` for resumable batches
 - re-run `media-tooling-init` after reinstalling or relocating the toolkit so these skill paths stay current
+
+## Session Memory Protocol
+
+Persist strategy, decisions, and reasoning across sessions in `edit/project.md`.
+
+On startup, read `edit/project.md` and summarize the last session in one sentence to re-establish context.
+
+After each session, append an entry to `edit/project.md` with the following sections:
+
+- **Strategy**: current approach and goals for this project
+- **Decisions**: key choices made and their rationale
+- **Reasoning log**: significant inference chains or trade-off evaluations
+- **Outstanding items**: unfinished work, open questions, or next actions
 {{MANAGED_BLOCK_END}}
