@@ -443,9 +443,9 @@ def extract_all_segments(
             try:
                 transcript = json.loads(tr_path.read_text(encoding="utf-8"))
                 words = _words_in_range(transcript, start, end)
-            except (json.JSONDecodeError, KeyError, TypeError):
+            except (OSError, json.JSONDecodeError, KeyError, TypeError):
                 print(
-                    f"  corrupt transcript for {src_name}, "
+                    f"  corrupt/unreadable transcript for {src_name}, "
                     "using raw cut points",
                     file=sys.stderr,
                 )
@@ -586,9 +586,9 @@ def build_master_srt(
             try:
                 transcript = json.loads(tr_path.read_text(encoding="utf-8"))
                 words_in_seg = _words_in_range(transcript, seg_start, seg_end)
-            except (json.JSONDecodeError, KeyError, TypeError):
+            except (OSError, json.JSONDecodeError, KeyError, TypeError):
                 print(
-                    f"  corrupt transcript for {src_name}, "
+                    f"  corrupt/unreadable transcript for {src_name}, "
                     "skipping captions for this segment",
                     file=sys.stderr,
                 )
@@ -790,7 +790,7 @@ def render_edl(
             preview=preview, draft=draft, ffmpeg_bin=ffmpeg_bin,
             ffprobe_bin=ffprobe_bin,
         )
-    except RuntimeError as exc:
+    except (OSError, RuntimeError) as exc:
         print(f"segment extraction failed: {exc}", file=sys.stderr)
         return 1
 

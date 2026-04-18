@@ -793,7 +793,40 @@ class ExtractAllSegmentsTests(unittest.TestCase):
             # Should have printed a warning about corrupt transcript
             warning_calls = [
                 c for c in mock_print.call_args_list
-                if "corrupt transcript" in str(c)
+                if "corrupt/unreadable transcript" in str(c)
+            ]
+            self.assertGreater(len(warning_calls), 0)
+
+    @patch("media_tooling.edl_render.subprocess.run")
+    @patch("media_tooling.edl_render.probe_duration", return_value=9999.0)
+    def test_unreadable_transcript_falls_back_to_raw_cut_points(
+        self, mock_probe: MagicMock, mock_run: MagicMock
+    ) -> None:
+        """Unreadable transcript file (OSError) in extract_all_segments warns and uses raw cuts."""
+        mock_run.return_value = MagicMock(returncode=0)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            edit_dir = Path(tmpdir)
+            tr_dir = edit_dir / "transcripts"
+            tr_dir.mkdir()
+            tr_path = tr_dir / "source1.mp4.json"
+            # Create a file that exists but mock read_text to raise OSError
+            tr_path.write_text('{"words": []}', encoding="utf-8")
+            edl = {
+                "version": 1,
+                "sources": ["source1.mp4"],
+                "ranges": [
+                    {"source": "source1.mp4", "start": 1.0, "end": 5.0},
+                ],
+            }
+            with patch.object(Path, "read_text", side_effect=OSError("permission denied")), \
+                 patch("builtins.print") as mock_print:
+                seg_paths = extract_all_segments(edl, edit_dir)
+            # Should still extract (no crash), with raw cut points
+            self.assertEqual(len(seg_paths), 1)
+            # Should have printed a warning about unreadable transcript
+            warning_calls = [
+                c for c in mock_print.call_args_list
+                if "unreadable transcript" in str(c)
             ]
             self.assertGreater(len(warning_calls), 0)
 
