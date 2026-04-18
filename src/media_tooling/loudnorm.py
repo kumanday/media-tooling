@@ -91,6 +91,7 @@ def measure_loudness(
     ]
     proc = subprocess.run(cmd, capture_output=True, text=True)
     if proc.returncode != 0:
+        print(f"ffmpeg loudnorm measurement failed: {proc.stderr.strip()}", file=sys.stderr)
         return None
     stderr = proc.stderr
 

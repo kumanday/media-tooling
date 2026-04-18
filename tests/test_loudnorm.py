@@ -93,10 +93,16 @@ class MeasureLoudnessTests(unittest.TestCase):
         mock_result = _mock_subprocess_run_factory(
             returncode=1, stderr="Error opening input: No such file"
         )
-        with mock.patch("media_tooling.loudnorm.subprocess.run", return_value=mock_result):
+        with (
+            mock.patch("media_tooling.loudnorm.subprocess.run", return_value=mock_result),
+            mock.patch("builtins.print") as mock_print,
+        ):
             result = measure_loudness(Path("input.mp4"))
 
         self.assertIsNone(result)
+        # Verify the actual error is reported to the user
+        stderr_calls = [c for c in mock_print.call_args_list if c.kwargs.get("file") is not None]
+        self.assertTrue(any("Error opening input" in str(c) for c in stderr_calls))
 
     def test_returns_none_when_json_missing_required_keys(self) -> None:
         incomplete_json = json.dumps({"input_i": "-24.0"})
