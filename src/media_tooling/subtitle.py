@@ -492,6 +492,7 @@ def transcribe_media(
             initial_prompt=initial_prompt,
         )
     if backend == "elevenlabs":
+        # model_name is intentionally not forwarded — ElevenLabs always uses scribe_v1
         return transcribe_with_elevenlabs(
             audio_path=audio_path,
             language=language,
