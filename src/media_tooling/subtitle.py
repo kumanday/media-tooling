@@ -282,8 +282,11 @@ def run_transcription_job(
             audio_path = input_path
 
     effective_model = resolve_model_name(resolved_backend, model_name)
+    # Show the user-friendly source path, not the temp PCM WAV used internally
+    # for ElevenLabs uploads.
+    display_path = input_path if resolved_backend == "elevenlabs" else audio_path
     print(
-        f"Transcribing {audio_path} with model '{effective_model}' using backend '{resolved_backend}'",
+        f"Transcribing {display_path} with model '{effective_model}' using backend '{resolved_backend}'",
         flush=True,
     )
     try:
@@ -977,8 +980,12 @@ def maybe_correct_suspicious_timestamps(
         correction["reason"] = "ratio-does-not-match-observed-mlx-compression"
         return segments, correction
 
+    # Keys that are rebuilt by the scaling logic; everything else is forwarded
+    # as-is so that fields like `speaker_id` are not silently dropped.
+    _rebuilt_keys = {"start", "end", "text", "words"}
     scaled_segments = [
         {
+            **{k: v for k, v in segment.items() if k not in _rebuilt_keys},
             "start": round(segment["start"] * ratio, 3),
             "end": round(segment["end"] * ratio, 3),
             "text": segment["text"],

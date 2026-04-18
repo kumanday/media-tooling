@@ -105,6 +105,27 @@ class TimestampCorrectionTests(unittest.TestCase):
         )
         self.assertEqual(corrected, segments)
 
+    def test_forwards_speaker_id_during_mlx_correction(self) -> None:
+        segments = [
+            {
+                "start": 0.0,
+                "end": 28.6853,
+                "text": "hello",
+                "words": [{"word": "hello", "start": 0.0, "end": 28.6853}],
+                "speaker_id": "speaker_0",
+            },
+        ]
+
+        corrected, correction = maybe_correct_suspicious_timestamps(
+            segments=segments,
+            media_duration=286.853,
+            backend="mlx",
+            enabled=True,
+        )
+
+        self.assertTrue(correction["applied"])
+        self.assertEqual(corrected[0]["speaker_id"], "speaker_0")
+
 
 class SubtitleResegmentationTests(unittest.TestCase):
     def test_resegments_long_segment_with_word_timestamps(self) -> None:
