@@ -17,6 +17,30 @@ Operational defaults:
 - use `--skip-existing` for resumable batches
 - re-run `media-tooling-init` after reinstalling or relocating the toolkit so these skill paths stay current
 
+## Session Memory Protocol
+
+Persist strategy, decisions, and reasoning across sessions in `edit/project.md`.
+
+On startup, read `edit/project.md` and summarize the last session in one sentence to re-establish context.
+
+After each session, append a timestamped entry to `edit/project.md` using this format:
+
+```
+## Session YYYY-MM-DD
+
+### Strategy
+Current approach and goals for this project.
+
+### Decisions
+Key choices made and their rationale.
+
+### Reasoning log
+Significant inference chains or trade-off evaluations.
+
+### Outstanding items
+Unfinished work, open questions, or next actions.
+```
+
 ## Hard Rules (non-negotiable for broadcast-quality output)
 
 These 12 production rules are enforced by code guardrails and must never be violated:
