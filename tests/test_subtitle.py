@@ -9,6 +9,8 @@ from unittest.mock import MagicMock, patch
 
 from media_tooling.subtitle import (
     SUBTITLE_MAX_DURATION_SECONDS,
+    build_srt,
+    build_txt,
     compute_source_hash,
     elevenlabs_backend_available,
     maybe_correct_suspicious_timestamps,
@@ -499,6 +501,35 @@ class ElevenLabsErrorHandlingTests(unittest.TestCase):
                 self.assertIn("401", str(ctx.exception))
         finally:
             os.unlink(wav_path)
+
+
+class SpeakerLabelOutputTests(unittest.TestCase):
+    def test_build_srt_includes_speaker_id_when_present(self) -> None:
+        segments = [
+            {"start": 0.0, "end": 2.0, "text": "Hello", "speaker_id": "speaker_0"},
+            {"start": 2.0, "end": 4.0, "text": "Hi there", "speaker_id": "speaker_1"},
+        ]
+        srt = build_srt(segments)
+        self.assertIn("[speaker_0] Hello", srt)
+        self.assertIn("[speaker_1] Hi there", srt)
+
+    def test_build_srt_omits_speaker_id_when_absent(self) -> None:
+        segments = [{"start": 0.0, "end": 2.0, "text": "Hello"}]
+        srt = build_srt(segments)
+        self.assertIn("Hello", srt)
+        self.assertNotIn("[speaker_", srt)
+
+    def test_build_txt_includes_speaker_id_when_present(self) -> None:
+        segments = [
+            {"start": 0.0, "end": 2.0, "text": "Hello", "speaker_id": "speaker_0"},
+        ]
+        txt = build_txt(segments)
+        self.assertIn("[speaker_0] Hello", txt)
+
+    def test_build_txt_omits_speaker_id_when_absent(self) -> None:
+        segments = [{"start": 0.0, "end": 2.0, "text": "Hello"}]
+        txt = build_txt(segments)
+        self.assertNotIn("[speaker_", txt)
 
 
 if __name__ == "__main__":

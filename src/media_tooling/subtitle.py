@@ -256,11 +256,16 @@ def run_transcription_job(
                 overwrite=overwrite,
             )
     else:
-        if resolved_backend == "elevenlabs" and audio_path.suffix.lower() != ".wav":
-            # Original audio file persists; create temp WAV for upload
-            wav_audio_path = audio_path.with_suffix(".wav")
+        if resolved_backend == "elevenlabs":
+            # Always convert to mono 16kHz PCM WAV for Scribe API,
+            # even if input is already .wav (user .wav files are rarely mono 16kHz)
+            if audio_path.suffix.lower() == ".wav" and audio_path == input_path:
+                # Rename original to avoid overwriting; restore after upload
+                wav_audio_path = audio_path.with_suffix(".elevenlabs.wav")
+            else:
+                wav_audio_path = audio_path.with_suffix(".wav")
             extract_audio_pcm_wav(
-                input_path=audio_path,
+                input_path=input_path,
                 wav_path=wav_audio_path,
                 ffmpeg_bin=ffmpeg_bin,
                 overwrite=overwrite,
@@ -315,6 +320,8 @@ def run_transcription_job(
         "source_segment_count": source_segment_count,
         "segment_count": len(segments),
         "subtitle_segmentation": subtitle_segmentation,
+        # Note: SHA-256 hashes the full source file; adds I/O cost for large
+        # files but ensures cache integrity across all backends (Hard Rule 9).
         "source_hash": compute_source_hash(input_path),
         "segments": segments,
     }
@@ -1178,21 +1185,27 @@ def merge_tiny_adjacent_blocks(blocks: list[dict[str, Any]]) -> list[dict[str, A
 
 
 def build_txt(segments: list[dict[str, Any]]) -> str:
-    return "\n".join(
-        f"[{format_timestamp(segment['start'])} --> {format_timestamp(segment['end'])}] {segment['text']}"
-        for segment in segments
-    ).strip() + "\n"
+    lines = []
+    for segment in segments:
+        speaker = segment.get("speaker_id")
+        prefix = f"[{speaker}] " if speaker else ""
+        lines.append(
+            f"[{format_timestamp(segment['start'])} --> {format_timestamp(segment['end'])}] {prefix}{segment['text']}"
+        )
+    return "\n".join(lines).strip() + "\n"
 
 
 def build_srt(segments: list[dict[str, Any]]) -> str:
     blocks = []
     for index, segment in enumerate(segments, start=1):
+        speaker = segment.get("speaker_id")
+        text = f"[{speaker}] {segment['text']}" if speaker else segment["text"]
         blocks.append(
             "\n".join(
                 [
                     str(index),
                     f"{format_srt_timestamp(segment['start'])} --> {format_srt_timestamp(segment['end'])}",
-                    segment["text"],
+                    text,
                 ]
             )
         )
