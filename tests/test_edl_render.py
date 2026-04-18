@@ -20,6 +20,7 @@ from media_tooling.edl_render import (
     extract_all_segments,
     extract_segment,
     resolve_grade_filter,
+    resolve_path,
     resolve_source_path,
     snap_to_word_boundary,
     validate_edl,
@@ -295,6 +296,37 @@ class ValidateEDLTests(unittest.TestCase):
             validate_edl(edl)
         self.assertIn("finite", str(ctx.exception))
 
+    def test_subtitles_string_path_passes(self) -> None:
+        edl = _minimal_edl()
+        edl["subtitles"] = "/path/to/subs.srt"
+        validate_edl(edl)
+
+    def test_subtitles_dict_with_valid_keys_passes(self) -> None:
+        edl = _minimal_edl()
+        edl["subtitles"] = {"style": "bold-overlay", "path": "subs.srt"}
+        validate_edl(edl)
+
+    def test_subtitles_list_raises_edl_schema_error(self) -> None:
+        edl = _minimal_edl()
+        edl["subtitles"] = [1, 2, 3]
+        with self.assertRaises(EDLSchemaError) as ctx:
+            validate_edl(edl)
+        self.assertIn("subtitles must be a string path or dict", str(ctx.exception))
+
+    def test_subtitles_int_raises_edl_schema_error(self) -> None:
+        edl = _minimal_edl()
+        edl["subtitles"] = 42
+        with self.assertRaises(EDLSchemaError) as ctx:
+            validate_edl(edl)
+        self.assertIn("subtitles must be a string path or dict", str(ctx.exception))
+
+    def test_subtitles_dict_with_invalid_keys_raises(self) -> None:
+        edl = _minimal_edl()
+        edl["subtitles"] = {"style": "bold", "unknown_key": "x"}
+        with self.assertRaises(EDLSchemaError) as ctx:
+            validate_edl(edl)
+        self.assertIn("unknown keys", str(ctx.exception))
+
 
 # ── Grade resolution tests ──────────────────────────────────────────────────
 
@@ -506,6 +538,29 @@ class ResolveSourcePathTests(unittest.TestCase):
         edl = {"sources": {"src_a": "relative/a.mp4"}}
         result = resolve_source_path("src_a", edl, Path("/base"))
         self.assertEqual(result, Path("/base/relative/a.mp4"))
+
+    def test_dict_sources_tilde_expands(self) -> None:
+        edl = {"sources": {"src_a": "~/videos/a.mp4"}}
+        result = resolve_source_path("src_a", edl, Path("/base"))
+        # Should NOT resolve to /base/~/videos/a.mp4
+        self.assertNotIn("~", str(result))
+        self.assertTrue(result.is_absolute())
+
+
+class ResolvePathTests(unittest.TestCase):
+    def test_absolute_path_unchanged(self) -> None:
+        result = resolve_path("/abs/path.srt")
+        self.assertEqual(result, Path("/abs/path.srt"))
+
+    def test_relative_with_base(self) -> None:
+        result = resolve_path("rel.srt", base=Path("/base"))
+        self.assertEqual(result, Path("/base/rel.srt"))
+
+    def test_tilde_expands(self) -> None:
+        result = resolve_path("~/videos/subs.srt", base=Path("/base"))
+        # Should NOT resolve to /base/~/videos/subs.srt
+        self.assertNotIn("~", str(result))
+        self.assertTrue(result.is_absolute())
 
 
 # ── Words-in-range tests ────────────────────────────────────────────────────

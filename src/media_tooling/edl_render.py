@@ -141,6 +141,24 @@ def validate_edl(edl: dict[str, Any]) -> None:
                     f"'auto', or a raw ffmpeg filter string"
                 )
 
+    # Validate subtitles field if present
+    subtitles = edl.get("subtitles")
+    if subtitles is not None:
+        if isinstance(subtitles, str):
+            pass  # path string — valid
+        elif isinstance(subtitles, dict):
+            allowed = {"style", "path", "force_style"}
+            invalid = set(subtitles.keys()) - allowed
+            if invalid:
+                raise EDLSchemaError(
+                    f"subtitles dict contains unknown keys: {invalid}. "
+                    f"Allowed: {allowed}"
+                )
+        else:
+            raise EDLSchemaError(
+                f"subtitles must be a string path or dict, got {type(subtitles).__name__}"
+            )
+
 
 # ── Path / source resolution ────────────────────────────────────────────────
 
@@ -161,7 +179,7 @@ def resolve_source_path(source_name: str, edl: dict[str, Any], base: Path) -> Pa
             if Path(entry).name == source_name:
                 raw = entry
                 break
-    p = Path(raw)
+    p = Path(raw).expanduser()
     if p.is_absolute():
         return p
     return (base / p).resolve()
@@ -169,7 +187,7 @@ def resolve_source_path(source_name: str, edl: dict[str, Any], base: Path) -> Pa
 
 def resolve_path(value: str | Path, base: Path | None = None) -> Path:
     """Resolve a path that may be absolute or relative to *base*."""
-    p = Path(value)
+    p = Path(value).expanduser()
     if p.is_absolute():
         return p
     if base is not None:
