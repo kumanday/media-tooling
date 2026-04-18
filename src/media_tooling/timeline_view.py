@@ -534,6 +534,7 @@ def generate_timeline(
     ffmpeg_bin: str,
 ) -> None:
     """Produce the composite PNG and save to *output_path*."""
+    n_frames = max(1, n_frames)
     timestamps = compute_frame_timestamps(start, end, n_frames)
     layout = compute_layout()
 

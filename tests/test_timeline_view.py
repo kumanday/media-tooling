@@ -441,6 +441,57 @@ class TestRenderWaveform(unittest.TestCase):
             draw, env, layout, 50, 1870, [], [], 0.0, 60.0, small_font,
         )
 
+    def test_waveform_with_silence_and_words(self) -> None:
+        canvas = Image.new("RGB", (1920, 600), (0, 0, 0))
+        draw = ImageDraw.Draw(canvas, "RGBA")
+        layout = compute_layout()
+        from media_tooling.timeline_view import load_font
+        small_font = load_font(12)
+        env = np.zeros(2000, dtype=np.float32)
+        silences = [(5.0, 10.0)]
+        words = [{"word": "hello", "start": 0.0, "end": 1.0}]
+        _render_waveform(
+            draw, env, layout, 50, 1870, silences, words, 0.0, 60.0, small_font,
+        )
+
+
+# ---------------------------------------------------------------------------
+# n_frames edge case
+# ---------------------------------------------------------------------------
+
+
+class TestNFramesZero(unittest.TestCase):
+    @patch("media_tooling.timeline_view.probe_duration", return_value=60.0)
+    @patch("media_tooling.timeline_view.extract_frames")
+    @patch("media_tooling.timeline_view.compute_envelope")
+    def test_n_frames_zero_does_not_crash(
+        self,
+        mock_env: MagicMock,
+        mock_frames: MagicMock,
+        mock_dur: MagicMock,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            frame_dir = Path(tmp) / "frames"
+            frame_dir.mkdir()
+            fp = frame_dir / "f_000.jpg"
+            img = Image.new("RGB", (320, 180), (40, 40, 44))
+            img.save(str(fp), "JPEG")
+            mock_frames.return_value = [fp]
+            mock_env.return_value = np.zeros(2000, dtype=np.float32)
+
+            out_path = Path(tmp) / "output.png"
+            generate_timeline(
+                input_path=Path("test.mp4"),
+                output_path=out_path,
+                start=0.0,
+                end=60.0,
+                n_frames=0,
+                transcript_path=None,
+                ffmpeg_bin="ffmpeg",
+            )
+
+            self.assertTrue(out_path.exists())
+
 
 if __name__ == "__main__":
     unittest.main()
