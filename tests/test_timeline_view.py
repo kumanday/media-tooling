@@ -11,6 +11,7 @@ from PIL import Image, ImageDraw
 
 from media_tooling.ffprobe_utils import probe_duration
 from media_tooling.timeline_view import (
+    _cap_n_frames,
     _create_placeholder_frame,
     _render_filmstrip,
     _render_ruler,
@@ -440,11 +441,12 @@ class TestRenderFilmstrip(unittest.TestCase):
     def test_extreme_n_frames_capped_and_fits_canvas(self) -> None:
         """With very large n_frames, frames are capped and strip fits within canvas."""
         with tempfile.TemporaryDirectory() as tmp:
-            # Create a few placeholder frames (fewer than n_frames to test capping)
+            strip_width = 1820
+            capped = _cap_n_frames(500, strip_width)
             frame_dir = Path(tmp) / "frames"
             frame_dir.mkdir()
             frame_paths: list[Path] = []
-            for i in range(3):
+            for i in range(capped):
                 fp = frame_dir / f"f_{i:03d}.jpg"
                 img = Image.new("RGB", (320, 180), (40, 40, 44))
                 img.save(str(fp), "JPEG")
@@ -453,10 +455,38 @@ class TestRenderFilmstrip(unittest.TestCase):
             canvas = Image.new("RGB", (1920, 600), (0, 0, 0))
             layout = compute_layout()
             strip_x0 = 50
-            strip_width = 1820
-            x1, span = _render_filmstrip(canvas, frame_paths, 500, layout, strip_x0, strip_width)
+            x1, span = _render_filmstrip(canvas, frame_paths, capped, layout, strip_x0, strip_width)
             self.assertGreater(span, 0)
             self.assertLessEqual(x1, 1920, "capped filmstrip must not overflow canvas")
+
+
+# ---------------------------------------------------------------------------
+# _cap_n_frames
+# ---------------------------------------------------------------------------
+
+
+class TestCapNFrames(unittest.TestCase):
+    def test_normal_value_unchanged(self) -> None:
+        self.assertEqual(_cap_n_frames(10, 1820), 10)
+
+    def test_extreme_value_capped(self) -> None:
+        self.assertLess(_cap_n_frames(500, 1820), 500)
+        self.assertGreater(_cap_n_frames(500, 1820), 0)
+
+    def test_zero_passed_through(self) -> None:
+        # Zero/negative is guarded by max(1, n_frames) in generate_timeline
+        self.assertEqual(_cap_n_frames(0, 1820), 0)
+
+    def test_negative_passed_through(self) -> None:
+        self.assertEqual(_cap_n_frames(-5, 1820), -5)
+
+    def test_cap_produces_readable_frame_width(self) -> None:
+        strip_width = 1820
+        gap = 4
+        for n in [10, 50, 100, 200, 500]:
+            capped = _cap_n_frames(n, strip_width)
+            frame_w = (strip_width - (capped - 1) * gap) // capped
+            self.assertGreaterEqual(frame_w, 10, f"frame_w too small for n={n}, capped={capped}")
 
 
 # ---------------------------------------------------------------------------
@@ -541,6 +571,62 @@ class TestNFramesZero(unittest.TestCase):
             )
 
             self.assertTrue(out_path.exists())
+
+
+class TestNFramesCapAlignment(unittest.TestCase):
+    @patch("media_tooling.timeline_view.probe_duration", return_value=60.0)
+    @patch("media_tooling.timeline_view.extract_frames")
+    @patch("media_tooling.timeline_view.compute_envelope")
+    def test_extreme_n_frames_filmstrip_covers_full_range(
+        self,
+        mock_env: MagicMock,
+        mock_frames: MagicMock,
+        mock_dur: MagicMock,
+    ) -> None:
+        """When --n-frames exceeds max_n, cap is applied before extraction so
+        the filmstrip still covers the full time range and stays aligned with
+        the waveform/ruler."""
+        with tempfile.TemporaryDirectory() as tmp:
+            strip_width = 1820
+            capped = _cap_n_frames(500, strip_width)
+
+            frame_dir = Path(tmp) / "frames"
+            frame_dir.mkdir()
+            frame_paths: list[Path] = []
+            for i in range(capped):
+                fp = frame_dir / f"f_{i:03d}.jpg"
+                img = Image.new("RGB", (320, 180), (40, 40, 44))
+                img.save(str(fp), "JPEG")
+                frame_paths.append(fp)
+            mock_frames.return_value = frame_paths
+            mock_env.return_value = np.zeros(2000, dtype=np.float32)
+
+            out_path = Path(tmp) / "output.png"
+            generate_timeline(
+                input_path=Path("test.mp4"),
+                output_path=out_path,
+                start=0.0,
+                end=60.0,
+                n_frames=500,
+                transcript_path=None,
+                ffmpeg_bin="ffmpeg",
+            )
+
+            self.assertTrue(out_path.exists())
+            with Image.open(str(out_path)) as result:
+                # Filmstrip should span most of the canvas width
+                # (not just a tiny fraction because n_frames was huge)
+                layout = compute_layout()
+                filmstrip_y = layout["filmstrip_y"] + layout["frame_height"] // 2
+                # Check that frames exist at both left and right ends of the strip
+                left_pixel = result.getpixel((55, filmstrip_y))
+                right_pixel = result.getpixel((1850, filmstrip_y))
+                # Both should be the placeholder grey, not the background
+                bg = (18, 18, 22)
+                assert isinstance(left_pixel, tuple)
+                assert isinstance(right_pixel, tuple)
+                self.assertNotEqual(left_pixel[:3], bg, "Left end of filmstrip should have frame content")
+                self.assertNotEqual(right_pixel[:3], bg, "Right end of filmstrip should have frame content")
 
 
 # ---------------------------------------------------------------------------

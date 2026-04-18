@@ -408,6 +408,13 @@ def _time_to_x(t: float, start: float, end: float, x0: int, span: int) -> int:
     return int(x0 + frac * span)
 
 
+def _cap_n_frames(n_frames: int, strip_width: int) -> int:
+    """Cap *n_frames* so each frame is at least MIN_FRAME_WIDTH pixels wide."""
+    gap = 4
+    max_n = strip_width // (MIN_FRAME_WIDTH + gap)
+    return min(n_frames, max(1, max_n))
+
+
 def _render_filmstrip(
     canvas: Image.Image,
     frame_paths: list[Path],
@@ -419,13 +426,10 @@ def _render_filmstrip(
     """Render filmstrip frames onto *canvas*. Returns (strip_x1, strip_span)."""
     frame_height = layout["frame_height"]
     gap = 4
-    # Cap n_frames so each frame is at least MIN_FRAME_WIDTH pixels wide
-    max_n = strip_width // (MIN_FRAME_WIDTH + gap)
-    capped_n = min(n_frames, max(1, max_n))
-    frame_w = (strip_width - (capped_n - 1) * gap) // capped_n
+    frame_w = (strip_width - (n_frames - 1) * gap) // n_frames
     filmstrip_y = layout["filmstrip_y"]
 
-    placed = min(len(frame_paths), capped_n)
+    placed = min(len(frame_paths), n_frames)
     cursor = strip_x0
     for fp in frame_paths[:placed]:
         with Image.open(fp) as img:
@@ -543,11 +547,17 @@ def generate_timeline(
 ) -> None:
     """Produce the composite PNG and save to *output_path*."""
     n_frames = max(1, n_frames)
-    timestamps = compute_frame_timestamps(start, end, n_frames)
-    layout = compute_layout()
 
     strip_x0 = 50
     strip_width = CANVAS_MIN_WIDTH - 100
+
+    # Cap n_frames so each frame is at least MIN_FRAME_WIDTH pixels;
+    # this must happen before timestamp computation and frame extraction
+    # to keep filmstrip, waveform, and ruler aligned.
+    n_frames = _cap_n_frames(n_frames, strip_width)
+
+    timestamps = compute_frame_timestamps(start, end, n_frames)
+    layout = compute_layout()
 
     with tempfile.TemporaryDirectory() as tmp:
         tmp_dir = Path(tmp)
