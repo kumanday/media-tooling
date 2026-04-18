@@ -309,6 +309,39 @@ class BatchBurnSubtitlesMainTests(unittest.TestCase):
             _, call_kwargs = mock_burn.call_args
             self.assertEqual(call_kwargs["pre_filters"], "scale=1920:-2")
 
+    def test_style_args_passed_to_burn_subtitles(self) -> None:
+        """--style-args argument is forwarded to burn_subtitles."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            inputs_file = self._make_manifest(root, ["a.mp4"])
+            output_dir = root / "output"
+
+            with (
+                patch.object(
+                    __import__("sys"),
+                    "argv",
+                    [
+                        "media-batch-burn-subtitles",
+                        "--inputs-file",
+                        str(inputs_file),
+                        "--srt-dir",
+                        str(root / "srt"),
+                        "--output-dir",
+                        str(output_dir),
+                        "--style-args",
+                        "FontName=Arial,FontSize=24",
+                    ],
+                ),
+                patch(
+                    "media_tooling.batch_burn_subtitles.burn_subtitles"
+                ) as mock_burn,
+            ):
+                result = main()
+
+            self.assertEqual(result, 0)
+            _, call_kwargs = mock_burn.call_args
+            self.assertEqual(call_kwargs["style_args"], "FontName=Arial,FontSize=24")
+
     def test_output_dir_created_if_missing(self) -> None:
         """Output directory is created automatically if it does not exist."""
         with tempfile.TemporaryDirectory() as temp_dir:
