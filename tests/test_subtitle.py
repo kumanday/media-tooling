@@ -303,6 +303,24 @@ class ScribeResponseParsingTests(unittest.TestCase):
         self.assertEqual(result["segments"][1]["speaker_id"], "speaker_1")
         self.assertEqual(result["segments"][1]["text"], "friend")
 
+    def test_parse_scribe_response_first_word_none_speaker_inherits_first_non_none(self) -> None:
+        """First words with None speaker_id inherit from the first non-None speaker."""
+        scribe_response = {
+            "text": "Uh Hello there",
+            "words": [
+                {"text": "Uh", "start": 0.0, "end": 0.5, "speaker_id": None},
+                {"text": "Hello", "start": 0.5, "end": 1.0, "speaker_id": "speaker_0"},
+                {"text": "there", "start": 1.0, "end": 1.5, "speaker_id": "speaker_0"},
+            ],
+            "audio_events": [],
+        }
+        result = parse_scribe_response(scribe_response)
+        # "Uh" (None speaker_id on first word) should inherit speaker_0,
+        # producing a single segment rather than a tiny None-fragment.
+        self.assertEqual(len(result["segments"]), 1)
+        self.assertEqual(result["segments"][0]["speaker_id"], "speaker_0")
+        self.assertEqual(result["segments"][0]["text"], "Uh Hello there")
+
     def test_speaker_id_propagated_through_resegmentation(self) -> None:
         segment = {
             "start": 0.0,

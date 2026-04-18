@@ -331,8 +331,9 @@ def run_transcription_job(
             # opts into skip-existing (Hard Rule 9).
             payload["source_hash"] = source_hash_value
 
-        if resolved_backend == "elevenlabs":
-            payload["audio_events"] = result.get("audio_events", [])
+        # Always include audio_events for consistent JSON schema across backends.
+        # ElevenLabs provides actual audio event tags; Whisper produces an empty list.
+        payload["audio_events"] = result.get("audio_events", [])
 
         write_text(txt_path, txt_text, overwrite)
         write_text(srt_path, srt_text, overwrite)
@@ -610,6 +611,23 @@ def call_scribe_api(
 
 def parse_scribe_response(scribe_response: dict[str, Any]) -> dict[str, Any]:
     raw_words = scribe_response.get("words", [])
+
+    # Pre-fill initial None speaker_ids from the first non-None speaker.
+    # When diarization is uncertain, the API may return None for early words;
+    # without this pass the first segment gets speaker_id=None and
+    # normalization drops the key, producing a tiny no-speaker fragment
+    # when a real speaker_id appears on the next word.
+    first_non_none_speaker: str | None = None
+    for raw_word in raw_words:
+        sid = raw_word.get("speaker_id")
+        if sid is not None:
+            first_non_none_speaker = sid
+            break
+    if first_non_none_speaker is not None:
+        for raw_word in raw_words:
+            if raw_word.get("speaker_id") is None:
+                raw_word["speaker_id"] = first_non_none_speaker
+
     segments: list[dict[str, Any]] = []
     current_segment: dict[str, Any] | None = None
     current_words: list[dict[str, Any]] = []
