@@ -272,9 +272,9 @@ def run_transcription_job(
         else:
             audio_path = input_path
 
-    display_model = "scribe_v1" if resolved_backend == "elevenlabs" else model_name
+    effective_model = "scribe_v1" if resolved_backend == "elevenlabs" else model_name
     print(
-        f"Transcribing {audio_path} with model '{display_model}' using backend '{resolved_backend}'",
+        f"Transcribing {audio_path} with model '{effective_model}' using backend '{resolved_backend}'",
         flush=True,
     )
     ffmpeg_parent = resolve_command_directory(ffmpeg_bin)
@@ -306,7 +306,6 @@ def run_transcription_job(
 
     txt_text = build_txt(segments)
     srt_text = build_srt(segments)
-    effective_model = "scribe_v1" if resolved_backend == "elevenlabs" else model_name
     payload: dict[str, Any] = {
         "input_path": str(input_path),
         "audio_path": str(persistent_audio_path),
