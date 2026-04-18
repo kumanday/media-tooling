@@ -183,6 +183,16 @@ class ValidateEDLTests(unittest.TestCase):
         edl["sources"] = {"source1.mp4": "/path/to/source1.mp4"}
         validate_edl(edl)  # should not raise
 
+    def test_sources_list_with_path_normalizes_to_basename(self) -> None:
+        edl = _minimal_edl()
+        edl["sources"] = ["/videos/source1.mp4"]
+        validate_edl(edl)  # should not raise: basename matches range source
+
+    def test_sources_list_relative_path_normalizes_to_basename(self) -> None:
+        edl = _minimal_edl()
+        edl["sources"] = ["videos/source1.mp4"]
+        validate_edl(edl)  # basename "source1.mp4" matches range source
+
 
 # ── Grade resolution tests ──────────────────────────────────────────────────
 
@@ -234,8 +244,15 @@ class ApplyPaddingTests(unittest.TestCase):
         self.assertAlmostEqual(start, 9.9, places=2)
         self.assertAlmostEqual(end, 20.1, places=2)
 
-    def test_padding_capped_at_max_pad(self) -> None:
+    def test_max_pad_caps_when_min_pad_exceeds(self) -> None:
+        """When min_pad > max_pad, max_pad acts as safety cap."""
         start, end = apply_padding(10.0, 20.0, min_pad=0.5, max_pad=0.2)
+        self.assertAlmostEqual(start, 9.8, places=2)
+        self.assertAlmostEqual(end, 20.2, places=2)
+
+    def test_max_pad_respected_when_equal(self) -> None:
+        """When min_pad == max_pad, pad is exactly that amount."""
+        start, end = apply_padding(10.0, 20.0, min_pad=0.2, max_pad=0.2)
         self.assertAlmostEqual(start, 9.8, places=2)
         self.assertAlmostEqual(end, 20.2, places=2)
 
@@ -304,6 +321,16 @@ class ResolveSourcePathTests(unittest.TestCase):
         edl = {"sources": ["source1.mp4"]}
         result = resolve_source_path("source1.mp4", edl, Path("/base"))
         self.assertEqual(result, Path("/base/source1.mp4"))
+
+    def test_list_sources_with_path_resolves_by_basename(self) -> None:
+        edl = {"sources": ["/videos/source1.mp4"]}
+        result = resolve_source_path("source1.mp4", edl, Path("/base"))
+        self.assertEqual(result, Path("/videos/source1.mp4"))
+
+    def test_list_sources_relative_path_resolves_by_basename(self) -> None:
+        edl = {"sources": ["videos/source1.mp4"]}
+        result = resolve_source_path("source1.mp4", edl, Path("/base"))
+        self.assertEqual(result, Path("/base/videos/source1.mp4"))
 
     def test_dict_sources(self) -> None:
         edl = {"sources": {"src_a": "/absolute/path/a.mp4"}}
@@ -414,13 +441,18 @@ class BuildMasterSrtTests(unittest.TestCase):
             srt_content = out_path.read_text(encoding="utf-8")
             # Should have at least one cue
             self.assertIn("-->", srt_content)
-            # First word starts at 0.5 in source, offset by -0.5 → 0.0 in output
-            # output_time = word.start - segment_start + segment_offset
-            # For first chunk (hello, world): local_start=0.5, seg_start=0.5 → 0.0
-            self.assertIn("00:00:00,000", srt_content)
+            # With padding (30ms each edge), padded_start = 0.5-0.03 = 0.47
+            # First word starts at 0.5 in source → out_start = 0.5 - 0.47 + 0 = 0.03
+            # So the first cue should start at ~30ms
+            self.assertIn("00:00:00,030", srt_content)
 
-    def test_multi_range_srt_offsets(self) -> None:
-        """Multiple ranges accumulate correct segment offsets."""
+    def test_multi_range_srt_offsets_use_padded_durations(self) -> None:
+        """Multiple ranges: segment offsets use padded durations (Hard Rule 5).
+
+        This is the critical SRT offset drift fix — if we used unpadded
+        durations, the second segment's subtitles would drift by ~60ms per
+        preceding segment.
+        """
         with tempfile.TemporaryDirectory() as tmpdir:
             edit_dir = Path(tmpdir)
             transcripts_dir = edit_dir / "transcripts"
@@ -460,11 +492,67 @@ class BuildMasterSrtTests(unittest.TestCase):
             build_master_srt(edl, edit_dir, out_path)
 
             srt_content = out_path.read_text(encoding="utf-8")
-            # First range: 1s duration, offset starts at 0.0
-            # Second range: 1s duration, offset starts at 1.0
-            # second segment words: 10.0-10.5 and 10.6-11.0
-            # output_start = 10.0 - 10.0 + 1.0 = 1.0
-            self.assertIn("00:00:01,000", srt_content)
+            # With padding: first range duration = (6.0+0.03) - (5.0-0.03) = 1.06s
+            # Second range offset starts at 1.06s
+            # padded_start for second range = 10.0-0.03 = 9.97
+            # word "second" at 10.0: out_start = (10.0-9.97) + 1.06 = 1.09
+            self.assertIn("00:00:01,090", srt_content)
+
+    def test_srt_offsets_match_padded_segment_timeline(self) -> None:
+        """SRT offset accumulation must use padded durations, not raw EDL ranges.
+
+        Regression test for the SRT offset drift bug: with default 30ms
+        padding per edge, each segment adds 60ms more than the raw range.
+        After N segments the SRT drifts by ~N*60ms if unpadded durations
+        are used for offset accumulation.
+        """
+        with tempfile.TemporaryDirectory() as tmpdir:
+            edit_dir = Path(tmpdir)
+            transcripts_dir = edit_dir / "transcripts"
+            transcripts_dir.mkdir()
+
+            transcript = {
+                "words": [
+                    {"type": "word", "start": 0.0, "end": 0.5, "text": "word"},
+                    {"type": "word", "start": 0.6, "end": 1.0, "text": "one"},
+                    {"type": "word", "start": 10.0, "end": 10.5, "text": "word"},
+                    {"type": "word", "start": 10.6, "end": 11.0, "text": "two"},
+                    {"type": "word", "start": 20.0, "end": 20.5, "text": "word"},
+                    {"type": "word", "start": 20.6, "end": 21.0, "text": "three"},
+                ]
+            }
+            (transcripts_dir / "src.json").write_text(
+                json.dumps(transcript), encoding="utf-8"
+            )
+
+            edl = {
+                "version": 1,
+                "sources": {"src": "src.mp4"},
+                "ranges": [
+                    {"source": "src", "start": 0.0, "end": 1.0},
+                    {"source": "src", "start": 10.0, "end": 11.0},
+                    {"source": "src", "start": 20.0, "end": 21.0},
+                ],
+            }
+
+            out_path = edit_dir / "master.srt"
+            build_master_srt(edl, edit_dir, out_path)
+
+            srt_content = out_path.read_text(encoding="utf-8")
+
+            # Segment 0: start=0.0, end=1.0 → padded_start=0.0 (clamped), padded_end=1.03, dur=1.03
+            # Segment 1: start=10.0, end=11.0 → padded_start=9.97, padded_end=11.03, dur=1.06
+            # Segment 2: start=20.0, end=21.0 → padded_start=19.97, padded_end=21.03, dur=1.06
+
+            # seg_offset after seg 0: 1.03
+            # seg_offset after seg 1: 1.03 + 1.06 = 2.09
+
+            # Third segment word "word" at 20.0:
+            # out_start = (20.0 - 19.97) + 2.09 = 0.03 + 2.09 = 2.12
+            # If unpadded: would be (20.0 - 20.0) + 2.0 = 2.0 (drift!)
+            self.assertIn("00:00:02,120", srt_content)
+            # Verify unpadded value would NOT appear
+            self.assertNotIn("00:00:02,000 -->", srt_content)
 
     def test_missing_transcript_skips_segment(self) -> None:
         """Missing transcript for a source produces a warning but no crash."""
@@ -571,12 +659,13 @@ class ExtractSegmentTests(unittest.TestCase):
 
 
 class ExtractAllSegmentsTests(unittest.TestCase):
-    @patch("media_tooling.edl_render.extract_segment")
+    @patch("media_tooling.edl_render.subprocess.run")
     @patch("media_tooling.edl_render.auto_grade_for_clip")
     def test_auto_grade_per_segment(
-        self, mock_auto: MagicMock, mock_extract: MagicMock
+        self, mock_auto: MagicMock, mock_run: MagicMock
     ) -> None:
         mock_auto.return_value = ("eq=contrast=1.05", {})
+        mock_run.return_value = MagicMock(returncode=0)
         with tempfile.TemporaryDirectory() as tmpdir:
             edit_dir = Path(tmpdir)
             edl = _multi_range_edl()
@@ -584,11 +673,17 @@ class ExtractAllSegmentsTests(unittest.TestCase):
         self.assertEqual(len(seg_paths), 3)
         # Second range has grade="auto" → should call auto_grade_for_clip once
         self.assertEqual(mock_auto.call_count, 1)
-        # First range has grade="subtle" → should not trigger auto
-        # Third range has grade="none" → should not trigger auto
+        # Verify the auto-grade filter was passed to ffmpeg command
+        # The auto-graded segment is the 2nd one (call index 1)
+        auto_call = mock_run.call_args_list[1]
+        cmd = auto_call[0][0]
+        vf_idx = cmd.index("-vf")
+        vf_value = cmd[vf_idx + 1]
+        self.assertIn("eq=contrast=1.05", vf_value)
 
-    @patch("media_tooling.edl_render.extract_segment")
-    def test_preset_grade_per_segment(self, mock_extract: MagicMock) -> None:
+    @patch("media_tooling.edl_render.subprocess.run")
+    def test_preset_grade_per_segment(self, mock_run: MagicMock) -> None:
+        mock_run.return_value = MagicMock(returncode=0)
         with tempfile.TemporaryDirectory() as tmpdir:
             edit_dir = Path(tmpdir)
             edl = {
@@ -599,12 +694,11 @@ class ExtractAllSegmentsTests(unittest.TestCase):
                 ],
             }
             extract_all_segments(edl, edit_dir)
-        # Should call extract_segment with the preset filter
-        mock_extract.assert_called_once()
-        # grade_filter is the 4th positional argument (index 3)
-        call_args = mock_extract.call_args
-        grade_filter = call_args[0][3]
-        self.assertIn("contrast=1.03", grade_filter)
+        # Verify ffmpeg command contains the preset filter
+        cmd = mock_run.call_args[0][0]
+        vf_idx = cmd.index("-vf")
+        vf_value = cmd[vf_idx + 1]
+        self.assertIn("contrast=1.03", vf_value)
 
 
 # ── Concat tests (Hard Rule 2) ───────────────────────────────────────────────

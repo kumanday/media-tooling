@@ -75,7 +75,8 @@ def validate_edl(edl: dict[str, Any]) -> None:
     if isinstance(sources, dict):
         source_names = set(sources.keys())
     else:
-        source_names = {Path(s).name if Path(s).is_absolute() else s for s in sources}
+        # Normalise all list entries to basename for consistent matching
+        source_names = {Path(s).name for s in sources}
 
     ranges = edl["ranges"]
     if not isinstance(ranges, list) or len(ranges) == 0:
@@ -115,14 +116,19 @@ def validate_edl(edl: dict[str, Any]) -> None:
 def resolve_source_path(source_name: str, edl: dict[str, Any], base: Path) -> Path:
     """Resolve a source name from the EDL to an absolute file path.
 
-    If ``sources`` is a dict, the value is the path; otherwise the name itself
-    is treated as the path (relative to *base*).
+    If ``sources`` is a dict, the value is the path; otherwise the matching
+    list entry (matched by basename) is used as the path.
     """
     sources = edl["sources"]
     if isinstance(sources, dict):
         raw = sources[source_name]
     else:
+        # Find the list entry whose basename matches source_name
         raw = source_name
+        for entry in sources:
+            if Path(entry).name == source_name:
+                raw = entry
+                break
     p = Path(raw)
     if p.is_absolute():
         return p
@@ -174,17 +180,17 @@ def apply_padding(
 ) -> tuple[float, float]:
     """Apply a working-window pad around cut edges.
 
-    Pads *start* backward and *end* forward by ``min_pad`` (default 30 ms),
-    absorbing 50–100 ms of ASR timestamp drift.  Pads are capped at
-    ``max_pad`` (200 ms) and clamped to ``0`` on the left and
-    *source_duration* on the right when available.
+    Pads *start* backward and *end* forward by *min_pad* (default 30 ms),
+    absorbing 50–100 ms of ASR timestamp drift.  Pads never exceed
+    *max_pad* (200 ms) on either side (safety cap) and are clamped to ``0``
+    on the left and *source_duration* on the right when available.
 
     Returns ``(padded_start, padded_end)``.
     """
     padded_start = max(0.0, start - min_pad)
     padded_end = end + min_pad
 
-    # Clamp the pad to max_pad on each side
+    # Cap at max_pad on each side (safety limit)
     if start - padded_start > max_pad:
         padded_start = start - max_pad
     if padded_end - end > max_pad:
@@ -474,7 +480,12 @@ def build_master_srt(
 
     - 2-word chunks (break on punctuation)
     - UPPERCASE text
-    - Output times: ``output_time = word.start − segment_start + segment_offset``
+    - Output times: ``output_time = word.start − padded_start + segment_offset``
+
+    **Hard Rule 5**: segment offsets must use padded durations that match
+    the actual extracted segment timeline, not the raw EDL range durations.
+    This function mirrors the same padding + word-boundary snapping logic
+    as ``extract_all_segments`` so subtitle timestamps stay in sync.
     """
     transcripts_dir = edit_dir / "transcripts"
     ranges = edl["ranges"]
@@ -484,21 +495,29 @@ def build_master_srt(
 
     for r in ranges:
         src_name = r["source"]
-        seg_start = float(r["start"])
-        seg_end = float(r["end"])
-        seg_duration = seg_end - seg_start
+        orig_start = float(r["start"])
+        orig_end = float(r["end"])
+        seg_start = orig_start
+        seg_end = orig_end
 
+        # Mirror extract_all_segments: snap to word boundaries then pad
         tr_path = transcripts_dir / f"{src_name}.json"
-        if not tr_path.exists():
+        words_in_seg: list[dict[str, Any]] = []
+        if tr_path.exists():
+            transcript = json.loads(tr_path.read_text(encoding="utf-8"))
+            words_in_seg = _words_in_range(transcript, seg_start, seg_end)
+            seg_start, seg_end = snap_to_word_boundary(seg_start, seg_end, words_in_seg)
+
+        padded_start, padded_end = apply_padding(seg_start, seg_end)
+        seg_duration = padded_end - padded_start
+
+        if not words_in_seg:
             print(
                 f"  no transcript for {src_name}, "
                 "skipping captions for this segment"
             )
             seg_offset += seg_duration
             continue
-
-        transcript = json.loads(tr_path.read_text(encoding="utf-8"))
-        words_in_seg = _words_in_range(transcript, seg_start, seg_end)
 
         # Group into 2-word chunks, break on punctuation
         chunks: list[list[dict[str, Any]]] = []
@@ -516,10 +535,13 @@ def build_master_srt(
             chunks.append(current)
 
         for chunk in chunks:
-            local_start = max(seg_start, chunk[0].get("start", seg_start))
-            local_end = min(seg_end, chunk[-1].get("end", seg_end))
-            out_start = max(0.0, local_start - seg_start) + seg_offset
-            out_end = max(0.0, local_end - seg_start) + seg_offset
+            # In the output video, this segment starts at padded_start in
+            # source timeline, so the offset within the segment is relative
+            # to padded_start, not the original seg_start.
+            local_start = max(padded_start, chunk[0].get("start", padded_start))
+            local_end = min(padded_end, chunk[-1].get("end", padded_end))
+            out_start = max(0.0, local_start - padded_start) + seg_offset
+            out_end = max(0.0, local_end - padded_start) + seg_offset
             if out_end <= out_start:
                 out_end = out_start + 0.4
             text = " ".join((w.get("text") or "").strip() for w in chunk)
@@ -557,6 +579,12 @@ def burn_subtitles_last(
     """Burn subtitles into *base_path* with subtitles applied LAST.
 
     Hard Rule 1: subtitles are always the terminal filter in the chain.
+
+    The actual enforcement of this rule is in ``burn_subtitles`` which
+    calls ``validate_subtitles_last`` and ``build_video_filter`` to
+    guarantee subtitle filters are terminal.  This wrapper preserves
+    the architectural boundary so callers always go through the
+    "subtitles-last" entry point.
     """
     burn_subtitles(
         input_path=base_path,
@@ -718,13 +746,22 @@ def render_edl(
 
     # 5. Two-pass loudnorm
     if no_loudnorm:
-        # Just copy/ren ame current to output
+        # Just copy/rename current to output
         if current_path != output_path:
             cmd = [ffmpeg_bin, "-y", "-i", str(current_path), "-c", "copy"]
             if output_path.suffix.lower() == ".mp4":
                 cmd.extend(["-movflags", "+faststart"])
             cmd.append(str(output_path))
-            subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+            try:
+                subprocess.run(
+                    cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE
+                )
+            except FileNotFoundError:
+                print("ffmpeg not found — ensure ffmpeg is installed and on PATH", file=sys.stderr)
+                return 1
+            except subprocess.CalledProcessError as exc:
+                print(f"copy-to-output failed: {exc}", file=sys.stderr)
+                return 1
     else:
         print("loudness normalization → social-ready (−14 LUFS / −1 dBTP / LRA 11)")
         try:
@@ -749,6 +786,18 @@ def render_edl(
     # Clean up intermediate files
     if current_path != base_path:
         current_path.unlink(missing_ok=True)
+    if base_path.exists():
+        base_path.unlink(missing_ok=True)
+
+    # Clean up extracted clips
+    clips_subdir = (
+        "clips_draft" if draft else ("clips_preview" if preview else "clips_graded")
+    )
+    clips_dir = edit_dir / clips_subdir
+    if clips_dir.is_dir():
+        for clip in clips_dir.iterdir():
+            clip.unlink(missing_ok=True)
+        clips_dir.rmdir()
 
     size_mb = output_path.stat().st_size / (1024 * 1024)
     print(f"\ndone: {output_path} ({size_mb:.1f} MB)")
