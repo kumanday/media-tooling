@@ -153,7 +153,10 @@ def group_into_phrases(
         end = w["end"]
         speaker = w.get("speaker")
 
-        # Flush on speaker change
+        # Flush on speaker change.  When both a speaker change and a silence
+        # gap exist between the same two words, flush() fires twice — the
+        # second call is a harmless no-op because current_words is already
+        # empty.  Speaker-change break takes implicit priority.
         if current_words and current_speaker is not None and speaker is not None and speaker != current_speaker:
             flush()
 
@@ -183,8 +186,10 @@ def _join_phrase_words(words: list[dict[str, Any]]) -> str:
         if stripped:
             parts.append(stripped)
     text = " ".join(parts)
-    # Clean up punctuation spacing
-    for ch in ",.?!;:":
+    # Clean up punctuation spacing — only sentence-terminal and comma
+    # punctuation.  Colons and semicolons are excluded to avoid mangling
+    # expressions like "12 :30" (rare in transcripts, but safer to preserve).
+    for ch in ",.?!":
         text = text.replace(f" {ch}", ch)
     return text
 

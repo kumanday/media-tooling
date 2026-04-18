@@ -226,6 +226,30 @@ class RenderMarkdownTests(unittest.TestCase):
         self.assertIn("[1.123-5.679]", md)
 
 
+class JoinPhraseWordsTests(unittest.TestCase):
+    def test_punctuation_cleanup_sentence_terminal(self) -> None:
+        """Punctuation cleanup strips spaces before sentence-terminal and comma."""
+        words = [
+            {"word": "Hello", "start": 0.0, "end": 1.0, "speaker": None},
+            {"word": " ,", "start": 1.0, "end": 1.1, "speaker": None},
+            {"word": "world", "start": 1.1, "end": 2.0, "speaker": None},
+            {"word": " .", "start": 2.0, "end": 2.1, "speaker": None},
+        ]
+        phrases = group_into_phrases(words, silence_threshold=0.5)
+        self.assertEqual(phrases[0]["text"], "Hello, world.")
+
+    def test_punctuation_cleanup_preserves_colon(self) -> None:
+        """Colons are excluded from punctuation cleanup to preserve time expressions."""
+        words = [
+            {"word": "12", "start": 0.0, "end": 1.0, "speaker": None},
+            {"word": " :", "start": 1.0, "end": 1.1, "speaker": None},
+            {"word": "30", "start": 1.1, "end": 2.0, "speaker": None},
+        ]
+        phrases = group_into_phrases(words, silence_threshold=0.5)
+        # Colon should NOT have its leading space stripped
+        self.assertEqual(phrases[0]["text"], "12 : 30")
+
+
 class MainEndToEndTests(unittest.TestCase):
     def _make_json(self, payload: dict) -> Path:
         tmpdir = Path(tempfile.mkdtemp())
