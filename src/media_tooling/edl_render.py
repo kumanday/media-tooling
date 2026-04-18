@@ -75,8 +75,18 @@ def validate_edl(edl: dict[str, Any]) -> None:
     if isinstance(sources, dict):
         source_names = set(sources.keys())
     else:
-        # Normalise all list entries to basename for consistent matching
-        source_names = {Path(s).name for s in sources}
+        # List sources: match by basename but reject duplicates
+        basenames = [Path(s).name for s in sources]
+        seen: dict[str, int] = {}
+        for name in basenames:
+            seen[name] = seen.get(name, 0) + 1
+        dupes = {n for n, c in seen.items() if c > 1}
+        if dupes:
+            raise EDLSchemaError(
+                f"Duplicate basenames in sources list: {dupes}. "
+                "Use a dict sources mapping to disambiguate."
+            )
+        source_names = set(basenames)
 
     ranges = edl["ranges"]
     if not isinstance(ranges, list) or len(ranges) == 0:
@@ -339,7 +349,12 @@ def extract_segment(
         "-movflags", "+faststart",
         str(out_path),
     ])
-    subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+    try:
+        subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+    except FileNotFoundError:
+        raise RuntimeError(f"{ffmpeg_bin} not found — ensure ffmpeg is installed and on PATH")
+    except subprocess.CalledProcessError as exc:
+        raise RuntimeError(f"ffmpeg extract failed for {source}: {exc}") from exc
 
 
 def extract_all_segments(
@@ -456,8 +471,14 @@ def concat_segments(
         str(out_path),
     ]
     validate_concat_demuxer_usage(cmd)
-    subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
-    concat_list.unlink(missing_ok=True)
+    try:
+        subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+    except FileNotFoundError:
+        raise RuntimeError(f"{ffmpeg_bin} not found — ensure ffmpeg is installed and on PATH")
+    except subprocess.CalledProcessError as exc:
+        raise RuntimeError(f"ffmpeg concat failed: {exc}") from exc
+    finally:
+        concat_list.unlink(missing_ok=True)
 
 
 # ── Master SRT (Hard Rule 5) ────────────────────────────────────────────────
@@ -783,10 +804,11 @@ def render_edl(
             print(f"loudnorm probe error: {exc}", file=sys.stderr)
             return 1
 
-    # Clean up intermediate files
-    if current_path != base_path:
-        current_path.unlink(missing_ok=True)
-    if base_path.exists():
+    # Clean up intermediate files (never delete the final output)
+    if current_path.resolve() != output_path.resolve():
+        if current_path != base_path:
+            current_path.unlink(missing_ok=True)
+    if base_path.resolve() != output_path.resolve() and base_path.exists():
         base_path.unlink(missing_ok=True)
 
     # Clean up extracted clips

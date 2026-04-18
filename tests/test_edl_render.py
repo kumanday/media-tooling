@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -167,6 +168,16 @@ class ValidateEDLTests(unittest.TestCase):
         with self.assertRaises(EDLSchemaError) as ctx:
             validate_edl(edl)
         self.assertIn("not a known preset", str(ctx.exception))
+
+    def test_duplicate_basenames_in_list_sources(self) -> None:
+        edl = {
+            "version": 1,
+            "sources": ["/a/interview.mp4", "/b/interview.mp4"],
+            "ranges": [{"source": "interview.mp4", "start": 0.0, "end": 5.0}],
+        }
+        with self.assertRaises(EDLSchemaError) as ctx:
+            validate_edl(edl)
+        self.assertIn("Duplicate basenames", str(ctx.exception))
 
     def test_raw_filter_grade_passes(self) -> None:
         edl = _minimal_edl()
@@ -743,6 +754,38 @@ class ConcatSegmentsTests(unittest.TestCase):
         # _concat.txt should be cleaned up
         concat_list = edit_dir / "_concat.txt"
         self.assertFalse(concat_list.exists())
+
+    @patch("media_tooling.edl_render.subprocess.run")
+    @patch("media_tooling.edl_render.validate_concat_demuxer_usage")
+    def test_concat_ffmpeg_failure_raises_runtime_error(
+        self, mock_validate: MagicMock, mock_run: MagicMock
+    ) -> None:
+        mock_run.side_effect = subprocess.CalledProcessError(1, "ffmpeg")
+        with tempfile.TemporaryDirectory() as tmpdir:
+            edit_dir = Path(tmpdir)
+            seg1 = edit_dir / "seg1.mp4"
+            seg1.write_text("fake")
+            out_path = edit_dir / "output.mp4"
+
+            with self.assertRaises(RuntimeError) as ctx:
+                concat_segments([seg1], out_path, edit_dir)
+            self.assertIn("concat failed", str(ctx.exception))
+
+    @patch("media_tooling.edl_render.subprocess.run")
+    @patch("media_tooling.edl_render.validate_concat_demuxer_usage")
+    def test_concat_ffmpeg_not_found_raises_runtime_error(
+        self, mock_validate: MagicMock, mock_run: MagicMock
+    ) -> None:
+        mock_run.side_effect = FileNotFoundError("ffmpeg not found")
+        with tempfile.TemporaryDirectory() as tmpdir:
+            edit_dir = Path(tmpdir)
+            seg1 = edit_dir / "seg1.mp4"
+            seg1.write_text("fake")
+            out_path = edit_dir / "output.mp4"
+
+            with self.assertRaises(RuntimeError) as ctx:
+                concat_segments([seg1], out_path, edit_dir)
+            self.assertIn("not found", str(ctx.exception))
 
 
 # ── CLI tests ───────────────────────────────────────────────────────────────
