@@ -317,6 +317,23 @@ class PathEscapingTests(unittest.TestCase):
 
             self.assertIn("\\%", vf)
 
+    def test_escapes_single_quotes_in_force_style(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            srt_path = Path(temp_dir) / "subs.srt"
+            srt_path.write_text(
+                "\n".join(["1", "00:00:00,000 --> 00:00:03,000", "Test", ""]),
+                encoding="utf-8",
+            )
+
+            custom_style = "FontName=O'Brien,FontSize=24"
+            vf = build_video_filter(
+                srt_path=srt_path,
+                force_style=custom_style,
+                pre_filters=None,
+            )
+
+            self.assertIn("O\\'Brien", vf)
+
 
 class StyleConstantsTests(unittest.TestCase):
     def test_bold_overlay_has_required_properties(self) -> None:

@@ -151,7 +151,7 @@ def burn_subtitles(
     style_args: str | None = None,
     pre_filters: str | None = None,
     ffmpeg_bin: str = "ffmpeg",
-    overwrite: bool = True,
+    overwrite: bool = False,
 ) -> None:
     cues = parse_srt_file(srt_path)
     if not cues:
@@ -389,7 +389,8 @@ def build_video_filter(
         .replace(";", "\\;")
     )
 
-    subtitles_filter = f"subtitles='{subs_escaped}':force_style='{force_style}'"
+    force_style_escaped = force_style.replace("'", "\\'")
+    subtitles_filter = f"subtitles='{subs_escaped}':force_style='{force_style_escaped}'"
 
     if pre_filters:
         return f"{pre_filters},{subtitles_filter}"
@@ -403,7 +404,7 @@ def run_ffmpeg(
     output_path: Path,
     video_filter: str,
     ffmpeg_bin: str = "ffmpeg",
-    overwrite: bool = True,
+    overwrite: bool = False,
 ) -> None:
     """Run ffmpeg to burn subtitles into video."""
     command = [
