@@ -10,6 +10,7 @@ from unittest.mock import MagicMock, patch
 
 from media_tooling.edl_render import (
     EDLSchemaError,
+    _resolve_segment_bounds,
     _srt_timestamp,
     _words_in_range,
     apply_padding,
@@ -353,6 +354,62 @@ class SnapToWordBoundaryTests(unittest.TestCase):
         start, end = snap_to_word_boundary(10.0, 20.0, words)
         self.assertEqual(start, 10.0)
         self.assertEqual(end, 20.0)
+
+
+# ── Audio fade tests (Hard Rule 3) ──────────────────────────────────────────
+
+
+class ResolveSegmentBoundsTests(unittest.TestCase):
+    """Tests for _resolve_segment_bounds (shared snap→pad helper)."""
+
+    def test_no_transcript_returns_padded_raw(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            edit_dir = Path(tmpdir)
+            source_durations: dict[str, float] = {}
+            padded_start, padded_end, words = _resolve_segment_bounds(
+                10.0, 20.0, "src.mp4", edit_dir, source_durations,
+            )
+            self.assertEqual(words, [])
+            # Padding applied to raw 10.0–20.0
+            self.assertAlmostEqual(padded_start, 9.97, places=2)
+            self.assertAlmostEqual(padded_end, 20.03, places=2)
+
+    def test_corrupt_transcript_uses_raw_cut_points(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            edit_dir = Path(tmpdir)
+            tr_dir = edit_dir / "transcripts"
+            tr_dir.mkdir()
+            (tr_dir / "src.mp4.json").write_text("NOT JSON{{{", encoding="utf-8")
+            source_durations: dict[str, float] = {}
+            with patch("builtins.print"):
+                padded_start, padded_end, words = _resolve_segment_bounds(
+                    10.0, 20.0, "src.mp4", edit_dir, source_durations,
+                )
+            self.assertEqual(words, [])
+            self.assertAlmostEqual(padded_start, 9.97, places=2)
+
+    def test_valid_transcript_snaps_and_pads(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            edit_dir = Path(tmpdir)
+            tr_dir = edit_dir / "transcripts"
+            tr_dir.mkdir()
+            transcript = {
+                "words": [
+                    {"start": 9.8, "end": 10.5, "text": "hello", "type": "word"},
+                    {"start": 19.6, "end": 20.2, "text": "world", "type": "word"},
+                ]
+            }
+            (tr_dir / "src.mp4.json").write_text(
+                json.dumps(transcript), encoding="utf-8"
+            )
+            source_durations: dict[str, float] = {"src.mp4": 9999.0}
+            padded_start, padded_end, words = _resolve_segment_bounds(
+                9.9, 20.1, "src.mp4", edit_dir, source_durations,
+            )
+            # Snapped: start→9.8, end→20.2, then padded
+            self.assertAlmostEqual(padded_start, 9.77, places=2)
+            self.assertAlmostEqual(padded_end, 20.23, places=2)
+            self.assertEqual(len(words), 2)
 
 
 # ── Audio fade tests (Hard Rule 3) ──────────────────────────────────────────
