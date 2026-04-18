@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import re
 import subprocess
 import sys
 import tempfile
@@ -18,6 +19,15 @@ from media_tooling.subtitle_translate import (
 
 SUBTITLE_FILTER_KEYWORDS = ("subtitles=", "ass=")
 OVERLAY_FILTER_KEYWORDS = ("overlay=", "setpts=")
+
+# Compiled patterns for filter-boundary matching (avoids false positives
+# like "class=" or "bass=" matching the "ass=" keyword)
+_SUBTITLE_FILTER_PATTERNS = tuple(
+    re.compile(rf"(?:^|,){re.escape(kw)}") for kw in SUBTITLE_FILTER_KEYWORDS
+)
+_OVERLAY_FILTER_PATTERNS = tuple(
+    re.compile(rf"(?:^|,){re.escape(kw)}") for kw in OVERLAY_FILTER_KEYWORDS
+)
 
 # ASS/SSA style constants
 
@@ -154,18 +164,21 @@ def validate_subtitles_last(filter_string: str, context: str = "filter") -> None
     filter anywhere in it (since any such filter in user-supplied extras would
     necessarily come before the subtitles filter we append).
 
+    Uses filter-boundary matching (start-of-string or comma prefix) to avoid
+    false positives like "class=" or "bass=" matching "ass=".
+
     Raises ValueError with a descriptive message referencing Hard Rule 1.
     """
     found_subtitle = None
     found_overlay = None
 
-    for keyword in SUBTITLE_FILTER_KEYWORDS:
-        if keyword in filter_string:
+    for pattern, keyword in zip(_SUBTITLE_FILTER_PATTERNS, SUBTITLE_FILTER_KEYWORDS):
+        if pattern.search(filter_string):
             found_subtitle = keyword
             break
 
-    for keyword in OVERLAY_FILTER_KEYWORDS:
-        if keyword in filter_string:
+    for pattern, keyword in zip(_OVERLAY_FILTER_PATTERNS, OVERLAY_FILTER_KEYWORDS):
+        if pattern.search(filter_string):
             found_overlay = keyword
             break
 

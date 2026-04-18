@@ -64,6 +64,18 @@ class ValidateSubtitlesLastTests(unittest.TestCase):
         """Filters unrelated to subtitles or overlays should pass."""
         validate_subtitles_last("eq=brightness=0.1,fps=24", context="test")
 
+    def test_class_filter_not_false_positive_on_ass(self) -> None:
+        """'class=' should not trigger 'ass=' false positive."""
+        validate_subtitles_last("class=somevalue,fps=24", context="test")
+
+    def test_bass_filter_not_false_positive_on_ass(self) -> None:
+        """'bass=' should not trigger 'ass=' false positive."""
+        validate_subtitles_last("bass=5,fps=24", context="test")
+
+    def test_overlay_in_word_not_false_positive(self) -> None:
+        """'coloroverlay=' should not trigger 'overlay=' false positive."""
+        validate_subtitles_last("coloroverlay=5,fps=24", context="test")
+
 
 class SRTParsingTests(unittest.TestCase):
     def test_parse_srt_file_reads_valid_srt(self) -> None:
