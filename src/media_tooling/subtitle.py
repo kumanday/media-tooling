@@ -240,8 +240,9 @@ def run_transcription_job(
                 ffmpeg_bin=ffmpeg_bin,
                 overwrite=overwrite,
             )
-            # Also extract temp mono 16kHz PCM WAV for Scribe API upload
-            wav_audio_path = audio_path.with_suffix(".wav")
+            # Also extract temp mono 16kHz PCM WAV for Scribe API upload.
+            # Use .pcm.wav suffix to avoid overwriting any existing .wav.
+            wav_audio_path = audio_path.with_suffix(".pcm.wav")
             extract_audio_pcm_wav(
                 input_path=input_path,
                 wav_path=wav_audio_path,
@@ -569,7 +570,8 @@ def call_scribe_api(
     api_key: str,
     language: str | None = None,
 ) -> dict[str, Any]:
-    assert _requests_module is not None  # ensured by caller
+    if _requests_module is None:  # pragma: no cover — defense in depth
+        raise RuntimeError("requests library is required for ElevenLabs transcription")
     data: dict[str, str] = {
         "model_id": "scribe_v1",
         "diarize": "true",
