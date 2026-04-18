@@ -52,7 +52,6 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("input", help="Path to an input video file.")
     parser.add_argument(
-        "-i",
         "--srt",
         required=True,
         help="Path to the SRT subtitle file to burn into the video.",
@@ -482,7 +481,7 @@ def run_ffmpeg(
         "-c:v",
         "libx264",
         "-preset",
-        "fast",
+        "veryfast",
         "-crf",
         "20",
         "-pix_fmt",
