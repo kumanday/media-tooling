@@ -22,10 +22,21 @@ Persist strategy, decisions, and reasoning across sessions in `edit/project.md`.
 
 On startup, read `edit/project.md` and summarize the last session in one sentence to re-establish context.
 
-After each session, append an entry to `edit/project.md` with the following sections:
+After each session, append a timestamped entry to `edit/project.md` using this format:
 
-- **Strategy**: current approach and goals for this project
-- **Decisions**: key choices made and their rationale
-- **Reasoning log**: significant inference chains or trade-off evaluations
-- **Outstanding items**: unfinished work, open questions, or next actions
+```
+## Session YYYY-MM-DD
+
+### Strategy
+Current approach and goals for this project.
+
+### Decisions
+Key choices made and their rationale.
+
+### Reasoning log
+Significant inference chains or trade-off evaluations.
+
+### Outstanding items
+Unfinished work, open questions, or next actions.
+```
 {{MANAGED_BLOCK_END}}

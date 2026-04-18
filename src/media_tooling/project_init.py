@@ -24,22 +24,6 @@ PROJECT_MEMORY_PATH = "edit/project.md"
 
 PROJECT_MEMORY_INITIAL_CONTENT = """\
 # Project Memory
-
-## Strategy
-
-_(Current approach and goals for this project)_
-
-## Decisions
-
-_(Key choices made and their rationale)_
-
-## Reasoning log
-
-_(Significant inference chains or trade-off evaluations)_
-
-## Outstanding items
-
-_(Unfinished work, open questions, or next actions)_
 """
 SKILL_NAMES = (
     "media-corpus-ingest",
@@ -69,8 +53,10 @@ def parse_args() -> argparse.Namespace:
 
 def ensure_project_memory(*, project_dir: Path, create_memory: bool) -> tuple[Path, str]:
     memory_path = project_dir / PROJECT_MEMORY_PATH
-    if not create_memory or memory_path.exists():
+    if memory_path.exists():
         return memory_path, "exists"
+    if not create_memory:
+        return memory_path, "skipped"
     memory_path.parent.mkdir(parents=True, exist_ok=True)
     memory_path.write_text(PROJECT_MEMORY_INITIAL_CONTENT, encoding="utf-8")
     return memory_path, "created"

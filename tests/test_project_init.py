@@ -141,10 +141,7 @@ class ProjectInitTests(unittest.TestCase):
             self.assertEqual(action, "created")
             self.assertTrue(memory_path.exists())
             contents = memory_path.read_text(encoding="utf-8")
-            self.assertIn("## Strategy", contents)
-            self.assertIn("## Decisions", contents)
-            self.assertIn("## Reasoning log", contents)
-            self.assertIn("## Outstanding items", contents)
+            self.assertIn("# Project Memory", contents)
 
     def test_ensure_project_memory_does_not_overwrite_existing(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -171,17 +168,14 @@ class ProjectInitTests(unittest.TestCase):
                 create_memory=False,
             )
 
-            self.assertEqual(action, "exists")
+            self.assertEqual(action, "skipped")
             self.assertFalse((project_dir / PROJECT_MEMORY_PATH).exists())
 
     def test_ensure_project_directories_includes_edit_dir(self) -> None:
         self.assertIn("edit", PROJECT_SUBDIRECTORIES)
 
     def test_project_memory_initial_content_has_required_sections(self) -> None:
-        self.assertIn("## Strategy", PROJECT_MEMORY_INITIAL_CONTENT)
-        self.assertIn("## Decisions", PROJECT_MEMORY_INITIAL_CONTENT)
-        self.assertIn("## Reasoning log", PROJECT_MEMORY_INITIAL_CONTENT)
-        self.assertIn("## Outstanding items", PROJECT_MEMORY_INITIAL_CONTENT)
+        self.assertIn("# Project Memory", PROJECT_MEMORY_INITIAL_CONTENT)
 
 
 if __name__ == "__main__":
