@@ -189,8 +189,12 @@ class GroupIntoPhrasesTests(unittest.TestCase):
             {"word": "Hi", "start": 2.1, "end": 3.0, "speaker": "B"},
         ]
         phrases = group_into_phrases(words, silence_threshold=0.5)
-        # A and B are different known speakers → must break
-        self.assertGreaterEqual(len(phrases), 2)
+        # A and B are different known speakers → must break between them
+        self.assertEqual(len(phrases), 2)
+        self.assertIn("Hello there", phrases[0]["text"])
+        self.assertEqual(phrases[0]["speaker"], "A")
+        self.assertIn("Hi", phrases[1]["text"])
+        self.assertEqual(phrases[1]["speaker"], "B")
 
 
 class RenderMarkdownTests(unittest.TestCase):
