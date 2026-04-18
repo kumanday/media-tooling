@@ -327,7 +327,11 @@ def apply_grade(input_path: Path, output_path: Path, filter_string: str) -> None
     is_mp4 = output_path.suffix.lower() in mp4_suffixes
     faststart = ["-movflags", "+faststart"] if is_mp4 else []
 
-    output_path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        raise RuntimeError(f"cannot create output directory: {exc}") from exc
+
     if not filter_string:
         cmd = [
             "ffmpeg", "-y", "-i", str(input_path),
@@ -355,16 +359,14 @@ def apply_grade(input_path: Path, output_path: Path, filter_string: str) -> None
         proc.wait()
         if proc.returncode != 0:
             stderr_text = b"".join(captured_chunks).decode("utf-8", errors="replace")
-            raise subprocess.CalledProcessError(proc.returncode, cmd, stderr=stderr_text)
+            stderr_snippet = stderr_text.strip().splitlines()[-1] if stderr_text.strip() else ""
+            raise RuntimeError(
+                f"ffmpeg failed (exit code {proc.returncode}). "
+                f"Command: {' '.join(cmd)}. {stderr_snippet}"
+            )
     except FileNotFoundError:
         raise RuntimeError(
             "ffmpeg not found — ensure ffmpeg is installed and on PATH"
-        )
-    except subprocess.CalledProcessError as exc:
-        stderr_snippet = (exc.stderr or "").strip().splitlines()[-1] if exc.stderr else ""
-        raise RuntimeError(
-            f"ffmpeg failed (exit code {exc.returncode}). "
-            f"Command: {' '.join(cmd)}. {stderr_snippet}"
         )
 
 
