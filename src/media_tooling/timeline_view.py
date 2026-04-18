@@ -325,10 +325,8 @@ def load_words(transcript_path: Path | None, start: float, end: float) -> list[d
     # Filter to time range
     out: list[dict[str, Any]] = []
     for w in all_words:
-        ws = w.get("start")
-        we = w.get("end")
-        if ws is None or we is None:
-            continue
+        ws = float(w.get("start", 0))
+        we = float(w.get("end", ws))
         if we <= start or ws >= end:
             continue
         out.append(w)
@@ -420,7 +418,7 @@ def _render_filmstrip(
     """Render filmstrip frames onto *canvas*. Returns (strip_x1, strip_span)."""
     frame_height = layout["frame_height"]
     gap = 4
-    frame_w = (strip_width - (n_frames - 1) * gap) // n_frames
+    frame_w = max(1, (strip_width - (n_frames - 1) * gap) // n_frames)
     filmstrip_y = layout["filmstrip_y"]
 
     cursor = strip_x0
@@ -483,14 +481,14 @@ def _render_waveform(
     last_label_x = -9999
     for w in words:
         word_text = (w.get("word") or w.get("text") or "").strip()
-        ws = w.get("start")
-        we = w.get("end")
-        if not word_text or ws is None or we is None:
+        ws = float(w.get("start", 0))
+        we = float(w.get("end", ws))
+        if not word_text:
             continue
         if (we - ws) < 0.05:
             continue
-        cx = (_time_to_x(float(ws), start, end, strip_x0, strip_span)
-              + _time_to_x(float(we), start, end, strip_x0, strip_span)) // 2
+        cx = (_time_to_x(ws, start, end, strip_x0, strip_span)
+              + _time_to_x(we, start, end, strip_x0, strip_span)) // 2
         if cx - last_label_x < 28:
             continue
         draw.line((cx, wave_y - 4, cx, wave_y), fill=DIM, width=1)
