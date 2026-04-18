@@ -237,6 +237,42 @@ def build_image_segment(
     )
 
 
+def parse_time_to_seconds(value: str | float) -> float:
+    """Convert an ffmpeg time value to seconds.
+
+    Accepts plain seconds (e.g. ``90.5``) or timecode
+    (e.g. ``00:01:30.5``).
+    """
+    text = str(value).strip()
+    parts = text.split(":")
+    if len(parts) == 1:
+        return float(parts[0])
+    if len(parts) == 2:
+        return float(parts[0]) * 60 + float(parts[1])
+    if len(parts) == 3:
+        return float(parts[0]) * 3600 + float(parts[1]) * 60 + float(parts[2])
+    raise ValueError(f"Unrecognised time format: {text}")
+
+
+_FADE_DURATION = 0.03  # 30 ms
+
+
+def build_afade_filter(*, start: str | float, end: str | float) -> str:
+    """Build an ffmpeg ``afade`` chain for 30 ms in/out fades.
+
+    Returns an empty string when the segment is too short for fades
+    (less than twice the fade duration, i.e. under 60 ms).
+    """
+    duration = parse_time_to_seconds(end) - parse_time_to_seconds(start)
+    if duration < _FADE_DURATION * 2:
+        return ""
+    fade_out_start = duration - _FADE_DURATION
+    return (
+        f"afade=t=in:st=0:d={_FADE_DURATION},"
+        f"afade=t=out:st={fade_out_start}:d={_FADE_DURATION}"
+    )
+
+
 def build_clip_segment(
     *,
     segment: dict[str, Any],
@@ -247,7 +283,7 @@ def build_clip_segment(
     input_path = resolve_path(segment["input"])
     start = segment["start"]
     end = segment["end"]
-    command = [
+    command: list[str] = [
         ffmpeg_bin,
         "-y",
         "-ss",
@@ -274,6 +310,13 @@ def build_clip_segment(
                 "scale=1920:1080:force_original_aspect_ratio=decrease,"
                 "pad=1920:1080:(ow-iw)/2:(oh-ih)/2:black,fps=30"
             ),
+        ]
+    )
+    afade = build_afade_filter(start=start, end=end)
+    if afade:
+        command.extend(["-af", afade])
+    command.extend(
+        [
             "-c:v",
             "libx264",
             "-preset",
