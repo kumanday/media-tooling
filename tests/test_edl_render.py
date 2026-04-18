@@ -1015,6 +1015,25 @@ class RenderEDLTests(unittest.TestCase):
             result = render_edl(edl_path, output_path, no_subtitles=True, no_loudnorm=True)
         self.assertEqual(result, 1)
 
+    @patch("media_tooling.edl_render.build_master_srt")
+    @patch("media_tooling.edl_render.concat_segments")
+    @patch("media_tooling.edl_render.extract_all_segments")
+    def test_build_master_srt_os_error_returns_1(
+        self, mock_extract: MagicMock, mock_concat: MagicMock, mock_srt: MagicMock
+    ) -> None:
+        """OSError from build_master_srt is caught and returns 1."""
+        mock_extract.return_value = [Path("/tmp/seg_00.mp4")]
+        mock_concat.return_value = None
+        mock_srt.side_effect = OSError("disk full")
+        with tempfile.TemporaryDirectory() as tmpdir:
+            edit_dir = Path(tmpdir)
+            edl_path = edit_dir / "test_edl.json"
+            edl_path.write_text(json.dumps(_minimal_edl()), encoding="utf-8")
+            output_path = edit_dir / "output.mp4"
+            from media_tooling.edl_render import render_edl
+            result = render_edl(edl_path, output_path, build_subtitles=True, no_loudnorm=True)
+        self.assertEqual(result, 1)
+
     @patch("media_tooling.edl_render.burn_subtitles_last")
     @patch("media_tooling.edl_render.concat_segments")
     @patch("media_tooling.edl_render.extract_all_segments")

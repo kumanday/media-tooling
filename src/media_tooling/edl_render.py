@@ -499,8 +499,8 @@ def concat_segments(
     """Lossless concat via the concat demuxer.  Stream copy, no re-encode."""
     out_path.parent.mkdir(parents=True, exist_ok=True)
     concat_list = edit_dir / "_concat.txt"
-    # Escape single quotes in paths for ffmpeg concat demuxer format
-    # Use double quotes which support backslash escaping per ffmpeg docs
+    # Escape paths for ffmpeg concat demuxer format
+    # Use double quotes with backslash escaping per ffmpeg docs
     lines: list[str] = []
     for p in segment_paths:
         escaped = str(p.resolve()).replace("\\", "\\\\").replace('"', '\\"')
@@ -812,7 +812,11 @@ def render_edl(
     if not no_subtitles:
         if build_subtitles:
             subs_path = edit_dir / "master.srt"
-            build_master_srt(edl, edit_dir, subs_path, ffprobe_bin=ffprobe_bin)
+            try:
+                build_master_srt(edl, edit_dir, subs_path, ffprobe_bin=ffprobe_bin)
+            except (OSError, RuntimeError) as exc:
+                print(f"subtitle build failed: {exc}", file=sys.stderr)
+                return 1
         elif edl.get("subtitles"):
             subs_val = edl["subtitles"]
             # subtitles can be a string path or a dict with style info + optional path
