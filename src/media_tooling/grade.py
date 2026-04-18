@@ -344,16 +344,18 @@ def apply_grade(input_path: Path, output_path: Path, filter_string: str) -> None
             str(output_path),
         ]
     try:
-        proc = subprocess.Popen(cmd, stderr=subprocess.PIPE, text=True)
-        captured_lines: list[str] = []
-        if proc.stderr is not None:
-            for line in proc.stderr:
-                sys.stderr.write(line)
-                captured_lines.append(line)
+        proc = subprocess.Popen(cmd, stderr=subprocess.PIPE)
+        captured_chunks: list[bytes] = []
+        stderr_pipe = proc.stderr
+        if stderr_pipe is not None:
+            for chunk in iter(lambda: stderr_pipe.read(4096), b""):
+                sys.stderr.buffer.write(chunk)
+                sys.stderr.buffer.flush()
+                captured_chunks.append(chunk)
         proc.wait()
         if proc.returncode != 0:
-            stderr_snippet = captured_lines[-1].strip() if captured_lines else ""
-            raise subprocess.CalledProcessError(proc.returncode, cmd, stderr="".join(captured_lines))
+            stderr_text = b"".join(captured_chunks).decode("utf-8", errors="replace")
+            raise subprocess.CalledProcessError(proc.returncode, cmd, stderr=stderr_text)
     except FileNotFoundError:
         raise RuntimeError(
             "ffmpeg not found — ensure ffmpeg is installed and on PATH"
@@ -440,9 +442,13 @@ def main(argv: list[str] | None = None) -> int:
         if not args.analyze.exists():
             print(f"input not found: {args.analyze}", file=sys.stderr)
             return 1
-        filter_string, stats = auto_grade_for_clip(
-            args.analyze, start=args.start, duration=args.duration, verbose=True
-        )
+        try:
+            filter_string, stats = auto_grade_for_clip(
+                args.analyze, start=args.start, duration=args.duration, verbose=True
+            )
+        except RuntimeError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 1
         print(f"\nfilter: {filter_string or '(none)'}")
         print(f"stats:  {json.dumps(stats, indent=2)}")
         return 0
@@ -466,9 +472,13 @@ def main(argv: list[str] | None = None) -> int:
         filter_string = get_preset(args.preset)
     else:
         # Auto mode (default)
-        filter_string, _ = auto_grade_for_clip(
-            args.input, start=args.start, duration=args.duration, verbose=True
-        )
+        try:
+            filter_string, _ = auto_grade_for_clip(
+                args.input, start=args.start, duration=args.duration, verbose=True
+            )
+        except RuntimeError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 1
 
     print(f"grading {args.input.name} → {args.output.name}")
     if filter_string:
@@ -488,3 +498,4 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+

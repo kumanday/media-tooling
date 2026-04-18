@@ -326,7 +326,8 @@ class ApplyGradeTests(unittest.TestCase):
     def _mock_popen(self, returncode: int = 0) -> MagicMock:
         """Create a mock Popen process that simulates successful ffmpeg."""
         mock_proc = MagicMock()
-        mock_proc.stderr = iter([])
+        mock_proc.stderr = MagicMock()
+        mock_proc.stderr.read = MagicMock(return_value=b"")
         mock_proc.wait.return_value = None
         mock_proc.returncode = returncode
         return mock_proc
@@ -376,7 +377,9 @@ class ApplyGradeTests(unittest.TestCase):
     def test_ffmpeg_failure_raises_runtime_error(self) -> None:
         """ffmpeg failure raises RuntimeError with exit code info."""
         mock_proc = MagicMock()
-        mock_proc.stderr = iter(["error line\n"])
+        mock_proc.stderr = MagicMock()
+        # Simulate: read returns error bytes, then empty bytes (EOF)
+        mock_proc.stderr.read = MagicMock(side_effect=[b"error line\n", b""])
         mock_proc.wait.return_value = None
         mock_proc.returncode = 1
         with patch("media_tooling.grade.subprocess.Popen", return_value=mock_proc):
@@ -530,6 +533,25 @@ class CLIMainTests(unittest.TestCase):
                     result = main(["input.mp4", "-o", "output.mp4"])
         self.assertEqual(result, 1)
 
+    def test_auto_grade_runtime_error_caught_in_auto_mode(self) -> None:
+        """RuntimeError from auto_grade_for_clip in auto-mode is caught by main()."""
+        with patch("media_tooling.grade.auto_grade_for_clip",
+                   side_effect=RuntimeError("ffmpeg not found")):
+            with patch("builtins.print"):
+                with patch.object(Path, "exists", return_value=True):
+                    result = main(["input.mp4", "-o", "output.mp4"])
+        self.assertEqual(result, 1)
+
+    def test_auto_grade_runtime_error_caught_in_analyze_mode(self) -> None:
+        """RuntimeError from auto_grade_for_clip in --analyze is caught by main()."""
+        with patch("media_tooling.grade.auto_grade_for_clip",
+                   side_effect=RuntimeError("ffmpeg not found")):
+            with patch("builtins.print"):
+                with patch.object(Path, "exists", return_value=True):
+                    result = main(["--analyze", "input.mp4"])
+        self.assertEqual(result, 1)
+
 
 if __name__ == "__main__":
     unittest.main()
+
