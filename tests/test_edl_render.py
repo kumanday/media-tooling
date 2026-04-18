@@ -5,6 +5,7 @@ import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from typing import cast
 from unittest.mock import MagicMock, patch
 
 from media_tooling.edl_render import (
@@ -899,6 +900,33 @@ class ConcatSegmentsTests(unittest.TestCase):
         # _concat.txt should be cleaned up
         concat_list = edit_dir / "_concat.txt"
         self.assertFalse(concat_list.exists())
+
+    @patch("media_tooling.edl_render.subprocess.run")
+    def test_concat_list_uses_single_quote_escaping(self, mock_run: MagicMock) -> None:
+        """Paths in concat manifest must use single-quote escaping (ffmpeg concat demuxer format)."""
+        captured_content: str = ""
+
+        def _capture_and_succeed(*args: object, **kwargs: object) -> MagicMock:
+            nonlocal captured_content
+            # The concat list file is the -i argument
+            cmd = cast("list[str]", args[0])
+            i_idx = cmd.index("-i")
+            concat_path = Path(cmd[i_idx + 1])
+            captured_content = concat_path.read_text()
+            return MagicMock(returncode=0)
+
+        mock_run.side_effect = _capture_and_succeed
+        with tempfile.TemporaryDirectory() as tmpdir:
+            edit_dir = Path(tmpdir)
+            seg1 = edit_dir / "seg1.mp4"
+            seg1.write_text("fake")
+            out_path = edit_dir / "output.mp4"
+
+            concat_segments([seg1], out_path, edit_dir)
+
+        # Single-quoted path format, not double-quoted
+        self.assertIn("file '", captured_content)
+        self.assertNotIn('file "', captured_content)
 
     @patch("media_tooling.edl_render.subprocess.run")
     @patch("media_tooling.edl_render.validate_concat_demuxer_usage")

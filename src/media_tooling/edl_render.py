@@ -32,7 +32,7 @@ from media_tooling.burn_subtitles import burn_subtitles
 from media_tooling.ffprobe_utils import probe_duration
 from media_tooling.grade import PRESETS, auto_grade_for_clip, get_preset
 from media_tooling.loudnorm import apply_loudnorm_two_pass
-from media_tooling.rough_cut import validate_concat_demuxer_usage
+from media_tooling.rough_cut import quote_concat_path, validate_concat_demuxer_usage
 
 # ── Constants ────────────────────────────────────────────────────────────────
 
@@ -500,11 +500,10 @@ def concat_segments(
     out_path.parent.mkdir(parents=True, exist_ok=True)
     concat_list = edit_dir / "_concat.txt"
     # Escape paths for ffmpeg concat demuxer format
-    # Use double quotes with backslash escaping per ffmpeg docs
+    # Use single quotes with backslash-escaped inner single quotes (same as rough_cut.py)
     lines: list[str] = []
     for p in segment_paths:
-        escaped = str(p.resolve()).replace("\\", "\\\\").replace('"', '\\"')
-        lines.append(f'file "{escaped}"\n')
+        lines.append(f"file {quote_concat_path(p.resolve())}\n")
     concat_list.write_text("".join(lines), encoding="utf-8")
 
     cmd: list[str] = [
