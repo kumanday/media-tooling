@@ -368,10 +368,14 @@ class BatchSubtitleBackendChoiceTests(unittest.TestCase):
                     "media_tooling.subtitle._requests_module",
                     MagicMock(),
                 ),
+                patch("sys.stdout", new_callable=__import__("io").StringIO) as mock_out,
             ):
                 result = main()
 
             self.assertNotEqual(result, 0)
+            output = mock_out.getvalue()
+            self.assertIn("FAILED", output)
+            self.assertIn("api_key", output.lower())
 
 
 if __name__ == "__main__":
