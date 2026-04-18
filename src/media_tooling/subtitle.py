@@ -222,9 +222,6 @@ def run_transcription_job(
     if skip_existing and txt_path.exists() and srt_path.exists() and json_path.exists():
         source_hash_value = compute_source_hash(input_path)
         if source_matches_cache(json_path, input_path, backend=resolved_backend, computed_hash=source_hash_value):
-            # Backfill source_hash into legacy JSON that lacks it so future
-            # runs can detect source changes without a full re-transcription.
-            _patch_source_hash(json_path, source_hash_value)
             print(f"Skipping existing outputs for {input_path}")
             return
         else:
@@ -731,22 +728,6 @@ def source_matches_cache(
     if cached_hash != current_hash:
         return False
     return True
-
-
-def _patch_source_hash(json_path: Path, source_hash: str) -> None:
-    """Backfill source_hash into a legacy JSON that lacks it.
-
-    Outputs produced without --skip-existing omit source_hash.
-    When --skip-existing later hits that legacy JSON, we add the
-    hash so subsequent runs can detect source changes.
-    """
-    try:
-        cached = json.loads(json_path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
-        return
-    if "source_hash" not in cached:
-        cached["source_hash"] = source_hash
-        json_path.write_text(json.dumps(cached, indent=2), encoding="utf-8")
 
 
 def ensure_parent_dirs(*paths: Path) -> None:

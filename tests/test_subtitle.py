@@ -9,7 +9,6 @@ from unittest.mock import MagicMock, patch
 
 from media_tooling.subtitle import (
     SUBTITLE_MAX_DURATION_SECONDS,
-    _patch_source_hash,
     build_srt,
     build_txt,
     compute_source_hash,
@@ -435,24 +434,6 @@ class CachingTests(unittest.TestCase):
                 encoding="utf-8",
             )
             self.assertTrue(source_matches_cache(json_path, src, backend="whisper", computed_hash=h))
-
-    def test_patch_source_hash_adds_hash_to_legacy_json(self) -> None:
-        """_patch_source_hash should add source_hash to JSON that lacks it."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            json_path = Path(tmpdir) / "test.json"
-            json_path.write_text(json.dumps({"backend": "whisper"}), encoding="utf-8")
-            _patch_source_hash(json_path, "abc123")
-            cached = json.loads(json_path.read_text(encoding="utf-8"))
-            self.assertEqual(cached["source_hash"], "abc123")
-
-    def test_patch_source_hash_skips_if_hash_present(self) -> None:
-        """_patch_source_hash should not overwrite an existing source_hash."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            json_path = Path(tmpdir) / "test.json"
-            json_path.write_text(json.dumps({"backend": "whisper", "source_hash": "original"}), encoding="utf-8")
-            _patch_source_hash(json_path, "new_hash")
-            cached = json.loads(json_path.read_text(encoding="utf-8"))
-            self.assertEqual(cached["source_hash"], "original")
 
 
 class ElevenLabsErrorHandlingTests(unittest.TestCase):
