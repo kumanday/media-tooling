@@ -223,14 +223,17 @@ def run_transcription_job(
     source_hash_value: str | None = None
 
     if skip_existing:
-        source_hash_value = compute_source_hash(input_path)
-    if skip_existing and txt_path.exists() and srt_path.exists() and json_path.exists():
-        if source_matches_cache(json_path, input_path, backend=resolved_backend, computed_hash=source_hash_value):
-            print(f"Skipping existing outputs for {input_path}")
-            return
+        if txt_path.exists() and srt_path.exists() and json_path.exists():
+            source_hash_value = compute_source_hash(input_path)
+            if source_matches_cache(json_path, input_path, backend=resolved_backend, computed_hash=source_hash_value):
+                print(f"Skipping existing outputs for {input_path}")
+                return
+            else:
+                print(f"Cache miss for {input_path}; re-transcribing.")
+                overwrite = True  # stale outputs should be replaced
         else:
-            print(f"Cache miss for {input_path}; re-transcribing.")
-            overwrite = True  # stale outputs should be replaced
+            # No outputs exist yet; source_hash will be computed after transcription
+            source_hash_value = None
 
     ensure_parent_dirs(audio_path, txt_path, srt_path, json_path)
 
@@ -331,12 +334,11 @@ def run_transcription_job(
             "segments": segments,
         }
         if source_hash_value is not None:
-            # Only include source_hash when it was computed for cache
-            # checking (skip_existing=True). Avoids the I/O cost of
-            # SHA-256 hashing large files on every default invocation
-            # while still providing full cache integrity when the user
-            # opts into skip-existing (Hard Rule 9).
             payload["source_hash"] = source_hash_value
+        elif skip_existing:
+            # First run with --skip-existing: compute hash now so future
+            # runs can detect source changes without re-transcribing.
+            payload["source_hash"] = compute_source_hash(input_path)
 
         # Always include audio_events for consistent JSON schema across backends.
         # ElevenLabs provides actual audio event tags; Whisper produces an empty list.
@@ -629,7 +631,7 @@ def call_scribe_api(
             wait = base_backoff * (2 ** attempt)
             if retry_after:
                 try:
-                    wait = float(retry_after)
+                    wait = min(float(retry_after), 60.0)  # cap at 60s
                 except ValueError:
                     # Retry-After may be an HTTP-date (e.g. "Fri, 18 Apr 2026 11:00:00 GMT")
                     try:

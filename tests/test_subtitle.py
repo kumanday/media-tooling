@@ -829,6 +829,45 @@ class ElevenLabsErrorHandlingTests(unittest.TestCase):
         finally:
             os.unlink(wav_path)
 
+    def test_transcribe_with_elevenlabs_retry_after_integer_capped_at_60(self) -> None:
+        """Retry-After integer value should be capped at 60s."""
+        mock_429 = MagicMock()
+        mock_429.status_code = 429
+        mock_429.text = "Rate limited"
+        mock_429.headers = {"Retry-After": "3600"}  # 1 hour
+
+        mock_200 = MagicMock()
+        mock_200.status_code = 200
+        mock_200.json.return_value = {
+            "text": "Hello",
+            "language_code": "en",
+            "words": [
+                {"text": "Hello", "start": 0.0, "end": 1.0, "speaker_id": "speaker_0"},
+            ],
+            "audio_events": [],
+        }
+
+        mock_requests = MagicMock()
+        mock_requests.post.side_effect = [mock_429, mock_200]
+
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
+            f.write(b"fake wav data")
+            wav_path = Path(f.name)
+
+        try:
+            with patch("media_tooling.subtitle._requests_module", mock_requests), \
+                 patch.dict(os.environ, {"ELEVENLABS_API_KEY": "test-key"}), \
+                 patch("media_tooling.subtitle.time.sleep") as mock_sleep:
+                result = transcribe_with_elevenlabs(
+                    audio_path=wav_path,
+                    language=None,
+                )
+                self.assertEqual(result["text"], "Hello")
+                # Should cap Retry-After: 3600 at 60s, not sleep for an hour
+                self.assertAlmostEqual(mock_sleep.call_args_list[0][0][0], 60.0)
+        finally:
+            os.unlink(wav_path)
+
 
 class SpeakerLabelOutputTests(unittest.TestCase):
     def test_build_srt_includes_speaker_id_when_present(self) -> None:
