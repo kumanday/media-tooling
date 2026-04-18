@@ -212,7 +212,7 @@ def render_markdown(
     lines: list[str] = [
         "# Packed transcript",
         "",
-        f"Phrase-level, grouped on silences ≥ {silence_threshold:.1f}s or speaker change.",
+        f"Phrase-level, grouped on silences ≥ {silence_threshold:g}s or speaker change.",
         "Use `[start-end]` ranges to address cuts in the EDL.",
         "",
     ]
