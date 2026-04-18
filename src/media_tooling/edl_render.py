@@ -525,9 +525,17 @@ def build_master_srt(
         tr_path = transcripts_dir / f"{src_name}.json"
         words_in_seg: list[dict[str, Any]] = []
         if tr_path.exists():
-            transcript = json.loads(tr_path.read_text(encoding="utf-8"))
-            words_in_seg = _words_in_range(transcript, seg_start, seg_end)
-            seg_start, seg_end = snap_to_word_boundary(seg_start, seg_end, words_in_seg)
+            try:
+                transcript = json.loads(tr_path.read_text(encoding="utf-8"))
+                words_in_seg = _words_in_range(transcript, seg_start, seg_end)
+            except (json.JSONDecodeError, KeyError, TypeError):
+                print(
+                    f"  corrupt transcript for {src_name}, "
+                    "skipping captions for this segment",
+                    file=sys.stderr,
+                )
+            else:
+                seg_start, seg_end = snap_to_word_boundary(seg_start, seg_end, words_in_seg)
 
         padded_start, padded_end = apply_padding(seg_start, seg_end)
         seg_duration = padded_end - padded_start
@@ -709,10 +717,14 @@ def render_edl(
 
     # 1. Extract per-segment
     print(f"extracting {len(edl['ranges'])} segment(s)")
-    segment_paths = extract_all_segments(
-        edl, edit_dir,
-        preview=preview, draft=draft, ffmpeg_bin=ffmpeg_bin,
-    )
+    try:
+        segment_paths = extract_all_segments(
+            edl, edit_dir,
+            preview=preview, draft=draft, ffmpeg_bin=ffmpeg_bin,
+        )
+    except RuntimeError as exc:
+        print(f"segment extraction failed: {exc}", file=sys.stderr)
+        return 1
 
     # 2. Concat → base
     base_name = (
@@ -721,7 +733,11 @@ def render_edl(
     )
     base_path = edit_dir / base_name
     print(f"concat → {base_path.name}")
-    concat_segments(segment_paths, base_path, edit_dir, ffmpeg_bin=ffmpeg_bin)
+    try:
+        concat_segments(segment_paths, base_path, edit_dir, ffmpeg_bin=ffmpeg_bin)
+    except RuntimeError as exc:
+        print(f"concat failed: {exc}", file=sys.stderr)
+        return 1
 
     # 3. Subtitles: build if requested, resolve final path
     subs_path: Path | None = None
@@ -797,6 +813,9 @@ def render_edl(
                     current_path, output_path,
                     ffmpeg_bin=ffmpeg_bin, ffprobe_bin=ffprobe_bin,
                 )
+        except FileNotFoundError:
+            print("ffmpeg/ffprobe not found — ensure both are installed and on PATH", file=sys.stderr)
+            return 1
         except subprocess.CalledProcessError as exc:
             print(f"loudnorm failed: {exc}", file=sys.stderr)
             return 1
