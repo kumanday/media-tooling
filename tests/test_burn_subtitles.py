@@ -77,6 +77,22 @@ class ValidateSubtitlesLastTests(unittest.TestCase):
         """'coloroverlay=' should not trigger 'overlay=' false positive."""
         validate_subtitles_last("coloroverlay=5,fps=24", context="test")
 
+    def test_subtitles_after_semicolon_raises(self) -> None:
+        """A subtitles filter after semicolon separator violates Hard Rule 1."""
+        with self.assertRaises(ValueError) as ctx:
+            validate_subtitles_last("scale=640:-2;subtitles=evil.srt", context="test")
+        self.assertIn("Hard Rule 1", str(ctx.exception))
+
+    def test_ass_after_semicolon_raises(self) -> None:
+        """An ass filter after semicolon separator violates Hard Rule 1."""
+        with self.assertRaises(ValueError) as ctx:
+            validate_subtitles_last("scale=1;ass=evil.ass", context="test")
+        self.assertIn("Hard Rule 1", str(ctx.exception))
+
+    def test_bass_after_semicolon_not_false_positive(self) -> None:
+        """'bass=' after semicolon should not trigger 'ass=' false positive."""
+        validate_subtitles_last("bass=5;fps=24", context="test")
+
 
 class SRTParsingTests(unittest.TestCase):
     def test_parse_srt_file_reads_valid_srt(self) -> None:
@@ -501,7 +517,7 @@ class GuardrailConstantsTests(unittest.TestCase):
 
 class CLIValidationTests(unittest.TestCase):
     def test_overwrite_and_skip_existing_mutually_exclusive(self) -> None:
-        """--overwrite and --skip-existing together must be rejected."""
+        """--overwrite and --skip-existing together must be rejected by argparse."""
         import sys
         from unittest.mock import patch
 
@@ -509,8 +525,10 @@ class CLIValidationTests(unittest.TestCase):
             sys, "argv", ["media-burn-subtitles", "input.mp4", "--srt", "subs.srt",
                           "-o", "output.mp4", "--overwrite", "--skip-existing"]
         ):
-            result = main()
-        self.assertEqual(result, 1)
+            with self.assertRaises(SystemExit) as ctx:
+                main()
+            # argparse exits with code 2 for argument errors
+            self.assertEqual(ctx.exception.code, 2)
 
 
 if __name__ == "__main__":

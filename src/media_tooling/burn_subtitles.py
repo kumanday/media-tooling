@@ -21,12 +21,13 @@ SUBTITLE_FILTER_KEYWORDS = ("subtitles=", "ass=")
 OVERLAY_FILTER_KEYWORDS = ("overlay=", "setpts=")
 
 # Compiled patterns for filter-boundary matching (avoids false positives
-# like "class=" or "bass=" matching the "ass=" keyword)
+# like "class=" or "bass=" matching the "ass=" keyword).
+# Matches at start-of-string or after comma/semicolon/space delimiters.
 _SUBTITLE_FILTER_PATTERNS = tuple(
-    re.compile(rf"(?:^|,){re.escape(kw)}") for kw in SUBTITLE_FILTER_KEYWORDS
+    re.compile(rf"(?:^|[ ,;]){re.escape(kw)}") for kw in SUBTITLE_FILTER_KEYWORDS
 )
 _OVERLAY_FILTER_PATTERNS = tuple(
-    re.compile(rf"(?:^|,){re.escape(kw)}") for kw in OVERLAY_FILTER_KEYWORDS
+    re.compile(rf"(?:^|[ ,;]){re.escape(kw)}") for kw in OVERLAY_FILTER_KEYWORDS
 )
 
 # ASS/SSA style constants
@@ -99,12 +100,13 @@ def parse_args() -> argparse.Namespace:
         default="ffmpeg",
         help="Path to ffmpeg. Default: ffmpeg.",
     )
-    parser.add_argument(
+    mutex = parser.add_mutually_exclusive_group()
+    mutex.add_argument(
         "--overwrite",
         action="store_true",
         help="Overwrite an existing output file.",
     )
-    parser.add_argument(
+    mutex.add_argument(
         "--skip-existing",
         action="store_true",
         help="Skip work if the output file already exists.",
@@ -114,13 +116,6 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
-
-    if args.overwrite and args.skip_existing:
-        print(
-            "Error: --overwrite and --skip-existing are mutually exclusive.",
-            file=sys.stderr,
-        )
-        return 1
 
     input_path = Path(args.input).expanduser().resolve()
     srt_path = Path(args.srt).expanduser().resolve()
@@ -172,8 +167,8 @@ def validate_subtitles_last(filter_string: str, context: str = "filter") -> None
     filter anywhere in it (since any such filter in user-supplied extras would
     necessarily come before the subtitles filter we append).
 
-    Uses filter-boundary matching (start-of-string or comma prefix) to avoid
-    false positives like "class=" or "bass=" matching "ass=".
+    Uses filter-boundary matching (start-of-string, comma, semicolon, or space
+    prefix) to avoid false positives like "class=" or "bass=" matching "ass=".
 
     Raises ValueError with a descriptive message referencing Hard Rule 1.
     """
