@@ -36,6 +36,8 @@ media-rough-cut = "media_tooling.rough_cut:main"
 media-subtitle = "media_tooling.subtitle:main"
 media-timeline-view = "media_tooling.timeline_view:main"
 media-tooling-init = "media_tooling.project_init:main"
+media-loudnorm = "media_tooling.loudnorm:main"
+media-pack-transcript = "media_tooling.pack_transcript:main"
 media-translate-subtitles = "media_tooling.subtitle_translate:main"
 
 [tool.ruff]
