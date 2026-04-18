@@ -697,10 +697,8 @@ def build_master_srt(
 
     for r in ranges:
         src_name = r["source"]
-        orig_start = float(r["start"])
-        orig_end = float(r["end"])
-        seg_start = orig_start
-        seg_end = orig_end
+        seg_start = float(r["start"])
+        seg_end = float(r["end"])
 
         padded_start, padded_end, words_in_seg = _resolve_segment_bounds(
             seg_start, seg_end, src_name, edit_dir, source_durations,
