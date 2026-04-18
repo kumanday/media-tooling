@@ -617,6 +617,11 @@ def parse_scribe_response(scribe_response: dict[str, Any]) -> dict[str, Any]:
     for raw_word in raw_words:
         word_text = raw_word.get("text", raw_word.get("word", ""))
         speaker_id = raw_word.get("speaker_id")
+        # When diarization is uncertain, the API may return None for speaker_id.
+        # Treat it as "same speaker as previous segment" to prevent fragmentation
+        # into many tiny alternating segments on None↔speaker_N transitions.
+        if speaker_id is None and current_segment is not None:
+            speaker_id = current_segment.get("speaker_id")
         start = float(raw_word.get("start", 0))
         end = float(raw_word.get("end", 0))
 
