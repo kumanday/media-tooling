@@ -11,6 +11,7 @@ from PIL import Image, ImageDraw
 
 from media_tooling.ffprobe_utils import probe_duration
 from media_tooling.timeline_view import (
+    _create_placeholder_frame,
     _render_filmstrip,
     _render_ruler,
     _render_waveform,
@@ -18,6 +19,7 @@ from media_tooling.timeline_view import (
     compute_envelope,
     compute_frame_timestamps,
     compute_layout,
+    extract_frames,
     find_silences,
     generate_timeline,
     load_words,
@@ -497,6 +499,177 @@ class TestNFramesZero(unittest.TestCase):
                 start=0.0,
                 end=60.0,
                 n_frames=0,
+                transcript_path=None,
+                ffmpeg_bin="ffmpeg",
+            )
+
+            self.assertTrue(out_path.exists())
+
+
+# ---------------------------------------------------------------------------
+# extract_frames / _create_placeholder_frame
+# ---------------------------------------------------------------------------
+
+
+class TestExtractFrames(unittest.TestCase):
+    @patch("media_tooling.timeline_view.subprocess.run")
+    def test_ffmpeg_failure_produces_placeholder(self, mock_run: MagicMock) -> None:
+        """When ffmpeg fails, extract_frames should produce a placeholder frame."""
+        mock_run.return_value = MagicMock(returncode=1)
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "frames"
+            paths = extract_frames(Path("test.mp4"), [0.0, 5.0], "ffmpeg", dest)
+            self.assertEqual(len(paths), 2)
+            for p in paths:
+                self.assertTrue(p.exists())
+                with Image.open(str(p)) as img:
+                    self.assertEqual(img.size, (320, 180))
+
+    @patch("media_tooling.timeline_view.subprocess.run")
+    def test_ffmpeg_success_returns_extracted_frames(self, mock_run: MagicMock) -> None:
+        """When ffmpeg succeeds, the extracted frame file is returned."""
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "frames"
+            dest.mkdir(parents=True)
+            # Pre-create a frame file so the "exists" check passes
+            fake_frame = dest / "f_000.jpg"
+            Image.new("RGB", (320, 180), (100, 100, 100)).save(str(fake_frame), "JPEG")
+
+            mock_run.return_value = MagicMock(returncode=0)
+            paths = extract_frames(Path("test.mp4"), [0.0], "ffmpeg", dest)
+            self.assertEqual(len(paths), 1)
+            self.assertTrue(paths[0].exists())
+
+
+class TestCreatePlaceholderFrame(unittest.TestCase):
+    def test_creates_jpeg_of_requested_size(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "placeholder.jpg"
+            _create_placeholder_frame(path, 320, 180)
+            self.assertTrue(path.exists())
+            with Image.open(str(path)) as img:
+                self.assertEqual(img.size, (320, 180))
+                self.assertEqual(img.mode, "RGB")
+
+    def test_grey_fill_colour(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "placeholder.jpg"
+            _create_placeholder_frame(path, 64, 64)
+            with Image.open(str(path)) as img:
+                px = img.getpixel((0, 0))
+                assert isinstance(px, tuple)
+                # JPEG compression may shift values slightly; check within tolerance
+                self.assertAlmostEqual(px[0], 40, delta=5)
+                self.assertAlmostEqual(px[1], 40, delta=5)
+                self.assertAlmostEqual(px[2], 44, delta=5)
+
+
+# ---------------------------------------------------------------------------
+# Transcript / silence rendering integration
+# ---------------------------------------------------------------------------
+
+
+class TestTranscriptRendering(unittest.TestCase):
+    @patch("media_tooling.timeline_view.probe_duration", return_value=10.0)
+    @patch("media_tooling.timeline_view.extract_frames")
+    @patch("media_tooling.timeline_view.compute_envelope")
+    def test_transcript_produces_silence_shading(
+        self,
+        mock_env: MagicMock,
+        mock_frames: MagicMock,
+        mock_dur: MagicMock,
+    ) -> None:
+        """Verify that silence gaps from a transcript produce visible shading."""
+        with tempfile.TemporaryDirectory() as tmp:
+            frame_dir = Path(tmp) / "frames"
+            frame_dir.mkdir()
+            frame_paths: list[Path] = []
+            for i in range(3):
+                fp = frame_dir / f"f_{i:03d}.jpg"
+                img = Image.new("RGB", (320, 180), (40, 40, 44))
+                img.save(str(fp), "JPEG")
+                frame_paths.append(fp)
+            mock_frames.return_value = frame_paths
+            mock_env.return_value = np.zeros(2000, dtype=np.float32)
+
+            # Create a transcript JSON with a silence gap 3.0→7.0 (4s gap ≥ 400ms)
+            transcript = {
+                "words": [
+                    {"word": "hello", "start": 0.0, "end": 1.0},
+                    {"word": " world", "start": 1.0, "end": 3.0},
+                    {"word": " again", "start": 7.0, "end": 10.0},
+                ],
+            }
+            transcript_path = Path(tmp) / "transcript.json"
+            transcript_path.write_text(json.dumps(transcript))
+
+            out_path = Path(tmp) / "output.png"
+            generate_timeline(
+                input_path=Path("test.mp4"),
+                output_path=out_path,
+                start=0.0,
+                end=10.0,
+                n_frames=3,
+                transcript_path=transcript_path,
+                ffmpeg_bin="ffmpeg",
+            )
+
+            self.assertTrue(out_path.exists())
+            with Image.open(str(out_path)) as result:
+                layout = compute_layout()
+                wave_y = layout["wave_y"]
+                strip_x0 = 50
+                strip_span = 1920 - 100
+
+                # Sample OFF the midline (where the zero-envelope waveform line sits)
+                # to avoid the waveform line dominating the pixel colour.
+                sample_y = wave_y + 20
+
+                # Sample pixel in the silence region (mid-gap around t=5.0)
+                silence_x = _time_to_x(5.0, 0.0, 10.0, strip_x0, strip_span)
+                silence_pixel = result.getpixel((silence_x, sample_y))
+                assert isinstance(silence_pixel, tuple)
+
+                # Sample pixel in the speech region (around t=1.5)
+                speech_x = _time_to_x(1.5, 0.0, 10.0, strip_x0, strip_span)
+                speech_pixel = result.getpixel((speech_x, sample_y))
+                assert isinstance(speech_pixel, tuple)
+
+                # Silence region should have a visible tint (blue-ish overlay)
+                # The silence fill is RGBA (50,80,120,120) on top of (28,28,34).
+                # After alpha compositing, the blue channel is noticeably higher.
+                self.assertGreater(silence_pixel[2], speech_pixel[2],
+                                   "Silence region should have more blue than speech region")
+
+    @patch("media_tooling.timeline_view.probe_duration", return_value=10.0)
+    @patch("media_tooling.timeline_view.extract_frames")
+    @patch("media_tooling.timeline_view.compute_envelope")
+    def test_no_transcript_no_silence_legend(
+        self,
+        mock_env: MagicMock,
+        mock_frames: MagicMock,
+        mock_dur: MagicMock,
+    ) -> None:
+        """Without a transcript, the silence legend should not appear."""
+        with tempfile.TemporaryDirectory() as tmp:
+            frame_dir = Path(tmp) / "frames"
+            frame_dir.mkdir()
+            frame_paths: list[Path] = []
+            for i in range(3):
+                fp = frame_dir / f"f_{i:03d}.jpg"
+                img = Image.new("RGB", (320, 180), (40, 40, 44))
+                img.save(str(fp), "JPEG")
+                frame_paths.append(fp)
+            mock_frames.return_value = frame_paths
+            mock_env.return_value = np.zeros(2000, dtype=np.float32)
+
+            out_path = Path(tmp) / "output.png"
+            generate_timeline(
+                input_path=Path("test.mp4"),
+                output_path=out_path,
+                start=0.0,
+                end=10.0,
+                n_frames=3,
                 transcript_path=None,
                 ffmpeg_bin="ffmpeg",
             )
