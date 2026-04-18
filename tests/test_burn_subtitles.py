@@ -7,11 +7,12 @@ from pathlib import Path
 from media_tooling.burn_subtitles import (
     BOLD_OVERLAY_FORCE_STYLE,
     NATURAL_SENTENCE_FORCE_STYLE,
-    build_srt_from_cues,
+    _sentence_case,
     build_video_filter,
     rechunk_bold_overlay,
     rechunk_natural_sentence,
 )
+from media_tooling.subtitle import build_srt
 from media_tooling.subtitle_translate import SubtitleCue, parse_srt_file
 
 
@@ -112,6 +113,30 @@ class BoldOverlayChunkingTests(unittest.TestCase):
             self.assertFalse(cue["text"].endswith(","))
             self.assertFalse(cue["text"].endswith(";"))
             self.assertFalse(cue["text"].endswith(":"))
+
+    def test_periods_preserved_in_bold_overlay(self) -> None:
+        cues = self._make_cues("Hello. World end.")
+        result = rechunk_bold_overlay(cues)
+
+        # Period-ending words should keep the period after uppercasing
+        self.assertTrue(any(c["text"].endswith(".") for c in result))
+
+
+class SentenceCaseTests(unittest.TestCase):
+    def test_capitalizes_first_letter(self) -> None:
+        self.assertEqual(_sentence_case("hello world"), "Hello world")
+
+    def test_preserves_proper_nouns(self) -> None:
+        self.assertEqual(_sentence_case("NASA launches rocket"), "NASA launches rocket")
+
+    def test_preserves_acronyms(self) -> None:
+        self.assertEqual(_sentence_case("the API response"), "The API response")
+
+    def test_empty_string(self) -> None:
+        self.assertEqual(_sentence_case(""), "")
+
+    def test_single_char(self) -> None:
+        self.assertEqual(_sentence_case("a"), "A")
 
 
 class NaturalSentenceChunkingTests(unittest.TestCase):
@@ -240,13 +265,13 @@ class FilterChainOrderingTests(unittest.TestCase):
             self.assertNotIn(BOLD_OVERLAY_FORCE_STYLE, vf)
 
 
-class BuildSRTFromCuesTests(unittest.TestCase):
+class BuildSRTTests(unittest.TestCase):
     def test_produces_valid_srt(self) -> None:
         cues = [
             {"start": 0.0, "end": 3.0, "text": "HELLO WORLD"},
             {"start": 3.0, "end": 6.0, "text": "THIS IS"},
         ]
-        srt_text = build_srt_from_cues(cues)
+        srt_text = build_srt(cues)
 
         lines = srt_text.strip().split("\n")
         self.assertEqual(lines[0], "1")
@@ -254,8 +279,43 @@ class BuildSRTFromCuesTests(unittest.TestCase):
         self.assertEqual(lines[2], "HELLO WORLD")
 
     def test_empty_cues_produce_empty_srt(self) -> None:
-        srt_text = build_srt_from_cues([])
+        srt_text = build_srt([])
         self.assertEqual(srt_text.strip(), "")
+
+
+class PathEscapingTests(unittest.TestCase):
+    def test_escapes_special_characters(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            srt_path = Path(temp_dir) / "video [1].srt"
+            srt_path.write_text(
+                "\n".join(["1", "00:00:00,000 --> 00:00:03,000", "Test", ""]),
+                encoding="utf-8",
+            )
+
+            vf = build_video_filter(
+                srt_path=srt_path,
+                force_style=BOLD_OVERLAY_FORCE_STYLE,
+                pre_filters=None,
+            )
+
+            self.assertIn("\\[", vf)
+            self.assertIn("\\]", vf)
+
+    def test_escapes_percent_sign(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            srt_path = Path(temp_dir) / "100%.srt"
+            srt_path.write_text(
+                "\n".join(["1", "00:00:00,000 --> 00:00:03,000", "Test", ""]),
+                encoding="utf-8",
+            )
+
+            vf = build_video_filter(
+                srt_path=srt_path,
+                force_style=BOLD_OVERLAY_FORCE_STYLE,
+                pre_filters=None,
+            )
+
+            self.assertIn("\\%", vf)
 
 
 class StyleConstantsTests(unittest.TestCase):

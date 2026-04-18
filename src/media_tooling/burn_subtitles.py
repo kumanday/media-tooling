@@ -7,8 +7,12 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-from media_tooling.subtitle import format_srt_timestamp
-from media_tooling.subtitle_translate import parse_srt_file
+from media_tooling.subtitle import SUBTITLE_LONG_GAP_SECONDS, build_srt
+from media_tooling.subtitle_translate import (
+    HARD_SENTENCE_PUNCTUATION,
+    SOFT_SENTENCE_PUNCTUATION,
+    parse_srt_file,
+)
 
 # ASS/SSA style constants
 
@@ -26,8 +30,8 @@ NATURAL_SENTENCE_FORCE_STYLE = (
     "Alignment=2,MarginV=35"
 )
 
-PUNCT_BREAK = set(".,!?;:")
-HARD_SENTENCE_PUNCT = set(".!?")
+# Combined punctuation set: hard + soft (includes CJK characters)
+_PUNCT_BREAK = HARD_SENTENCE_PUNCTUATION + SOFT_SENTENCE_PUNCTUATION
 
 # Chunking constants for bold-overlay style
 BOLD_OVERLAY_WORDS_PER_CHUNK = 2
@@ -35,7 +39,6 @@ BOLD_OVERLAY_WORDS_PER_CHUNK = 2
 # Chunking constants for natural-sentence style
 NATURAL_SENTENCE_MIN_WORDS = 4
 NATURAL_SENTENCE_MAX_WORDS = 7
-NATURAL_SENTENCE_LONG_GAP_SECONDS = 0.45
 
 
 def parse_args() -> argparse.Namespace:
@@ -129,6 +132,7 @@ def main() -> int:
             style_args=args.style_args,
             pre_filters=args.pre_filters,
             ffmpeg_bin=args.ffmpeg_bin,
+            overwrite=args.overwrite,
         )
     except (ValueError, RuntimeError) as exc:
         print(str(exc), file=sys.stderr)
@@ -147,6 +151,7 @@ def burn_subtitles(
     style_args: str | None = None,
     pre_filters: str | None = None,
     ffmpeg_bin: str = "ffmpeg",
+    overwrite: bool = True,
 ) -> None:
     cues = parse_srt_file(srt_path)
     if not cues:
@@ -161,7 +166,7 @@ def burn_subtitles(
     else:
         raise ValueError(f"Unknown style: {style}")
 
-    rechunked_srt = build_srt_from_cues(rechunked)
+    rechunked_srt = build_srt(rechunked)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -182,6 +187,7 @@ def burn_subtitles(
             output_path=output_path,
             video_filter=video_filter,
             ffmpeg_bin=ffmpeg_bin,
+            overwrite=overwrite,
         )
     finally:
         tmp_srt_path.unlink(missing_ok=True)
@@ -255,7 +261,7 @@ def _merge_cues_by_gap(cues: list[Any]) -> list[dict[str, Any]]:
     for i, cue in enumerate(cues):
         if i > 0:
             gap = cue.start - cues[i - 1].end
-            if gap >= NATURAL_SENTENCE_LONG_GAP_SECONDS:
+            if gap >= SUBTITLE_LONG_GAP_SECONDS:
                 merged.append(
                     {
                         "start": current_start,
@@ -290,7 +296,7 @@ def _group_words_with_punctuation_breaks(
 
     for word in words:
         current.append(word)
-        ends_with_punct = bool(word) and word[-1] in PUNCT_BREAK
+        ends_with_punct = bool(word) and word[-1] in _PUNCT_BREAK
         if len(current) >= max_words or ends_with_punct:
             chunks.append(current)
             current = []
@@ -314,8 +320,8 @@ def _group_words_natural_sentence(words: list[str]) -> list[list[str]]:
     for word in words:
         current.append(word)
         word_count = len(current)
-        ends_with_hard_punct = bool(word) and word[-1] in HARD_SENTENCE_PUNCT
-        ends_with_soft_punct = bool(word) and word[-1] in PUNCT_BREAK
+        ends_with_hard_punct = bool(word) and word[-1] in HARD_SENTENCE_PUNCTUATION
+        ends_with_soft_punct = bool(word) and word[-1] in _PUNCT_BREAK
 
         if word_count >= NATURAL_SENTENCE_MAX_WORDS:
             chunks.append(current)
@@ -355,26 +361,10 @@ def _distribute_timing(
 
 
 def _sentence_case(text: str) -> str:
-    """Convert text to sentence case: capitalize first letter, rest lowercase."""
+    """Capitalize first letter, preserve rest."""
     if not text:
         return text
-    return text[0].upper() + text[1:].lower() if len(text) > 1 else text.upper()
-
-
-def build_srt_from_cues(cues: list[dict[str, Any]]) -> str:
-    """Build an SRT string from a list of cue dicts with start, end, text."""
-    blocks = []
-    for index, cue in enumerate(cues, start=1):
-        blocks.append(
-            "\n".join(
-                [
-                    str(index),
-                    f"{format_srt_timestamp(cue['start'])} --> {format_srt_timestamp(cue['end'])}",
-                    cue["text"],
-                ]
-            )
-        )
-    return "\n\n".join(blocks).strip() + "\n"
+    return text[0].upper() + text[1:]
 
 
 def build_video_filter(
@@ -393,6 +383,10 @@ def build_video_filter(
         .replace("\\", "\\\\")
         .replace(":", "\\:")
         .replace("'", "\\'")
+        .replace("[", "\\[")
+        .replace("]", "\\]")
+        .replace("%", "\\%")
+        .replace(";", "\\;")
     )
 
     subtitles_filter = f"subtitles='{subs_escaped}':force_style='{force_style}'"
@@ -409,11 +403,15 @@ def run_ffmpeg(
     output_path: Path,
     video_filter: str,
     ffmpeg_bin: str = "ffmpeg",
+    overwrite: bool = True,
 ) -> None:
     """Run ffmpeg to burn subtitles into video."""
     command = [
         ffmpeg_bin,
-        "-y",
+    ]
+    if overwrite:
+        command.append("-y")
+    command.extend([
         "-i",
         str(input_path),
         "-vf",
@@ -431,7 +429,7 @@ def run_ffmpeg(
         "-movflags",
         "+faststart",
         str(output_path),
-    ]
+    ])
 
     completed = subprocess.run(
         command,
