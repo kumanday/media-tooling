@@ -574,6 +574,72 @@ class ElevenLabsErrorHandlingTests(unittest.TestCase):
         finally:
             os.unlink(wav_path)
 
+    def test_transcribe_with_elevenlabs_retries_on_429(self) -> None:
+        """429 rate-limit should be retried before raising."""
+        mock_429 = MagicMock()
+        mock_429.status_code = 429
+        mock_429.text = "Rate limited"
+        mock_429.headers = {}
+
+        mock_200 = MagicMock()
+        mock_200.status_code = 200
+        mock_200.json.return_value = {
+            "text": "Hello",
+            "language_code": "en",
+            "words": [
+                {"text": "Hello", "start": 0.0, "end": 1.0, "speaker_id": "speaker_0"},
+            ],
+            "audio_events": [],
+        }
+
+        mock_requests = MagicMock()
+        mock_requests.post.side_effect = [mock_429, mock_200]
+
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
+            f.write(b"fake wav data")
+            wav_path = Path(f.name)
+
+        try:
+            with patch("media_tooling.subtitle._requests_module", mock_requests), \
+                 patch.dict(os.environ, {"ELEVENLABS_API_KEY": "test-key"}), \
+                 patch("media_tooling.subtitle.time.sleep"):
+                result = transcribe_with_elevenlabs(
+                    audio_path=wav_path,
+                    language=None,
+                )
+                self.assertEqual(result["text"], "Hello")
+                self.assertEqual(mock_requests.post.call_count, 2)
+        finally:
+            os.unlink(wav_path)
+
+    def test_transcribe_with_elevenlabs_retries_on_5xx_then_raises(self) -> None:
+        """Persistent 5xx errors should eventually raise after retries."""
+        mock_503 = MagicMock()
+        mock_503.status_code = 503
+        mock_503.text = "Service Unavailable"
+        mock_503.headers = {}
+
+        mock_requests = MagicMock()
+        mock_requests.post.return_value = mock_503
+
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
+            f.write(b"fake wav data")
+            wav_path = Path(f.name)
+
+        try:
+            with patch("media_tooling.subtitle._requests_module", mock_requests), \
+                 patch.dict(os.environ, {"ELEVENLABS_API_KEY": "test-key"}), \
+                 patch("media_tooling.subtitle.time.sleep"):
+                with self.assertRaises(RuntimeError) as ctx:
+                    transcribe_with_elevenlabs(
+                        audio_path=wav_path,
+                        language=None,
+                    )
+                self.assertIn("503", str(ctx.exception))
+                self.assertEqual(mock_requests.post.call_count, 3)
+        finally:
+            os.unlink(wav_path)
+
 
 class SpeakerLabelOutputTests(unittest.TestCase):
     def test_build_srt_includes_speaker_id_when_present(self) -> None:

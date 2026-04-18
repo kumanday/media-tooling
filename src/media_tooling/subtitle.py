@@ -10,6 +10,7 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
@@ -294,8 +295,11 @@ def run_transcription_job(
                 initial_prompt=initial_prompt,
             )
         segments = normalize_segments(result.get("segments", []))
+        # Probe the original input for duration — the PCM WAV (for ElevenLabs)
+        # has the same duration, but probing the source is more robust and
+        # avoids issues if the WAV extraction was incomplete.
         audio_duration = probe_media_duration(
-            input_path=audio_path,
+            input_path=input_path,
             ffprobe_bin=resolve_ffprobe_bin(ffmpeg_bin),
         )
         segments, timestamp_correction = maybe_correct_suspicious_timestamps(
@@ -588,25 +592,43 @@ def call_scribe_api(
     if language:
         data["language_code"] = language
 
-    with open(audio_path, "rb") as f:
-        try:
-            resp = _requests_module.post(
-                ELEVENLABS_SCRIBE_URL,
-                headers={"xi-api-key": api_key},
-                files={"file": (audio_path.name, f, "audio/wav")},
-                data=data,
-                timeout=300,
-            )
-        except Exception as exc:
-            raise RuntimeError(
-                f"ElevenLabs Scribe API request failed: {exc}"
-            ) from exc
+    max_retries = 3
+    base_backoff = 2.0
+    last_exc: Exception | None = None
+    for attempt in range(max_retries):
+        with open(audio_path, "rb") as f:
+            try:
+                resp = _requests_module.post(
+                    ELEVENLABS_SCRIBE_URL,
+                    headers={"xi-api-key": api_key},
+                    files={"file": (audio_path.name, f, "audio/wav")},
+                    data=data,
+                    timeout=300,
+                )
+            except Exception as exc:
+                last_exc = exc
+                if attempt < max_retries - 1:
+                    time.sleep(base_backoff * (2 ** attempt))
+                    continue
+                raise RuntimeError(
+                    f"ElevenLabs Scribe API request failed after {max_retries} attempts: {exc}"
+                ) from exc
 
-    if resp.status_code != 200:
+        if resp.status_code == 200:
+            scribe_response = resp.json()
+            return parse_scribe_response(scribe_response)
+
+        # Retry on transient server errors (429 rate-limit, 5xx)
+        if resp.status_code in (429, 500, 502, 503, 504) and attempt < max_retries - 1:
+            retry_after = resp.headers.get("Retry-After")
+            wait = float(retry_after) if retry_after else base_backoff * (2 ** attempt)
+            time.sleep(wait)
+            continue
+
         raise RuntimeError(f"ElevenLabs Scribe returned {resp.status_code}: {resp.text[:500]}")
 
-    scribe_response = resp.json()
-    return parse_scribe_response(scribe_response)
+    # Should not reach here, but just in case
+    raise RuntimeError(f"ElevenLabs Scribe API request failed after {max_retries} attempts: {last_exc}")
 
 
 def parse_scribe_response(scribe_response: dict[str, Any]) -> dict[str, Any]:
