@@ -29,6 +29,7 @@ media-batch-contact-sheet = "media_tooling.batch_contact_sheet:main"
 media-batch-subtitle = "media_tooling.batch_subtitle:main"
 media-burn-subtitles = "media_tooling.burn_subtitles:main"
 media-contact-sheet = "media_tooling.contact_sheet:main"
+media-grade = "media_tooling.grade:main"
 media-rough-cut = "media_tooling.rough_cut:main"
 media-subtitle = "media_tooling.subtitle:main"
 media-tooling-init = "media_tooling.project_init:main"
@@ -38,6 +39,7 @@ media-translate-subtitles = "media_tooling.subtitle_translate:main"
 [tool.ruff]
 target-version = "py312"
 src = ["src", "tests"]
+exclude = [".agents"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I"]
