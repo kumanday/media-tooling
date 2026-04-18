@@ -27,6 +27,7 @@ DEFAULT_N_FRAMES = 10
 SILENCE_THRESHOLD_SECS = 0.4
 CANVAS_MIN_WIDTH = 1920
 FRAME_HEIGHT = 180
+MIN_FRAME_WIDTH = 10
 WAVEFORM_HEIGHT = 220
 FONT_CANDIDATES = [
     "/System/Library/Fonts/Menlo.ttc",
@@ -418,17 +419,24 @@ def _render_filmstrip(
     """Render filmstrip frames onto *canvas*. Returns (strip_x1, strip_span)."""
     frame_height = layout["frame_height"]
     gap = 4
-    frame_w = max(1, (strip_width - (n_frames - 1) * gap) // n_frames)
+    # Cap n_frames so each frame is at least MIN_FRAME_WIDTH pixels wide
+    max_n = strip_width // (MIN_FRAME_WIDTH + gap)
+    capped_n = min(n_frames, max(1, max_n))
+    frame_w = (strip_width - (capped_n - 1) * gap) // capped_n
     filmstrip_y = layout["filmstrip_y"]
 
+    placed = min(len(frame_paths), capped_n)
     cursor = strip_x0
-    for fp in frame_paths:
+    for fp in frame_paths[:placed]:
         with Image.open(fp) as img:
             resized = img.convert("RGB").resize((frame_w, frame_height), _RESAMPLING)
         canvas.paste(resized, (cursor, filmstrip_y))
         cursor += frame_w + gap
 
-    strip_x1 = strip_x0 + n_frames * frame_w + (n_frames - 1) * gap
+    if placed > 0:
+        strip_x1 = cursor - gap  # last frame has no trailing gap
+    else:
+        strip_x1 = strip_x0
     return strip_x1, strip_x1 - strip_x0
 
 

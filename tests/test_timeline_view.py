@@ -437,14 +437,26 @@ class TestRenderFilmstrip(unittest.TestCase):
             x1, span = _render_filmstrip(canvas, frame_paths, n, layout, strip_x0, strip_width)
             self.assertLessEqual(x1, strip_x0 + strip_width, "filmstrip overflows strip_width")
 
-    def test_extreme_n_frames_frame_w_is_at_least_one(self) -> None:
-        """With very large n_frames, frame_w must be at least 1 to avoid Pillow crash."""
-        canvas = Image.new("RGB", (1920, 600), (0, 0, 0))
-        layout = compute_layout()
-        strip_x0 = 50
-        strip_width = 1820
-        x1, span = _render_filmstrip(canvas, [], 500, layout, strip_x0, strip_width)
-        self.assertGreater(span, 0)
+    def test_extreme_n_frames_capped_and_fits_canvas(self) -> None:
+        """With very large n_frames, frames are capped and strip fits within canvas."""
+        with tempfile.TemporaryDirectory() as tmp:
+            # Create a few placeholder frames (fewer than n_frames to test capping)
+            frame_dir = Path(tmp) / "frames"
+            frame_dir.mkdir()
+            frame_paths: list[Path] = []
+            for i in range(3):
+                fp = frame_dir / f"f_{i:03d}.jpg"
+                img = Image.new("RGB", (320, 180), (40, 40, 44))
+                img.save(str(fp), "JPEG")
+                frame_paths.append(fp)
+
+            canvas = Image.new("RGB", (1920, 600), (0, 0, 0))
+            layout = compute_layout()
+            strip_x0 = 50
+            strip_width = 1820
+            x1, span = _render_filmstrip(canvas, frame_paths, 500, layout, strip_x0, strip_width)
+            self.assertGreater(span, 0)
+            self.assertLessEqual(x1, 1920, "capped filmstrip must not overflow canvas")
 
 
 # ---------------------------------------------------------------------------
