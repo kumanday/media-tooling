@@ -1118,22 +1118,31 @@ class RenderEDLTests(unittest.TestCase):
                 seg_paths = extract_all_segments(edl, edit_dir)
         self.assertEqual(len(seg_paths), 1)
 
-    def test_render_edl_returns_1_when_output_missing(self) -> None:
+    @patch("media_tooling.edl_render.apply_loudnorm_two_pass")
+    @patch("media_tooling.edl_render.concat_segments")
+    @patch("media_tooling.edl_render.extract_all_segments")
+    def test_render_edl_returns_1_when_output_missing(
+        self, mock_extract: MagicMock, mock_concat: MagicMock, mock_loudnorm: MagicMock
+    ) -> None:
         """render_edl returns 1 (failure) when the output file doesn't exist."""
         with tempfile.TemporaryDirectory() as tmpdir:
             edit_dir = Path(tmpdir)
             edl_path = edit_dir / "test_edl.json"
             edl_path.write_text(json.dumps(_minimal_edl()), encoding="utf-8")
-            output_path = edit_dir / "nonexistent_output.mp4"
-            with patch("media_tooling.edl_render.extract_all_segments") as mock_extract, \
-                 patch("media_tooling.edl_render.concat_segments"):
-                mock_extract.return_value = [edit_dir / "seg_00.mp4"]
-                # concat doesn't create the base file, so output never gets created
-                from media_tooling.edl_render import render_edl
-                result = render_edl(
-                    edl_path, output_path,
-                    no_subtitles=True, no_loudnorm=True,
-                )
+            output_path = edit_dir / "missing_output.mp4"
+            mock_extract.return_value = [edit_dir / "seg_00.mp4"]
+            # concat creates the base file so we get past that step
+            base_path = edit_dir / "base.mp4"
+            def fake_concat(*a: object, **kw: object) -> None:
+                base_path.write_bytes(b"\x00" * 100)
+            mock_concat.side_effect = fake_concat
+            # loudnorm "succeeds" but does NOT write the output file
+            mock_loudnorm.return_value = True
+            from media_tooling.edl_render import render_edl
+            result = render_edl(
+                edl_path, output_path,
+                no_subtitles=True, no_loudnorm=False,
+            )
         self.assertEqual(result, 1)
 
 
