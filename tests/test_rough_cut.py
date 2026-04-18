@@ -99,10 +99,10 @@ class ClipSegmentAfadeTest(unittest.TestCase):
 
     @patch("media_tooling.rough_cut.has_audio", return_value=False)
     @patch("media_tooling.rough_cut.run_command")
-    def test_clip_without_audio_still_includes_afade(
+    def test_clip_without_audio_omits_afade(
         self, mock_run: unittest.mock.MagicMock, mock_has_audio: unittest.mock.MagicMock
     ) -> None:
-        """Even clips with no audio track get afade (applied to the silent fill track)."""
+        """Clips with no audio track should not have -af (fading silence is a no-op)."""
         build_clip_segment(
             segment={"name": "clip2", "type": "clip", "input": "/tmp/input.mp4", "start": "0", "end": "10"},
             output_path=Path("/tmp/out.mp4"),
@@ -110,9 +110,7 @@ class ClipSegmentAfadeTest(unittest.TestCase):
             ffprobe_bin="ffprobe",
         )
         args = mock_run.call_args[0][0]
-        af_index = args.index("-af")
-        afade_value = args[af_index + 1]
-        self.assertIn("afade=t=in:st=0:d=0.03", afade_value)
+        self.assertNotIn("-af", args)
 
     @patch("media_tooling.rough_cut.has_audio", return_value=True)
     @patch("media_tooling.rough_cut.run_command")

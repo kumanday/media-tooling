@@ -312,9 +312,10 @@ def build_clip_segment(
             ),
         ]
     )
-    afade = build_afade_filter(start=start, end=end)
-    if afade:
-        command.extend(["-af", afade])
+    if input_has_audio:
+        afade = build_afade_filter(start=start, end=end)
+        if afade:
+            command.extend(["-af", afade])
     command.extend(
         [
             "-c:v",
