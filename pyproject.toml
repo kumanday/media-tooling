@@ -38,6 +38,7 @@ media-translate-subtitles = "media_tooling.subtitle_translate:main"
 [tool.ruff]
 target-version = "py312"
 src = ["src", "tests"]
+exclude = [".agents"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I"]

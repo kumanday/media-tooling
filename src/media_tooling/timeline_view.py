@@ -425,8 +425,8 @@ def _render_filmstrip(
 
     cursor = strip_x0
     for fp in frame_paths:
-        img = Image.open(fp).convert("RGB")
-        resized = img.resize((frame_w, frame_height), _RESAMPLING)
+        with Image.open(fp) as img:
+            resized = img.convert("RGB").resize((frame_w, frame_height), _RESAMPLING)
         canvas.paste(resized, (cursor, filmstrip_y))
         cursor += frame_w + gap
 
