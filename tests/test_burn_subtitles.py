@@ -162,9 +162,9 @@ class NaturalSentenceChunkingTests(unittest.TestCase):
 
         for cue in result:
             word_count = len(cue["text"].split())
-            # Tail-merge may exceed max by a few; verify reasonable bounds
-            self.assertLessEqual(word_count, NATURAL_SENTENCE_MAX_WORDS + 3)
-            self.assertGreaterEqual(word_count, 1)
+            # Bounds-check in _group_words_natural_sentence guarantees no chunk exceeds max
+            self.assertLessEqual(word_count, NATURAL_SENTENCE_MAX_WORDS)
+            self.assertGreaterEqual(word_count, 2)
 
     def test_sentence_case(self) -> None:
         cues = self._make_cues("Hello world this is a test sentence here")

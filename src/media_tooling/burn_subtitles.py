@@ -214,7 +214,7 @@ def rechunk_bold_overlay(cues: list[Any]) -> list[dict[str, Any]]:
         )
 
         for i, chunk_words in enumerate(chunks):
-            text = " ".join(chunk_words).rstrip(",;:")
+            text = " ".join(chunk_words).rstrip(SOFT_SENTENCE_PUNCTUATION)
             text = text.upper()
             result.append({"start": timing[i][0], "end": timing[i][1], "text": text})
 
