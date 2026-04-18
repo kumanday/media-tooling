@@ -421,6 +421,26 @@ class TestRenderFilmstrip(unittest.TestCase):
             self.assertGreater(x1, 50)
             self.assertGreater(span, 0)
 
+    def test_many_frames_do_not_overflow_strip(self) -> None:
+        """Filmstrip with many frames must stay within strip_width bounds."""
+        with tempfile.TemporaryDirectory() as tmp:
+            n = 20
+            frame_dir = Path(tmp) / "frames"
+            frame_dir.mkdir()
+            frame_paths: list[Path] = []
+            for i in range(n):
+                fp = frame_dir / f"f_{i:03d}.jpg"
+                img = Image.new("RGB", (320, 180), (40, 40, 44))
+                img.save(str(fp), "JPEG")
+                frame_paths.append(fp)
+
+            canvas = Image.new("RGB", (1920, 600), (0, 0, 0))
+            layout = compute_layout()
+            strip_x0 = 50
+            strip_width = 1820
+            x1, span = _render_filmstrip(canvas, frame_paths, n, layout, strip_x0, strip_width)
+            self.assertLessEqual(x1, strip_x0 + strip_width, "filmstrip overflows strip_width")
+
 
 # ---------------------------------------------------------------------------
 # _render_ruler

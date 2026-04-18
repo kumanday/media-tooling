@@ -419,8 +419,8 @@ def _render_filmstrip(
 ) -> tuple[int, int]:
     """Render filmstrip frames onto *canvas*. Returns (strip_x1, strip_span)."""
     frame_height = layout["frame_height"]
-    frame_w = strip_width // n_frames
     gap = 4
+    frame_w = (strip_width - (n_frames - 1) * gap) // n_frames
     filmstrip_y = layout["filmstrip_y"]
 
     cursor = strip_x0
