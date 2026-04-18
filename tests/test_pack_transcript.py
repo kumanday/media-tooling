@@ -67,6 +67,21 @@ class ExtractWordsTests(unittest.TestCase):
         words = extract_words(segments)
         self.assertEqual(len(words), 1)
 
+    def test_skips_words_with_non_numeric_timestamps(self) -> None:
+        segments = [
+            {
+                "start": 0.0,
+                "end": 5.0,
+                "text": "Hello",
+                "words": [
+                    {"word": "Hello", "start": 0.0, "end": 1.0},
+                    {"word": "bad", "start": "N/A", "end": "undefined"},
+                ],
+            },
+        ]
+        words = extract_words(segments)
+        self.assertEqual(len(words), 1)
+
     def test_preserves_speaker_field(self) -> None:
         segments = [
             {
@@ -309,6 +324,15 @@ class MainEndToEndTests(unittest.TestCase):
         self.assertEqual(rc, 0)
         content = out_path.read_text(encoding="utf-8")
         self.assertIn("no speech detected", content)
+
+    def test_malformed_transcript_data(self) -> None:
+        """Malformed data in the pipeline returns a clean error instead of a traceback."""
+        json_path = self._make_json(
+            {"segments": 42}  # not iterable
+        )
+        out_path = json_path.parent / "malformed.md"
+        rc = main([str(json_path), "-o", str(out_path)])
+        self.assertEqual(rc, 1)
 
     def test_size_order_of_magnitude(self) -> None:
         """A 1-hour transcript (~3600s) should produce output on the order of ~12KB."""

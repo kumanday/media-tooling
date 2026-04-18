@@ -51,10 +51,14 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Failed to read {input_path}: {exc}", file=sys.stderr)
         return 1
 
-    segments = payload.get("segments", [])
-    words = extract_words(segments)
-    phrases = group_into_phrases(words, silence_threshold=args.silence_threshold)
-    markdown = render_markdown(phrases, silence_threshold=args.silence_threshold)
+    try:
+        segments = payload.get("segments", [])
+        words = extract_words(segments)
+        phrases = group_into_phrases(words, silence_threshold=args.silence_threshold)
+        markdown = render_markdown(phrases, silence_threshold=args.silence_threshold)
+    except (ValueError, KeyError, TypeError) as exc:
+        print(f"Malformed transcript data: {exc}", file=sys.stderr)
+        return 1
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(markdown, encoding="utf-8")
@@ -99,11 +103,17 @@ def extract_words(segments: list[Any]) -> list[dict[str, Any]]:
             if start is None or end is None:
                 continue
 
+            try:
+                start_f = float(start)
+                end_f = float(end)
+            except (TypeError, ValueError):
+                continue
+
             words.append(
                 {
                     "word": text,
-                    "start": float(start),
-                    "end": float(end),
+                    "start": start_f,
+                    "end": end_f,
                     "speaker": speaker,
                 },
             )
