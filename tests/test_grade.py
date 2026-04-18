@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -266,6 +267,24 @@ class AutoGradeForClipTests(unittest.TestCase):
         printed = " ".join(str(c[0][0]) for c in mock_print.call_args_list if c[0])
         self.assertIn("warning", printed.lower())
 
+    @patch("media_tooling.grade._sample_frame_stats")
+    @patch("media_tooling.grade.subprocess.check_output")
+    def test_threshold_continuity(
+        self, mock_probe: MagicMock, mock_stats: MagicMock
+    ) -> None:
+        """Proportional maps are continuous at threshold boundaries."""
+        # Test contrast at y_range=0.65 boundary
+        mock_stats.return_value = {"y_mean": 0.48, "y_range": 0.649, "sat_mean": 0.25}
+        f1, _ = auto_grade_for_clip(Path("test.mp4"))
+        mock_stats.return_value = {"y_mean": 0.48, "y_range": 0.651, "sat_mean": 0.25}
+        f2, _ = auto_grade_for_clip(Path("test.mp4"))
+        # Both should produce very similar results near the boundary
+        # f1 has contrast, f2 doesn't — but at boundary contrast should be ~1.0
+        # so the jump should be negligible (< 0.5%)
+        if f1 and "contrast=" in f1:
+            c1 = float(f1.split("contrast=")[1].split(":")[0])
+            self.assertLess(abs(c1 - 1.0), 0.005, "contrast at boundary should be ~1.0")
+
 
 class ApplyGradeTests(unittest.TestCase):
     @patch("media_tooling.grade.subprocess.run")
@@ -280,7 +299,7 @@ class ApplyGradeTests(unittest.TestCase):
 
     @patch("media_tooling.grade.subprocess.run")
     def test_stream_copy_command_uses_copy(self, mock_run: MagicMock) -> None:
-        """Empty filter string triggers stream-copy path with faststart."""
+        """Empty filter string triggers stream-copy path with faststart for MP4."""
         mock_run.return_value = MagicMock(returncode=0)
         apply_grade(Path("in.mp4"), Path("out.mp4"), "")
         cmd = mock_run.call_args[0][0]
@@ -289,11 +308,34 @@ class ApplyGradeTests(unittest.TestCase):
         self.assertIn("+faststart", cmd)
         self.assertNotIn("libx264", cmd)
 
+    @patch("media_tooling.grade.subprocess.run")
+    def test_mkv_output_no_faststart(self, mock_run: MagicMock) -> None:
+        """Non-MP4 containers omit -movflags +faststart."""
+        mock_run.return_value = MagicMock(returncode=0)
+        apply_grade(Path("in.mp4"), Path("out.mkv"), "eq=contrast=1.05")
+        cmd = mock_run.call_args[0][0]
+        self.assertNotIn("+faststart", cmd)
+
     def test_same_input_output_raises(self) -> None:
         """Input and output resolving to the same file raises ValueError."""
         p = Path("/tmp/same_file.mp4")
         with self.assertRaises(ValueError):
             apply_grade(p, p, "")
+
+    @patch("media_tooling.grade.subprocess.run", side_effect=FileNotFoundError)
+    def test_ffmpeg_not_found_raises_runtime_error(self, mock_run: MagicMock) -> None:
+        """Missing ffmpeg raises RuntimeError with actionable message."""
+        with self.assertRaises(RuntimeError) as ctx:
+            apply_grade(Path("in.mp4"), Path("out.mp4"), "")
+        self.assertIn("ffmpeg not found", str(ctx.exception))
+
+    @patch("media_tooling.grade.subprocess.run",
+           side_effect=subprocess.CalledProcessError(1, "ffmpeg"))
+    def test_ffmpeg_failure_raises_runtime_error(self, mock_run: MagicMock) -> None:
+        """ffmpeg failure raises RuntimeError with exit code info."""
+        with self.assertRaises(RuntimeError) as ctx:
+            apply_grade(Path("in.mp4"), Path("out.mp4"), "")
+        self.assertIn("exit code", str(ctx.exception))
 
 
 class CLIMainTests(unittest.TestCase):

@@ -230,37 +230,38 @@ def auto_grade_for_clip(
 
     # ------ Decision rules ---------------------------------------------------
     # All adjustments start at 1.0 (neutral). Corrections are only applied
-    # when the analysis shows a measurable problem. Everything is clamped
+    # when the analysis shows a measurable problem. Maps taper to exactly 1.0
+    # at their outer boundary to avoid discontinuities. Everything is clamped
     # hard to ±8% → [0.92, 1.08].
 
-    # Contrast: only boost if the luminance range is narrow (flat footage).
+    # Contrast: boost if the luminance range is narrow (flat footage).
     contrast_adj = 1.0
     if y_range < 0.65:
-        # Map [0.40, 0.65] → [1.08, 1.02]
+        # Map [0.40, 0.65] → [1.08, 1.00]  (continuous at y_range=0.65)
         t = max(0.0, min(1.0, (y_range - 0.40) / 0.25))
-        contrast_adj = 1.08 - 0.06 * t
+        contrast_adj = 1.08 - 0.08 * t
 
     # Gamma: target y_mean ~ 0.48. Lift gently if too dark, pull back if overexposed.
     gamma_adj = 1.0
     if y_mean < 0.42:
-        # Map [0.30, 0.42] → [1.08, 1.02]
+        # Map [0.30, 0.42] → [1.08, 1.00]  (continuous at y_mean=0.42)
         t = max(0.0, min(1.0, (y_mean - 0.30) / 0.12))
-        gamma_adj = 1.08 - 0.06 * t
+        gamma_adj = 1.08 - 0.08 * t
     elif y_mean > 0.60:
-        # Map [0.60, 0.80] → [0.95, 0.92]
+        # Map [0.60, 0.80] → [1.00, 0.92]  (continuous at y_mean=0.60)
         t = max(0.0, min(1.0, (y_mean - 0.60) / 0.20))
-        gamma_adj = 0.95 - 0.03 * t
+        gamma_adj = 1.00 - 0.08 * t
 
     # Saturation: scale proportionally like contrast/gamma.
     sat_adj = 1.0
     if sat_mean < 0.15:
-        # Map [0.05, 0.15] → [1.08, 1.02]
+        # Map [0.05, 0.15] → [1.08, 1.00]  (continuous at sat_mean=0.15)
         t = max(0.0, min(1.0, (sat_mean - 0.05) / 0.10))
-        sat_adj = 1.08 - 0.06 * t
+        sat_adj = 1.08 - 0.08 * t
     elif sat_mean > 0.40:
-        # Map [0.40, 0.55] → [0.98, 0.92]
+        # Map [0.40, 0.55] → [1.00, 0.92]  (continuous at sat_mean=0.40)
         t = max(0.0, min(1.0, (sat_mean - 0.40) / 0.15))
-        sat_adj = 0.98 - 0.06 * t
+        sat_adj = 1.00 - 0.08 * t
 
     # Clamp all adjustments hard to ±8% → [0.92, 1.08]
     contrast_adj = max(0.92, min(1.08, contrast_adj))
@@ -296,19 +297,27 @@ def apply_grade(input_path: Path, output_path: Path, filter_string: str) -> None
     If ``filter_string`` is empty, performs a straight stream copy (no
     re-encoding). Otherwise, re-encodes with libx264.
 
-    Raises ``ValueError`` if input and output paths resolve to the same file,
-    which would cause ffmpeg to overwrite the source mid-stream.
+    ``-movflags +faststart`` is only added for MP4-family containers
+    (.mp4, .m4v, .mov); it is invalid for other containers like .mkv.
+
+    Raises:
+      ValueError: if input and output paths resolve to the same file.
+      RuntimeError: if ffmpeg fails or is not installed.
     """
     if input_path.resolve() == output_path.resolve():
         raise ValueError(
             f"input and output must be different files, got {input_path}"
         )
 
+    mp4_suffixes = {".mp4", ".m4v", ".mov"}
+    is_mp4 = output_path.suffix.lower() in mp4_suffixes
+    faststart = ["-movflags", "+faststart"] if is_mp4 else []
+
     output_path.parent.mkdir(parents=True, exist_ok=True)
     if not filter_string:
         cmd = [
             "ffmpeg", "-y", "-i", str(input_path),
-            "-c", "copy", "-movflags", "+faststart", str(output_path),
+            "-c", "copy", *faststart, str(output_path),
         ]
     else:
         cmd = [
@@ -317,10 +326,20 @@ def apply_grade(input_path: Path, output_path: Path, filter_string: str) -> None
             "-c:v", "libx264", "-preset", "fast", "-crf", "18",
             "-pix_fmt", "yuv420p",
             "-c:a", "copy",
-            "-movflags", "+faststart",
+            *faststart,
             str(output_path),
         ]
-    subprocess.run(cmd, check=True)
+    try:
+        subprocess.run(cmd, check=True)
+    except FileNotFoundError:
+        raise RuntimeError(
+            "ffmpeg not found — ensure ffmpeg is installed and on PATH"
+        )
+    except subprocess.CalledProcessError as exc:
+        raise RuntimeError(
+            f"ffmpeg failed (exit code {exc.returncode}). "
+            f"Command: {' '.join(cmd)}"
+        )
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -434,7 +453,11 @@ def main(argv: list[str] | None = None) -> int:
     else:
         print("  filter: (none — copy)")
 
-    apply_grade(args.input, args.output, filter_string)
+    try:
+        apply_grade(args.input, args.output, filter_string)
+    except RuntimeError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
     print(f"done: {args.output}")
     return 0
 
