@@ -9,6 +9,7 @@ from unittest.mock import MagicMock, patch
 
 from media_tooling.subtitle import (
     SUBTITLE_MAX_DURATION_SECONDS,
+    _patch_source_hash,
     build_srt,
     build_txt,
     compute_source_hash,
@@ -422,6 +423,37 @@ class CachingTests(unittest.TestCase):
             json_path = Path(tmpdir) / "nonexistent.json"
             self.assertFalse(source_matches_cache(json_path, source))
 
+    def test_source_matches_cache_accepts_computed_hash(self) -> None:
+        """source_matches_cache should use the pre-computed hash when provided."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            src = Path(tmpdir) / "test.mp4"
+            src.write_bytes(b"\x00" * 64)
+            json_path = Path(tmpdir) / "test.json"
+            h = compute_source_hash(src)
+            json_path.write_text(
+                json.dumps({"backend": "whisper", "source_hash": h}),
+                encoding="utf-8",
+            )
+            self.assertTrue(source_matches_cache(json_path, src, backend="whisper", computed_hash=h))
+
+    def test_patch_source_hash_adds_hash_to_legacy_json(self) -> None:
+        """_patch_source_hash should add source_hash to JSON that lacks it."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            json_path = Path(tmpdir) / "test.json"
+            json_path.write_text(json.dumps({"backend": "whisper"}), encoding="utf-8")
+            _patch_source_hash(json_path, "abc123")
+            cached = json.loads(json_path.read_text(encoding="utf-8"))
+            self.assertEqual(cached["source_hash"], "abc123")
+
+    def test_patch_source_hash_skips_if_hash_present(self) -> None:
+        """_patch_source_hash should not overwrite an existing source_hash."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            json_path = Path(tmpdir) / "test.json"
+            json_path.write_text(json.dumps({"backend": "whisper", "source_hash": "original"}), encoding="utf-8")
+            _patch_source_hash(json_path, "new_hash")
+            cached = json.loads(json_path.read_text(encoding="utf-8"))
+            self.assertEqual(cached["source_hash"], "original")
+
 
 class ElevenLabsErrorHandlingTests(unittest.TestCase):
     def test_transcribe_with_elevenlabs_raises_without_requests(self) -> None:
@@ -547,19 +579,6 @@ class ModelNameOverrideTests(unittest.TestCase):
     def test_mlx_model_name_unchanged(self) -> None:
         """For MLX backend, model name should pass through unchanged."""
         self.assertEqual(resolve_model_name("mlx", "large"), "large")
-
-    def test_source_matches_cache_accepts_computed_hash(self) -> None:
-        """source_matches_cache should use the pre-computed hash when provided."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            src = Path(tmpdir) / "test.mp4"
-            src.write_bytes(b"\x00" * 64)
-            json_path = Path(tmpdir) / "test.json"
-            h = compute_source_hash(src)
-            json_path.write_text(
-                json.dumps({"backend": "whisper", "source_hash": h}),
-                encoding="utf-8",
-            )
-            self.assertTrue(source_matches_cache(json_path, src, backend="whisper", computed_hash=h))
 
 
 if __name__ == "__main__":
