@@ -9,6 +9,7 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 from PIL import Image
 
+from media_tooling.ffprobe_utils import probe_duration
 from media_tooling.timeline_view import (
     compute_envelope,
     compute_frame_timestamps,
@@ -17,7 +18,6 @@ from media_tooling.timeline_view import (
     generate_timeline,
     load_words,
     parse_args,
-    probe_duration,
 )
 
 # ---------------------------------------------------------------------------
@@ -60,9 +60,9 @@ class TestComputeFrameTimestamps(unittest.TestCase):
 
 
 class TestFindSilences(unittest.TestCase):
-    def test_no_words_finds_full_range_silence(self) -> None:
+    def test_no_words_returns_empty(self) -> None:
         gaps = find_silences([], 0.0, 5.0, threshold=0.4)
-        self.assertEqual(gaps, [(0.0, 5.0)])
+        self.assertEqual(gaps, [])
 
     def test_continuous_speech_no_silence(self) -> None:
         words = [
@@ -212,17 +212,17 @@ class TestParseArgs(unittest.TestCase):
 
 class TestComputeLayout(unittest.TestCase):
     def test_returns_expected_keys(self) -> None:
-        layout = compute_layout(10)
+        layout = compute_layout()
         for key in ("filmstrip_y", "frame_height", "wave_y", "waveform_height",
                      "ruler_y", "label_y", "canvas_height"):
             self.assertIn(key, layout)
 
     def test_canvas_height_is_positive(self) -> None:
-        layout = compute_layout(10)
+        layout = compute_layout()
         self.assertGreater(layout["canvas_height"], 0)
 
     def test_wave_y_is_below_filmstrip(self) -> None:
-        layout = compute_layout(10)
+        layout = compute_layout()
         self.assertGreater(layout["wave_y"], layout["filmstrip_y"] + layout["frame_height"])
 
 
@@ -261,7 +261,7 @@ class TestWindowedRms(unittest.TestCase):
 
 
 class TestProbeDuration(unittest.TestCase):
-    @patch("media_tooling.timeline_view.subprocess.run")
+    @patch("media_tooling.ffprobe_utils.subprocess.run")
     def test_extracts_duration(self, mock_run: MagicMock) -> None:
         mock_run.return_value = MagicMock(
             returncode=0,
@@ -270,13 +270,13 @@ class TestProbeDuration(unittest.TestCase):
         dur = probe_duration(Path("test.mp4"), "ffprobe")
         self.assertAlmostEqual(dur, 120.5)
 
-    @patch("media_tooling.timeline_view.subprocess.run")
+    @patch("media_tooling.ffprobe_utils.subprocess.run")
     def test_raises_on_ffprobe_failure(self, mock_run: MagicMock) -> None:
         mock_run.return_value = MagicMock(returncode=1, stderr="error")
         with self.assertRaises(RuntimeError):
             probe_duration(Path("missing.mp4"), "ffprobe")
 
-    @patch("media_tooling.timeline_view.subprocess.run")
+    @patch("media_tooling.ffprobe_utils.subprocess.run")
     def test_raises_when_duration_missing(self, mock_run: MagicMock) -> None:
         mock_run.return_value = MagicMock(
             returncode=0,
@@ -329,6 +329,39 @@ class TestOutputDimensions(unittest.TestCase):
             with Image.open(str(out_path)) as result:
                 self.assertGreaterEqual(result.width, 1920)
                 self.assertGreater(result.height, 0)
+
+    @patch("media_tooling.timeline_view.probe_duration", return_value=60.0)
+    @patch("media_tooling.timeline_view.compute_envelope")
+    def test_output_with_real_frame_loading(
+        self,
+        mock_env: MagicMock,
+        mock_dur: MagicMock,
+    ) -> None:
+        """Exercise the frame-loading-to-canvas pipeline without mocking extract_frames."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_dir = Path(tmp)
+            frame_dir = tmp_dir / "frames"
+            frame_dir.mkdir()
+            for i in range(3):
+                fp = frame_dir / f"f_{i:03d}.jpg"
+                img = Image.new("RGB", (320, 180), (40 + i * 10, 40, 44))
+                img.save(str(fp), "JPEG")
+            mock_env.return_value = np.zeros(2000, dtype=np.float32)
+
+            out_path = Path(tmp) / "output.png"
+            generate_timeline(
+                input_path=Path("test.mp4"),
+                output_path=out_path,
+                start=0.0,
+                end=60.0,
+                n_frames=3,
+                transcript_path=None,
+                ffmpeg_bin="ffmpeg",
+            )
+
+            self.assertTrue(out_path.exists())
+            with Image.open(str(out_path)) as result:
+                self.assertGreaterEqual(result.width, 1920)
 
 
 if __name__ == "__main__":

@@ -12,6 +12,8 @@ from typing import Any
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
+from media_tooling.ffprobe_utils import probe_duration
+
 try:
     _RESAMPLING = Image.Resampling.LANCZOS  # Pillow >=10
 except AttributeError:
@@ -38,7 +40,6 @@ FONT_CANDIDATES = [
 BG = (18, 18, 22)
 FG = (235, 235, 235)
 DIM = (110, 110, 120)
-ACCENT = (255, 140, 60)
 SILENCE_FILL = (50, 80, 120, 120)
 WAVE_COLOUR = (140, 180, 255)
 
@@ -162,31 +163,6 @@ def main() -> int:
 
     print(f"Timeline: {output_path}")
     return 0
-
-
-# ---------------------------------------------------------------------------
-# ffprobe helpers
-# ---------------------------------------------------------------------------
-
-
-def probe_duration(input_path: Path, ffprobe_bin: str) -> float:
-    command = [
-        ffprobe_bin,
-        "-v", "error",
-        "-show_entries", "format=duration",
-        "-of", "json",
-        str(input_path),
-    ]
-    completed = subprocess.run(
-        command, check=False, capture_output=True, text=True,
-    )
-    if completed.returncode != 0:
-        raise RuntimeError(f"ffprobe failed for {input_path}:\n{completed.stderr.strip()}")
-    payload = json.loads(completed.stdout)
-    duration_value = payload.get("format", {}).get("duration")
-    if duration_value is None:
-        raise RuntimeError(f"Could not determine duration for {input_path}")
-    return float(duration_value)
 
 
 # ---------------------------------------------------------------------------
@@ -364,7 +340,13 @@ def find_silences(
     end: float,
     threshold: float = SILENCE_THRESHOLD_SECS,
 ) -> list[tuple[float, float]]:
-    """Find silence gaps >= *threshold* seconds within [start, end]."""
+    """Find silence gaps >= *threshold* seconds within [start, end].
+
+    Returns an empty list when *words* is empty — absence of transcript
+    data is not the same as silence.
+    """
+    if not words:
+        return []
     gaps: list[tuple[float, float]] = []
     prev_end = start
     for w in words:
@@ -398,7 +380,6 @@ def load_font(size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
 
 
 def compute_layout(
-    n_frames: int,
     frame_height: int = FRAME_HEIGHT,
     waveform_height: int = WAVEFORM_HEIGHT,
 ) -> dict[str, int]:
@@ -432,24 +413,25 @@ def generate_timeline(
     """Produce the composite PNG and save to *output_path*."""
     timestamps = compute_frame_timestamps(start, end, n_frames)
 
-    layout = compute_layout(n_frames)
+    layout = compute_layout()
 
     with tempfile.TemporaryDirectory() as tmp:
         tmp_dir = Path(tmp)
         frame_paths = extract_frames(input_path, timestamps, ffmpeg_bin, tmp_dir)
 
-        # Load and resize frames to uniform height
+        # Load and resize frames to uniform dimensions (ensures time alignment)
         frame_height = layout["frame_height"]
+        strip_x0 = 50
+        strip_width = CANVAS_MIN_WIDTH - 100
+        # Each frame gets an equal share of the strip so time_to_x aligns
+        frame_w = strip_width // n_frames
+        gap = 4
         imgs: list[Image.Image] = []
         for fp in frame_paths:
             img = Image.open(fp).convert("RGB")
-            aspect = img.width / img.height
-            new_w = int(frame_height * aspect)
-            imgs.append(img.resize((new_w, frame_height), _RESAMPLING))
+            imgs.append(img.resize((frame_w, frame_height), _RESAMPLING))
 
-        total_frame_w = sum(img.width for img in imgs) + (len(imgs) - 1) * 4
-        content_w = max(1400, total_frame_w)
-        canvas_width = max(CANVAS_MIN_WIDTH, content_w + 100)
+        canvas_width = CANVAS_MIN_WIDTH
 
         canvas = Image.new("RGB", (canvas_width, layout["canvas_height"]), BG)
         draw = ImageDraw.Draw(canvas, "RGBA")
@@ -467,32 +449,14 @@ def generate_timeline(
             font=header_font,
         )
 
-        # Filmstrip
-        strip_x0 = 50
-        strip_width = canvas_width - 100
+        # Filmstrip (uniform frame width ensures temporal alignment)
         filmstrip_y = layout["filmstrip_y"]
 
-        if total_frame_w <= strip_width:
-            cursor = strip_x0
-            for img in imgs:
-                canvas.paste(img, (cursor, filmstrip_y))
-                cursor += img.width + 4
-            draw_width = cursor - strip_x0
-        else:
-            scale = strip_width / total_frame_w
-            new_h = int(frame_height * scale)
-            cursor = strip_x0
-            for img in imgs:
-                new_w = int(img.width * scale)
-                scaled = img.resize((new_w, new_h), _RESAMPLING)
-                canvas.paste(
-                    scaled,
-                    (cursor, filmstrip_y + (frame_height - new_h) // 2),
-                )
-                cursor += new_w + max(2, int(4 * scale))
-            draw_width = cursor - strip_x0
-
-        strip_x1 = strip_x0 + draw_width
+        cursor = strip_x0
+        for img in imgs:
+            canvas.paste(img, (cursor, filmstrip_y))
+            cursor += frame_w + gap
+        strip_x1 = strip_x0 + n_frames * frame_w + (n_frames - 1) * gap
         strip_span = strip_x1 - strip_x0
 
         def time_to_x(t: float) -> int:
