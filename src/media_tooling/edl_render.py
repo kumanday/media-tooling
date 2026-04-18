@@ -890,10 +890,26 @@ def render_edl(
             if not success:
                 print("loudnorm measurement failed, using preview mode", file=sys.stderr)
                 from media_tooling.loudnorm import apply_loudnorm_preview
-                apply_loudnorm_preview(
-                    current_path, output_path,
-                    ffmpeg_bin=ffmpeg_bin, ffprobe_bin=ffprobe_bin,
-                )
+                try:
+                    apply_loudnorm_preview(
+                        current_path, output_path,
+                        ffmpeg_bin=ffmpeg_bin, ffprobe_bin=ffprobe_bin,
+                    )
+                except (FileNotFoundError, subprocess.CalledProcessError, RuntimeError) as exc:
+                    print(f"loudnorm preview fallback failed: {exc}", file=sys.stderr)
+                    # Last resort: copy as-is
+                    cmd = [ffmpeg_bin, "-y", "-i", str(current_path), "-c", "copy"]
+                    if output_path.suffix.lower() == ".mp4":
+                        cmd.extend(["-movflags", "+faststart"])
+                    cmd.append(str(output_path))
+                    try:
+                        subprocess.run(
+                            cmd, check=True,
+                            stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
+                        )
+                    except (FileNotFoundError, subprocess.CalledProcessError) as exc2:
+                        print(f"copy fallback also failed: {exc2}", file=sys.stderr)
+                        return 1
         except FileNotFoundError:
             print("ffmpeg/ffprobe not found — ensure both are installed and on PATH", file=sys.stderr)
             return 1

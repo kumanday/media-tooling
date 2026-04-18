@@ -1251,6 +1251,42 @@ class RenderEDLTests(unittest.TestCase):
             )
         self.assertEqual(result, 1)
 
+    @patch("media_tooling.loudnorm.apply_loudnorm_preview")
+    @patch("media_tooling.edl_render.apply_loudnorm_two_pass", return_value=False)
+    @patch("media_tooling.edl_render.concat_segments")
+    @patch("media_tooling.edl_render.extract_all_segments")
+    def test_loudnorm_preview_fallback_runtime_error_returns_1(
+        self,
+        mock_extract: MagicMock,
+        mock_concat: MagicMock,
+        mock_two_pass: MagicMock,
+        mock_preview: MagicMock,
+    ) -> None:
+        """RuntimeError from loudnorm preview fallback is caught and returns 1."""
+        mock_extract.return_value = [Path("/tmp/seg_00.mp4")]
+        mock_preview.side_effect = RuntimeError("ffprobe crashed")
+
+        def fake_concat(*a: object, **kw: object) -> None:
+            pass
+        mock_concat.side_effect = fake_concat
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            edit_dir = Path(tmpdir)
+            edl_path = edit_dir / "test_edl.json"
+            base_path = edit_dir / "base.mp4"
+            base_path.write_bytes(b"\x00" * 100)
+            edl_path.write_text(json.dumps(_minimal_edl()), encoding="utf-8")
+            output_path = edit_dir / "output.mp4"
+            from media_tooling.edl_render import render_edl
+            with patch("media_tooling.edl_render.subprocess.run") as mock_run:
+                # The copy-as fallback also fails
+                mock_run.side_effect = subprocess.CalledProcessError(1, "ffmpeg")
+                result = render_edl(
+                    edl_path, output_path,
+                    no_subtitles=True, no_loudnorm=False,
+                )
+        self.assertEqual(result, 1)
+
 
 if __name__ == "__main__":
     unittest.main()
