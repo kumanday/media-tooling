@@ -11,6 +11,7 @@ from unittest.mock import MagicMock, patch
 from media_tooling.edl_render import (
     EDLSchemaError,
     _resolve_segment_bounds,
+    _source_has_audio,
     _srt_timestamp,
     _words_in_range,
     apply_padding,
@@ -907,13 +908,73 @@ class ExtractSegmentTests(unittest.TestCase):
         self.assertIn("medium", cmd)
         self.assertIn("22", cmd)
 
+    @patch("media_tooling.edl_render._source_has_audio", return_value=False)
+    @patch("media_tooling.edl_render.subprocess.run")
+    def test_audioless_source_skips_afade_and_uses_an(self, mock_run: MagicMock, mock_has_audio: MagicMock) -> None:
+        """Sources without audio should skip afade and use -an instead of -c:a."""
+        mock_run.return_value = MagicMock(returncode=0)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            out_path = Path(tmpdir) / "seg.mp4"
+            extract_segment(
+                Path("/tmp/source.mp4"),
+                seg_start=10.0,
+                duration=5.0,
+                grade_filter="",
+                out_path=out_path,
+            )
+        cmd = mock_run.call_args[0][0]
+        # Should NOT have -af
+        self.assertNotIn("-af", cmd)
+        # Should have -an (no audio)
+        self.assertIn("-an", cmd)
+        # Should NOT have -c:a
+        self.assertNotIn("-c:a", cmd)
+
+    @patch("media_tooling.edl_render._source_has_audio", return_value=True)
+    @patch("media_tooling.edl_render.subprocess.run")
+    def test_audio_source_includes_afade_and_c_a(self, mock_run: MagicMock, mock_has_audio: MagicMock) -> None:
+        """Sources with audio should include afade and -c:a aac."""
+        mock_run.return_value = MagicMock(returncode=0)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            out_path = Path(tmpdir) / "seg.mp4"
+            extract_segment(
+                Path("/tmp/source.mp4"),
+                seg_start=10.0,
+                duration=5.0,
+                grade_filter="",
+                out_path=out_path,
+            )
+        cmd = mock_run.call_args[0][0]
+        self.assertIn("-af", cmd)
+        self.assertIn("-c:a", cmd)
+
+
+class SourceHasAudioTests(unittest.TestCase):
+    @patch("media_tooling.edl_render.subprocess.run")
+    def test_returns_true_when_audio_stream_present(self, mock_run: MagicMock) -> None:
+        mock_run.return_value = MagicMock(stdout="codec_type\naudio\n", returncode=0)
+        result = _source_has_audio(Path("/tmp/source.mp4"))
+        self.assertTrue(result)
+
+    @patch("media_tooling.edl_render.subprocess.run")
+    def test_returns_false_when_no_audio_stream(self, mock_run: MagicMock) -> None:
+        mock_run.return_value = MagicMock(stdout="", returncode=0)
+        result = _source_has_audio(Path("/tmp/source.mp4"))
+        self.assertFalse(result)
+
+    @patch("media_tooling.edl_render.subprocess.run", side_effect=FileNotFoundError)
+    def test_returns_true_when_ffprobe_unavailable(self, mock_run: MagicMock) -> None:
+        result = _source_has_audio(Path("/tmp/source.mp4"))
+        self.assertTrue(result)  # safe default: assume audio present
+
 
 class ExtractAllSegmentsTests(unittest.TestCase):
+    @patch("media_tooling.edl_render._source_has_audio", return_value=True)
     @patch("media_tooling.edl_render.probe_duration", return_value=9999.0)
     @patch("media_tooling.edl_render.subprocess.run")
     @patch("media_tooling.edl_render.auto_grade_for_clip")
     def test_auto_grade_per_segment(
-        self, mock_auto: MagicMock, mock_run: MagicMock, mock_probe: MagicMock
+        self, mock_auto: MagicMock, mock_run: MagicMock, mock_probe: MagicMock, mock_has_audio: MagicMock
     ) -> None:
         mock_auto.return_value = ("eq=contrast=1.05", {})
         mock_run.return_value = MagicMock(returncode=0)
@@ -924,17 +985,22 @@ class ExtractAllSegmentsTests(unittest.TestCase):
         self.assertEqual(len(seg_paths), 3)
         # Second range has grade="auto" → should call auto_grade_for_clip once
         self.assertEqual(mock_auto.call_count, 1)
-        # Verify the auto-grade filter was passed to ffmpeg command
-        # The auto-graded segment is the 2nd one (call index 1)
-        auto_call = mock_run.call_args_list[1]
-        cmd = auto_call[0][0]
-        vf_idx = cmd.index("-vf")
-        vf_value = cmd[vf_idx + 1]
-        self.assertIn("eq=contrast=1.05", vf_value)
+        # Find the ffmpeg extract call with the auto-grade filter
+        # (call order may include _source_has_audio probes before each extract)
+        auto_cmd = None
+        for call in mock_run.call_args_list:
+            cmd = call[0][0]
+            if cmd[0] == "ffmpeg" and "-vf" in cmd:
+                vf_idx = cmd.index("-vf")
+                if "eq=contrast=1.05" in cmd[vf_idx + 1]:
+                    auto_cmd = cmd
+                    break
+        self.assertIsNotNone(auto_cmd, "auto-graded ffmpeg command not found")
 
+    @patch("media_tooling.edl_render._source_has_audio", return_value=True)
     @patch("media_tooling.edl_render.probe_duration", return_value=9999.0)
     @patch("media_tooling.edl_render.subprocess.run")
-    def test_preset_grade_per_segment(self, mock_run: MagicMock, mock_probe: MagicMock) -> None:
+    def test_preset_grade_per_segment(self, mock_run: MagicMock, mock_probe: MagicMock, mock_has_audio: MagicMock) -> None:
         mock_run.return_value = MagicMock(returncode=0)
         with tempfile.TemporaryDirectory() as tmpdir:
             edit_dir = Path(tmpdir)
@@ -946,16 +1012,24 @@ class ExtractAllSegmentsTests(unittest.TestCase):
                 ],
             }
             extract_all_segments(edl, edit_dir)
-        # Verify ffmpeg command contains the preset filter
-        cmd = mock_run.call_args[0][0]
+        # Find the ffmpeg extract call (not the _source_has_audio ffprobe call)
+        cmd = None
+        for call in mock_run.call_args_list:
+            c = call[0][0]
+            if c[0] == "ffmpeg" and "-vf" in c:
+                cmd = c
+                break
+        self.assertIsNotNone(cmd)
+        assert cmd is not None  # for mypy
         vf_idx = cmd.index("-vf")
         vf_value = cmd[vf_idx + 1]
         self.assertIn("contrast=1.03", vf_value)
 
+    @patch("media_tooling.edl_render._source_has_audio", return_value=True)
     @patch("media_tooling.edl_render.probe_duration", return_value=9999.0)
     @patch("media_tooling.edl_render.subprocess.run")
     def test_corrupt_transcript_falls_back_to_raw_cut_points(
-        self, mock_run: MagicMock, mock_probe: MagicMock
+        self, mock_run: MagicMock, mock_probe: MagicMock, mock_has_audio: MagicMock
     ) -> None:
         """Corrupt transcript JSON in extract_all_segments warns and uses raw cuts."""
         mock_run.return_value = MagicMock(returncode=0)
@@ -983,10 +1057,11 @@ class ExtractAllSegmentsTests(unittest.TestCase):
             ]
             self.assertGreater(len(warning_calls), 0)
 
+    @patch("media_tooling.edl_render._source_has_audio", return_value=True)
     @patch("media_tooling.edl_render.subprocess.run")
     @patch("media_tooling.edl_render.probe_duration", return_value=9999.0)
     def test_unreadable_transcript_falls_back_to_raw_cut_points(
-        self, mock_probe: MagicMock, mock_run: MagicMock
+        self, mock_probe: MagicMock, mock_run: MagicMock, mock_has_audio: MagicMock
     ) -> None:
         """Unreadable transcript file (OSError) in extract_all_segments warns and uses raw cuts."""
         mock_run.return_value = MagicMock(returncode=0)
@@ -1016,10 +1091,11 @@ class ExtractAllSegmentsTests(unittest.TestCase):
             ]
             self.assertGreater(len(warning_calls), 0)
 
+    @patch("media_tooling.edl_render._source_has_audio", return_value=True)
     @patch("media_tooling.edl_render.probe_duration", return_value=0.005)
     @patch("media_tooling.edl_render.subprocess.run")
     def test_zero_duration_segment_raises_runtime_error(
-        self, mock_run: MagicMock, mock_probe: MagicMock
+        self, mock_run: MagicMock, mock_probe: MagicMock, mock_has_audio: MagicMock
     ) -> None:
         """Segment with zero/negative duration after padding raises RuntimeError."""
         mock_run.return_value = MagicMock(returncode=0)
@@ -1363,10 +1439,11 @@ class RenderEDLTests(unittest.TestCase):
             self.assertTrue(mock_burn.called)
             self.assertEqual(result, 0)
 
+    @patch("media_tooling.edl_render._source_has_audio", return_value=True)
     @patch("media_tooling.edl_render.probe_duration", return_value=5.0)
     @patch("media_tooling.edl_render.subprocess.run")
     def test_source_duration_clamps_padding(
-        self, mock_run: MagicMock, mock_probe: MagicMock
+        self, mock_run: MagicMock, mock_probe: MagicMock, mock_has_audio: MagicMock
     ) -> None:
         """apply_padding receives source_duration from ffprobe, clamps right edge."""
         mock_run.return_value = MagicMock(returncode=0)
@@ -1385,10 +1462,11 @@ class RenderEDLTests(unittest.TestCase):
         self.assertEqual(mock_probe.call_count, 1)
         self.assertEqual(len(seg_paths), 1)
 
+    @patch("media_tooling.edl_render._source_has_audio", return_value=True)
     @patch("media_tooling.edl_render.probe_duration", side_effect=RuntimeError("ffprobe failed"))
     @patch("media_tooling.edl_render.subprocess.run")
     def test_probe_failure_falls_back_to_unclamped(
-        self, mock_run: MagicMock, mock_probe: MagicMock
+        self, mock_run: MagicMock, mock_probe: MagicMock, mock_has_audio: MagicMock
     ) -> None:
         """If ffprobe fails, source_duration is inf and padding is unclamped."""
         mock_run.return_value = MagicMock(returncode=0)

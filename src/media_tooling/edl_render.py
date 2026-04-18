@@ -341,6 +341,22 @@ def _words_in_range(
     return out
 
 
+def _source_has_audio(source: Path, ffmpeg_bin: str = "ffmpeg") -> bool:
+    """Return True if *source* has at least one audio stream."""
+    try:
+        result = subprocess.run(
+            [ffmpeg_bin.replace("ffmpeg", "ffprobe"), "-v", "error",
+             "-select_streams", "a", "-show_entries", "stream=codec_type",
+             "-of", "csv=p=0", str(source)],
+            capture_output=True, text=True, timeout=10,
+        )
+        return bool(result.stdout.strip())
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        # If ffprobe is unavailable, assume audio is present to avoid
+        # silently dropping fades on normal sources.
+        return True
+
+
 def extract_segment(
     source: Path,
     seg_start: float,
@@ -370,6 +386,7 @@ def extract_segment(
     vf = ",".join(vf_parts)
 
     afade = build_afade_filter(duration)
+    has_audio = _source_has_audio(source, ffmpeg_bin)
 
     if draft:
         preset, crf = "ultrafast", "28"
@@ -385,12 +402,15 @@ def extract_segment(
         "-t", f"{duration:.3f}",
         "-vf", vf,
     ]
-    if afade:
+    if afade and has_audio:
         cmd.extend(["-af", afade])
+    if has_audio:
+        cmd.extend(["-c:a", "aac", "-b:a", "192k", "-ar", "48000"])
+    else:
+        cmd.extend(["-an"])
     cmd.extend([
         "-c:v", "libx264", "-preset", preset, "-crf", crf,
         "-pix_fmt", "yuv420p",
-        "-c:a", "aac", "-b:a", "192k", "-ar", "48000",
         "-movflags", "+faststart",
         str(out_path),
     ])
