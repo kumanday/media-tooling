@@ -387,13 +387,17 @@ class CachingTests(unittest.TestCase):
             # Requesting whisper backend should not match elevenlabs cache
             self.assertFalse(source_matches_cache(json_path, source, backend="whisper"))
 
-    def test_source_matches_cache_returns_false_when_no_hash(self) -> None:
+    def test_source_matches_cache_returns_true_for_legacy_no_hash(self) -> None:
+        """Legacy outputs without source_hash should still honor skip-existing."""
         with tempfile.TemporaryDirectory() as tmpdir:
             source = Path(tmpdir) / "source.wav"
             source.write_bytes(b"audio data")
             json_path = Path(tmpdir) / "source.json"
             json_path.write_text(json.dumps({"backend": "whisper"}))
-            self.assertFalse(source_matches_cache(json_path, source))
+            # No source_hash → legacy fallback, return True
+            self.assertTrue(source_matches_cache(json_path, source))
+            # But backend mismatch still returns False
+            self.assertFalse(source_matches_cache(json_path, source, backend="elevenlabs"))
 
     def test_source_matches_cache_works_for_whisper_with_hash(self) -> None:
         """Whisper skip_existing should work when source_hash is present."""
