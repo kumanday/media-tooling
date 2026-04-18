@@ -227,6 +227,7 @@ def run_transcription_job(
 
     ensure_parent_dirs(audio_path, txt_path, srt_path, json_path)
 
+    wav_cleanup_path: Path | None = None
     if is_video_file(input_path):
         if resolved_backend == "elevenlabs":
             wav_audio_path = audio_path.with_suffix(".wav")
@@ -237,6 +238,7 @@ def run_transcription_job(
                 overwrite=overwrite,
             )
             audio_path = wav_audio_path
+            wav_cleanup_path = wav_audio_path
         else:
             extract_audio(
                 input_path=input_path,
@@ -254,6 +256,7 @@ def run_transcription_job(
                 overwrite=overwrite,
             )
             audio_path = wav_audio_path
+            wav_cleanup_path = wav_audio_path
         else:
             audio_path = input_path
 
@@ -302,16 +305,21 @@ def run_transcription_job(
         "source_segment_count": source_segment_count,
         "segment_count": len(segments),
         "subtitle_segmentation": subtitle_segmentation,
+        "source_hash": compute_source_hash(input_path),
         "segments": segments,
     }
 
     if resolved_backend == "elevenlabs":
-        payload["source_hash"] = compute_source_hash(input_path)
         payload["audio_events"] = result.get("audio_events", [])
 
     write_text(txt_path, txt_text, overwrite)
     write_text(srt_path, srt_text, overwrite)
     write_text(json_path, json.dumps(payload, indent=2), overwrite)
+
+    # Clean up temporary PCM WAV file created for ElevenLabs upload
+    if wav_cleanup_path is not None and wav_cleanup_path.exists():
+        wav_cleanup_path.unlink()
+        print(f"Cleaned up temporary WAV: {wav_cleanup_path}")
 
     print(f"Transcript: {txt_path}")
     print(f"Subtitles:  {srt_path}")
@@ -670,12 +678,15 @@ def source_matches_cache(
         cached = json.loads(json_path.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError):
         return False
+    # Check backend field regardless of source_hash presence
+    if backend is not None and cached.get("backend") != backend:
+        return False
     cached_hash = cached.get("source_hash")
     if not cached_hash:
-        return False
+        # Legacy outputs lack source_hash; honor skip-existing by
+        # falling back to backend match when hash is absent.
+        return True
     if cached_hash != compute_source_hash(input_path):
-        return False
-    if backend is not None and cached.get("backend") != backend:
         return False
     return True
 

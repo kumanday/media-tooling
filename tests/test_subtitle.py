@@ -395,6 +395,19 @@ class CachingTests(unittest.TestCase):
             json_path.write_text(json.dumps({"backend": "whisper"}))
             self.assertFalse(source_matches_cache(json_path, source))
 
+    def test_source_matches_cache_works_for_whisper_with_hash(self) -> None:
+        """Whisper skip_existing should work when source_hash is present."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            source = Path(tmpdir) / "source.wav"
+            source.write_bytes(b"audio data")
+            json_path = Path(tmpdir) / "source.json"
+            source_hash = compute_source_hash(source)
+            json_path.write_text(json.dumps({
+                "source_hash": source_hash,
+                "backend": "whisper",
+            }))
+            self.assertTrue(source_matches_cache(json_path, source, backend="whisper"))
+
     def test_source_matches_cache_returns_false_when_json_missing(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             source = Path(tmpdir) / "source.wav"
