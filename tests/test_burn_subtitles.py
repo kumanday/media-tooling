@@ -8,7 +8,6 @@ from media_tooling.burn_subtitles import (
     BOLD_OVERLAY_FORCE_STYLE,
     NATURAL_SENTENCE_FORCE_STYLE,
     NATURAL_SENTENCE_MAX_WORDS,
-    NATURAL_SENTENCE_MIN_WORDS,
     OVERLAY_FILTER_KEYWORDS,
     SUBTITLE_FILTER_KEYWORDS,
     _sentence_case,
@@ -224,9 +223,11 @@ class NaturalSentenceChunkingTests(unittest.TestCase):
 
         for cue in result:
             word_count = len(cue["text"].split())
-            # Bounds-check in _group_words_natural_sentence guarantees the range
+            # Bounds-check in _group_words_natural_sentence guarantees upper bound;
+            # lower bound is 2 (not NATURAL_SENTENCE_MIN_WORDS) because tail chunks
+            # that can't be merged may have fewer than MIN words
             self.assertLessEqual(word_count, NATURAL_SENTENCE_MAX_WORDS)
-            self.assertGreaterEqual(word_count, NATURAL_SENTENCE_MIN_WORDS)
+            self.assertGreaterEqual(word_count, 2)
 
         # Verify total words are preserved across all chunks
         total_words = sum(len(c["text"].split()) for c in result)
@@ -264,6 +265,18 @@ class NaturalSentenceChunkingTests(unittest.TestCase):
         # Merged text "Hello world this is a test" (6 words) -> single chunk
         self.assertEqual(len(result), 1)
         self.assertEqual(result[0]["text"], "Hello world this is a test")
+
+    def test_tail_chunk_can_have_fewer_than_min_words(self) -> None:
+        """9 words → 7-word chunk + 2-word tail that can't merge (7+2>7)."""
+        cues = self._make_cues(
+            "One two three four five six seven eight nine"
+        )
+        result = rechunk_natural_sentence(cues)
+
+        self.assertEqual(len(result), 2)
+        self.assertEqual(len(result[0]["text"].split()), 7)
+        # Tail chunk has only 2 words (below MIN) — can't merge into previous
+        self.assertEqual(len(result[1]["text"].split()), 2)
 
     def test_gap_creates_new_segment(self) -> None:
         # Large gap between cues should create separate segments
