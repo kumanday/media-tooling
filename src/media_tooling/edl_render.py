@@ -410,9 +410,17 @@ def extract_all_segments(
         tr_path = edit_dir / "transcripts" / f"{src_name}.json"
         words: list[dict[str, Any]] = []
         if tr_path.exists():
-            transcript = json.loads(tr_path.read_text(encoding="utf-8"))
-            words = _words_in_range(transcript, start, end)
-            start, end = snap_to_word_boundary(start, end, words)
+            try:
+                transcript = json.loads(tr_path.read_text(encoding="utf-8"))
+                words = _words_in_range(transcript, start, end)
+            except (json.JSONDecodeError, KeyError, TypeError):
+                print(
+                    f"  corrupt transcript for {src_name}, "
+                    "using raw cut points",
+                    file=sys.stderr,
+                )
+            else:
+                start, end = snap_to_word_boundary(start, end, words)
 
         # Apply padding (Hard Rule 7)
         padded_start, padded_end = apply_padding(start, end)
@@ -457,10 +465,13 @@ def concat_segments(
     """Lossless concat via the concat demuxer.  Stream copy, no re-encode."""
     out_path.parent.mkdir(parents=True, exist_ok=True)
     concat_list = edit_dir / "_concat.txt"
-    concat_list.write_text(
-        "".join(f"file '{p.resolve()}'\n" for p in segment_paths),
-        encoding="utf-8",
-    )
+    # Escape single quotes in paths for ffmpeg concat demuxer format
+    # Use double quotes which support backslash escaping per ffmpeg docs
+    lines: list[str] = []
+    for p in segment_paths:
+        escaped = str(p.resolve()).replace("\\", "\\\\").replace('"', '\\"')
+        lines.append(f'file "{escaped}"\n')
+    concat_list.write_text("".join(lines), encoding="utf-8")
 
     cmd: list[str] = [
         ffmpeg_bin, "-y",
