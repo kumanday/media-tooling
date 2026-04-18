@@ -306,6 +306,22 @@ class ScribeResponseParsingTests(unittest.TestCase):
         for sub in refined:
             self.assertEqual(sub.get("speaker_id"), "speaker_0")
 
+    def test_merge_tiny_blocks_never_crosses_speaker_boundary(self) -> None:
+        """Adjacent tiny blocks from different speakers must NOT be merged."""
+        from media_tooling.subtitle import merge_tiny_adjacent_blocks
+        blocks = [
+            {"start": 0.0, "end": 0.3, "text": "Hi", "speaker_id": "speaker_0"},
+            {"start": 0.3, "end": 0.6, "text": "Hey", "speaker_id": "speaker_1"},
+            {"start": 0.6, "end": 0.9, "text": "there", "speaker_id": "speaker_1"},
+        ]
+        merged = merge_tiny_adjacent_blocks(blocks)
+        # speaker_0's tiny block should NOT merge into speaker_1
+        self.assertEqual(len(merged), 2)
+        self.assertEqual(merged[0].get("speaker_id"), "speaker_0")
+        self.assertEqual(merged[0]["text"], "Hi")
+        # speaker_1's two tiny blocks CAN merge with each other
+        self.assertEqual(merged[1].get("speaker_id"), "speaker_1")
+
 
 class CachingTests(unittest.TestCase):
     def test_compute_source_hash_deterministic(self) -> None:
@@ -318,13 +334,32 @@ class CachingTests(unittest.TestCase):
             self.assertEqual(hash1, hash2)
             os.unlink(f.name)
 
+    def test_compute_source_hash_content_based(self) -> None:
+        """Hash should be based on file content, not metadata."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            source = Path(tmpdir) / "source.wav"
+            source.write_bytes(b"audio data")
+            hash1 = compute_source_hash(source)
+            # Touch the file (changes mtime, not content)
+            import time
+            source.write_bytes(b"audio data")  # same content
+            time.sleep(0.05)
+            os.utime(source, (time.time() + 100, time.time() + 100))
+            hash2 = compute_source_hash(source)
+            self.assertEqual(hash1, hash2)
+
     def test_source_matches_cache_returns_true_when_hash_matches(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             source = Path(tmpdir) / "source.wav"
             source.write_bytes(b"audio data")
             json_path = Path(tmpdir) / "source.json"
             source_hash = compute_source_hash(source)
-            json_path.write_text(json.dumps({"source_hash": source_hash}))
+            json_path.write_text(json.dumps({
+                "source_hash": source_hash,
+                "backend": "elevenlabs",
+            }))
+            self.assertTrue(source_matches_cache(json_path, source, backend="elevenlabs"))
+            # Also works without backend check
             self.assertTrue(source_matches_cache(json_path, source))
 
     def test_source_matches_cache_returns_false_when_source_changed(self) -> None:
@@ -337,6 +372,20 @@ class CachingTests(unittest.TestCase):
             # Modify the source
             source.write_bytes(b"audio data modified")
             self.assertFalse(source_matches_cache(json_path, source))
+
+    def test_source_matches_cache_returns_false_when_backend_differs(self) -> None:
+        """Cache should not match if backend field differs."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            source = Path(tmpdir) / "source.wav"
+            source.write_bytes(b"audio data")
+            json_path = Path(tmpdir) / "source.json"
+            source_hash = compute_source_hash(source)
+            json_path.write_text(json.dumps({
+                "source_hash": source_hash,
+                "backend": "elevenlabs",
+            }))
+            # Requesting whisper backend should not match elevenlabs cache
+            self.assertFalse(source_matches_cache(json_path, source, backend="whisper"))
 
     def test_source_matches_cache_returns_false_when_no_hash(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

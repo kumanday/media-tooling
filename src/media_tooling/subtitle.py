@@ -219,11 +219,11 @@ def run_transcription_job(
     resolved_backend = resolve_backend(backend)
 
     if skip_existing and txt_path.exists() and srt_path.exists() and json_path.exists():
-        if resolved_backend == "elevenlabs" and not source_matches_cache(json_path, input_path):
-            print(f"Source file changed for {input_path}; re-transcribing.")
-        else:
+        if source_matches_cache(json_path, input_path, backend=resolved_backend):
             print(f"Skipping existing outputs for {input_path}")
             return
+        else:
+            print(f"Cache miss for {input_path}; re-transcribing.")
 
     ensure_parent_dirs(audio_path, txt_path, srt_path, json_path)
 
@@ -643,14 +643,27 @@ def extract_audio_pcm_wav(
 
 
 def compute_source_hash(source_path: Path) -> str:
+    """Hash file content for cache invalidation.
+
+    Uses SHA-256 of file content rather than mtime/size to avoid
+    false invalidations from metadata-only changes (touch, rsync -a)
+    which would waste paid API credits on re-transcription.
+    """
     h = hashlib.sha256()
-    h.update(str(source_path.resolve()).encode("utf-8"))
-    h.update(str(source_path.stat().st_size).encode("utf-8"))
-    h.update(str(source_path.stat().st_mtime).encode("utf-8"))
+    with open(source_path, "rb") as f:
+        while True:
+            chunk = f.read(65536)
+            if not chunk:
+                break
+            h.update(chunk)
     return h.hexdigest()
 
 
-def source_matches_cache(json_path: Path, input_path: Path) -> bool:
+def source_matches_cache(
+    json_path: Path,
+    input_path: Path,
+    backend: str | None = None,
+) -> bool:
     if not json_path.exists():
         return False
     try:
@@ -660,7 +673,11 @@ def source_matches_cache(json_path: Path, input_path: Path) -> bool:
     cached_hash = cached.get("source_hash")
     if not cached_hash:
         return False
-    return cached_hash == compute_source_hash(input_path)
+    if cached_hash != compute_source_hash(input_path):
+        return False
+    if backend is not None and cached.get("backend") != backend:
+        return False
+    return True
 
 
 def ensure_parent_dirs(*paths: Path) -> None:
@@ -1119,9 +1136,11 @@ def merge_tiny_adjacent_blocks(blocks: list[dict[str, Any]]) -> list[dict[str, A
         combined_text = f"{merged[-1]['text']} {block['text']}".strip()
         combined_duration = block["end"] - merged[-1]["start"]
         combined_word_count = len(combined_text.split())
+        same_speaker = merged[-1].get("speaker_id") == block.get("speaker_id")
 
         if (
-            duration < 1.0
+            same_speaker
+            and duration < 1.0
             and len(combined_text) <= SUBTITLE_MAX_CHARACTERS
             and combined_duration <= SUBTITLE_MAX_DURATION_SECONDS
             and combined_word_count <= SUBTITLE_MAX_WORDS
