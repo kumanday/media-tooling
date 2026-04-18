@@ -33,6 +33,7 @@ Shell helpers expected after setup:
 5. For many files, create a manifest and use `media-batch-subtitle`.
 6. Prefer sequential processing for larger corpora.
 7. Use `--skip-existing` when resuming an interrupted batch.
+8. After transcription, pack the transcript with `media-pack-transcript` before reasoning over it.
 
 ### Core pipeline: transcribe → pack → inspect (on demand)
 
@@ -123,10 +124,10 @@ done
 
 ### Packed transcript output format
 
-Each line in `takes_packed.md` follows this pattern:
+Each line in `takes_packed.md` follows this pattern (timestamps in seconds, 3 decimal places):
 
 ```
-[start-end] phrase text
+[12.345-15.678] phrase text
 ```
 
 When speaker diarization is available, a speaker tag is appended:
@@ -188,10 +189,10 @@ When a transcript JSON is supplied, the timeline adds word labels above the wave
 
 ```bash
 # Skip if the PNG already exists (useful in batch loops)
-media-timeline-view "/path/to/video.mp4" --skip-existing
+media-timeline-view "/path/to/video.mp4" -o "$PROJECT_DIR/transcripts/video-timeline.png" --skip-existing
 
 # Overwrite an existing PNG
-media-timeline-view "/path/to/video.mp4" --overwrite
+media-timeline-view "/path/to/video.mp4" -o "$PROJECT_DIR/transcripts/video-timeline.png" --overwrite
 ```
 
 ## Subtitle translation workflow
