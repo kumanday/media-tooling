@@ -3,7 +3,8 @@
 Two modes:
 
   1. Preset mode — pick a named preset (e.g. ``warm_cinematic``, ``neutral_punch``).
-     Simple fixed filter chain applied uniformly.
+     Simple fixed filter chain applied uniformly. Presets are intentionally
+     creative and may exceed the ±8% auto-grade bounds — that's the point.
 
   2. Auto mode (DEFAULT) — analyze the clip mathematically and emit a subtle
      per-clip correction. Samples N frames via ffmpeg ``signalstats``, computes
@@ -177,9 +178,19 @@ def _sample_frame_stats(
             "-vf", f"fps={fps:.2f},signalstats,metadata=print:file={escaped_path}",
             "-f", "null", "-",
         ]
-        subprocess.run(
-            cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
-        )
+        try:
+            subprocess.run(
+                cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+            )
+        except FileNotFoundError:
+            raise RuntimeError(
+                "ffmpeg not found — ensure ffmpeg is installed and on PATH"
+            )
+        except subprocess.CalledProcessError as exc:
+            raise RuntimeError(
+                f"ffmpeg signalstats analysis failed (exit code {exc.returncode}). "
+                f"Input: {video}"
+            )
 
         return _parse_metadata_file(metadata_path)
     finally:
@@ -455,7 +466,7 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         apply_grade(args.input, args.output, filter_string)
-    except RuntimeError as exc:
+    except (RuntimeError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
     print(f"done: {args.output}")

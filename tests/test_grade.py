@@ -154,6 +154,42 @@ class SampleFrameStatsTests(unittest.TestCase):
             os.unlink(metadata_path)
         self.assertAlmostEqual(result["y_mean"], 128 / 255, places=3)
 
+    @patch("media_tooling.grade.subprocess.run",
+           side_effect=FileNotFoundError)
+    def test_ffmpeg_not_found_raises_runtime_error(self, mock_run: MagicMock) -> None:
+        """Missing ffmpeg during analysis raises RuntimeError."""
+        with tempfile.NamedTemporaryFile(mode="w+", suffix=".txt", delete=False) as f:
+            metadata_path = f.name
+        try:
+            with patch("media_tooling.grade.tempfile.NamedTemporaryFile") as mock_tf:
+                mock_tf.return_value.__enter__ = MagicMock(return_value=MagicMock(name="f"))
+                mock_tf.return_value.__enter__().name = metadata_path
+                mock_tf.return_value.__exit__ = MagicMock(return_value=False)
+                with patch("media_tooling.grade.Path.unlink"):
+                    with self.assertRaises(RuntimeError) as ctx:
+                        _sample_frame_stats(Path("test.mp4"), start=0.0, duration=10.0)
+            self.assertIn("ffmpeg not found", str(ctx.exception))
+        finally:
+            os.unlink(metadata_path)
+
+    @patch("media_tooling.grade.subprocess.run",
+           side_effect=subprocess.CalledProcessError(1, "ffmpeg"))
+    def test_ffmpeg_analysis_failure_raises_runtime_error(self, mock_run: MagicMock) -> None:
+        """ffmpeg analysis failure raises RuntimeError with context."""
+        with tempfile.NamedTemporaryFile(mode="w+", suffix=".txt", delete=False) as f:
+            metadata_path = f.name
+        try:
+            with patch("media_tooling.grade.tempfile.NamedTemporaryFile") as mock_tf:
+                mock_tf.return_value.__enter__ = MagicMock(return_value=MagicMock(name="f"))
+                mock_tf.return_value.__enter__().name = metadata_path
+                mock_tf.return_value.__exit__ = MagicMock(return_value=False)
+                with patch("media_tooling.grade.Path.unlink"):
+                    with self.assertRaises(RuntimeError) as ctx:
+                        _sample_frame_stats(Path("test.mp4"), start=0.0, duration=10.0)
+            self.assertIn("exit code", str(ctx.exception))
+        finally:
+            os.unlink(metadata_path)
+
 
 class AutoGradeForClipTests(unittest.TestCase):
     @patch("media_tooling.grade._sample_frame_stats")
@@ -459,6 +495,28 @@ class CLIMainTests(unittest.TestCase):
     def test_input_nonexistent_file_fails(self) -> None:
         with patch.object(Path, "exists", return_value=False):
             result = main(["nonexistent.mp4", "-o", "output.mp4"])
+        self.assertEqual(result, 1)
+
+    @patch("media_tooling.grade.auto_grade_for_clip")
+    def test_same_file_valueerror_caught_in_cli(self, mock_auto: MagicMock) -> None:
+        """ValueError from apply_grade (same-file guard) is caught by main()."""
+        mock_auto.return_value = ("", {"y_mean": 0.5})
+        with patch("media_tooling.grade.apply_grade",
+                   side_effect=ValueError("same file")):
+            with patch("builtins.print"):
+                with patch.object(Path, "exists", return_value=True):
+                    result = main(["input.mp4", "-o", "output.mp4"])
+        self.assertEqual(result, 1)
+
+    @patch("media_tooling.grade.auto_grade_for_clip")
+    def test_runtime_error_caught_in_cli(self, mock_auto: MagicMock) -> None:
+        """RuntimeError from apply_grade is caught by main()."""
+        mock_auto.return_value = ("", {"y_mean": 0.5})
+        with patch("media_tooling.grade.apply_grade",
+                   side_effect=RuntimeError("ffmpeg failed")):
+            with patch("builtins.print"):
+                with patch.object(Path, "exists", return_value=True):
+                    result = main(["input.mp4", "-o", "output.mp4"])
         self.assertEqual(result, 1)
 
 
