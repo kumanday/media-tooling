@@ -632,7 +632,8 @@ def call_scribe_api(
 
 
 def parse_scribe_response(scribe_response: dict[str, Any]) -> dict[str, Any]:
-    raw_words = scribe_response.get("words", [])
+    # Work on a shallow copy of the words list to avoid mutating the caller's dict.
+    raw_words = [dict(w) for w in scribe_response.get("words", [])]
 
     # Pre-fill LEADING None speaker_ids from the first non-None speaker.
     # When diarization is uncertain, the API may return None for early words;

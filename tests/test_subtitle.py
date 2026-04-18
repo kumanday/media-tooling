@@ -341,6 +341,23 @@ class ScribeResponseParsingTests(unittest.TestCase):
         self.assertEqual(result["segments"][1]["speaker_id"], "speaker_1")
         self.assertEqual(result["segments"][1]["text"], "yeah right")
 
+    def test_parse_scribe_response_does_not_mutate_input(self) -> None:
+        """parse_scribe_response should not mutate the input dictionary."""
+        original_words = [
+            {"text": "Um", "start": 0.0, "end": 0.5, "speaker_id": None},
+            {"text": "Hello", "start": 0.5, "end": 1.0, "speaker_id": "speaker_0"},
+        ]
+        scribe_response = {
+            "text": "Um Hello",
+            "words": original_words,
+            "audio_events": [],
+        }
+        # Deep-copy to verify original is not mutated
+        import copy
+        original_copy = copy.deepcopy(scribe_response)
+        parse_scribe_response(scribe_response)
+        self.assertEqual(scribe_response, original_copy)
+
     def test_speaker_id_propagated_through_resegmentation(self) -> None:
         segment = {
             "start": 0.0,
