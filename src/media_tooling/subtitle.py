@@ -12,6 +12,8 @@ import subprocess
 import sys
 import time
 from collections.abc import Iterator
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 from pathlib import Path
 from typing import Any
 
@@ -621,7 +623,19 @@ def call_scribe_api(
         # Retry on transient server errors (429 rate-limit, 5xx)
         if resp.status_code in (429, 500, 502, 503, 504) and attempt < max_retries - 1:
             retry_after = resp.headers.get("Retry-After")
-            wait = float(retry_after) if retry_after else base_backoff * (2 ** attempt)
+            wait = base_backoff * (2 ** attempt)
+            if retry_after:
+                try:
+                    wait = float(retry_after)
+                except ValueError:
+                    # Retry-After may be an HTTP-date (e.g. "Fri, 18 Apr 2026 11:00:00 GMT")
+                    try:
+                        target = parsedate_to_datetime(retry_after)
+                        delta = (target - datetime.now(timezone.utc)).total_seconds()
+                        if delta > 0:
+                            wait = min(delta, 60.0)  # cap at 60s
+                    except (ValueError, TypeError):
+                        pass  # fall back to exponential backoff
             time.sleep(wait)
             continue
 
