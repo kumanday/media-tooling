@@ -10,6 +10,54 @@ from typing import Any
 
 from PIL import Image, ImageDraw, ImageFont
 
+# Only exact-flag indicators are reliable: xfade/acrossfade appear inside
+# filter_complex values (e.g. "[0:v][1:v]xfade=…") as a single arg, so
+# exact-match checks like "xfade" in command never catch them.  Detecting
+# -filter_complex / -lavfi is sufficient to block single-pass filtergraphs.
+SINGLE_PASS_FILTERGRAPH_INDICATORS = (
+    "-filter_complex",
+    "-lavfi",
+)
+CONCAT_DEMUXER_FLAGS = ("-f",)
+
+
+class AssemblyMethodError(ValueError):
+    """Raised when a single-pass filtergraph is detected instead of concat demuxer."""
+
+
+def validate_concat_demuxer_usage(command: list[str]) -> None:
+    """Validate that the ffmpeg command uses concat demuxer, not a single-pass filtergraph.
+
+    Hard Rule 2: Per-segment extract + lossless concat (never single-pass filtergraph).
+    A single-pass filtergraph processes all segments in one ffmpeg invocation,
+    which is fragile, non-debuggable, and prevents per-segment processing.
+
+    This guardrail inspects the command for indicators of single-pass filtergraph
+    usage and raises AssemblyMethodError if detected.
+
+    Only validates concat assembly commands (those containing -f concat).
+    Does not validate segment extraction commands (which use -ss/-to per segment).
+    """
+    is_concat_command = False
+    for i, arg in enumerate(command):
+        if arg in CONCAT_DEMUXER_FLAGS and i + 1 < len(command):
+            if command[i + 1] == "concat":
+                is_concat_command = True
+                break
+
+    if not is_concat_command:
+        return
+
+    for indicator in SINGLE_PASS_FILTERGRAPH_INDICATORS:
+        if indicator in command:
+            raise AssemblyMethodError(
+                f"Hard Rule 2 violation: single-pass filtergraph indicator "
+                f"'{indicator}' detected in concat assembly command. "
+                "Use per-segment extraction followed by lossless concat with the "
+                "concat demuxer (-f concat -safe 0 -i <manifest>) instead of a "
+                "single-pass filtergraph. See docs/hard-rules.md Rule 2."
+            )
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
@@ -237,6 +285,42 @@ def build_image_segment(
     )
 
 
+def parse_time_to_seconds(value: str | float) -> float:
+    """Convert an ffmpeg time value to seconds.
+
+    Accepts plain seconds (e.g. ``90.5``) or timecode
+    (e.g. ``00:01:30.5``).
+    """
+    text = str(value).strip()
+    parts = text.split(":")
+    if len(parts) == 1:
+        return float(parts[0])
+    if len(parts) == 2:
+        return float(parts[0]) * 60 + float(parts[1])
+    if len(parts) == 3:
+        return float(parts[0]) * 3600 + float(parts[1]) * 60 + float(parts[2])
+    raise ValueError(f"Unrecognised time format: {text}")
+
+
+_FADE_DURATION = 0.03  # 30 ms
+
+
+def build_afade_filter(*, start: str | float, end: str | float) -> str:
+    """Build an ffmpeg ``afade`` chain for 30 ms in/out fades.
+
+    Returns an empty string when the segment is too short for fades
+    (less than twice the fade duration, i.e. under 60 ms).
+    """
+    duration = parse_time_to_seconds(end) - parse_time_to_seconds(start)
+    if duration < _FADE_DURATION * 2:
+        return ""
+    fade_out_start = duration - _FADE_DURATION
+    return (
+        f"afade=t=in:st=0:d={_FADE_DURATION},"
+        f"afade=t=out:st={fade_out_start}:d={_FADE_DURATION}"
+    )
+
+
 def build_clip_segment(
     *,
     segment: dict[str, Any],
@@ -247,7 +331,7 @@ def build_clip_segment(
     input_path = resolve_path(segment["input"])
     start = segment["start"]
     end = segment["end"]
-    command = [
+    command: list[str] = [
         ffmpeg_bin,
         "-y",
         "-ss",
@@ -274,6 +358,14 @@ def build_clip_segment(
                 "scale=1920:1080:force_original_aspect_ratio=decrease,"
                 "pad=1920:1080:(ow-iw)/2:(oh-ih)/2:black,fps=30"
             ),
+        ]
+    )
+    if input_has_audio:
+        afade = build_afade_filter(start=start, end=end)
+        if afade:
+            command.extend(["-af", afade])
+    command.extend(
+        [
             "-c:v",
             "libx264",
             "-preset",
@@ -304,37 +396,37 @@ def concat_manifest(
     output_path: Path,
     ffmpeg_bin: str,
 ) -> None:
-    run_command(
-        [
-            ffmpeg_bin,
-            "-y",
-            "-fflags",
-            "+genpts",
-            "-f",
-            "concat",
-            "-safe",
-            "0",
-            "-i",
-            str(manifest_path),
-            "-c:v",
-            "libx264",
-            "-preset",
-            "veryfast",
-            "-crf",
-            "20",
-            "-pix_fmt",
-            "yuv420p",
-            "-c:a",
-            "aac",
-            "-ar",
-            "48000",
-            "-ac",
-            "2",
-            "-movflags",
-            "+faststart",
-            str(output_path),
-        ]
-    )
+    command = [
+        ffmpeg_bin,
+        "-y",
+        "-fflags",
+        "+genpts",
+        "-f",
+        "concat",
+        "-safe",
+        "0",
+        "-i",
+        str(manifest_path),
+        "-c:v",
+        "libx264",
+        "-preset",
+        "veryfast",
+        "-crf",
+        "20",
+        "-pix_fmt",
+        "yuv420p",
+        "-c:a",
+        "aac",
+        "-ar",
+        "48000",
+        "-ac",
+        "2",
+        "-movflags",
+        "+faststart",
+        str(output_path),
+    ]
+    validate_concat_demuxer_usage(command)
+    run_command(command)
 
 
 def compose_card_text(*, header: str, meta: str, body: str) -> str:

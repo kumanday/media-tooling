@@ -7,8 +7,11 @@ from pathlib import Path
 from media_tooling.project_init import (
     MANAGED_BLOCK_END,
     MANAGED_BLOCK_START,
+    PROJECT_MEMORY_INITIAL_CONTENT,
+    PROJECT_MEMORY_PATH,
     PROJECT_SUBDIRECTORIES,
     ensure_project_directories,
+    ensure_project_memory,
     load_project_agents_template,
     render_project_agents_block,
     upsert_project_agents,
@@ -114,6 +117,77 @@ class ProjectInitTests(unittest.TestCase):
         self.assertIn("{{SKILL_PATHS}}", template)
         self.assertIn("{{MANAGED_BLOCK_START}}", template)
         self.assertIn("{{MANAGED_BLOCK_END}}", template)
+
+    def test_project_agents_template_contains_memory_protocol(self) -> None:
+        template = load_project_agents_template()
+
+        self.assertIn("Session Memory Protocol", template)
+        self.assertIn("Strategy", template)
+        self.assertIn("Decisions", template)
+        self.assertIn("Reasoning log", template)
+        self.assertIn("Outstanding items", template)
+        self.assertIn("project.md", template)
+        self.assertIn("summarize the last session", template)
+
+    def test_ensure_project_memory_creates_file_in_new_workspace(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_dir = Path(temp_dir)
+
+            memory_path, action = ensure_project_memory(
+                project_dir=project_dir,
+                create_memory=True,
+            )
+
+            self.assertEqual(action, "created")
+            self.assertTrue(memory_path.exists())
+            contents = memory_path.read_text(encoding="utf-8")
+            self.assertIn("# Project Memory", contents)
+
+    def test_ensure_project_memory_does_not_overwrite_existing(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_dir = Path(temp_dir)
+            memory_path = project_dir / PROJECT_MEMORY_PATH
+            memory_path.parent.mkdir(parents=True, exist_ok=True)
+            memory_path.write_text("existing content", encoding="utf-8")
+
+            _, action = ensure_project_memory(
+                project_dir=project_dir,
+                create_memory=True,
+            )
+
+            self.assertEqual(action, "exists")
+            contents = memory_path.read_text(encoding="utf-8")
+            self.assertEqual(contents, "existing content")
+
+    def test_ensure_project_memory_skipped_when_create_memory_false(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_dir = Path(temp_dir)
+
+            _, action = ensure_project_memory(
+                project_dir=project_dir,
+                create_memory=False,
+            )
+
+            self.assertEqual(action, "skipped")
+            self.assertFalse((project_dir / PROJECT_MEMORY_PATH).exists())
+
+    def test_ensure_project_directories_includes_edit_dir(self) -> None:
+        self.assertIn("edit", PROJECT_SUBDIRECTORIES)
+
+    def test_project_memory_initial_content_has_title(self) -> None:
+        self.assertIn("# Project Memory", PROJECT_MEMORY_INITIAL_CONTENT)
+
+    def test_project_agents_template_contains_hard_rules_section(self) -> None:
+        template = load_project_agents_template()
+
+        self.assertIn("Hard Rules", template)
+        self.assertIn("Subtitles applied last in filter chain", template)
+
+    def test_project_agents_template_contains_anti_patterns_section(self) -> None:
+        template = load_project_agents_template()
+
+        self.assertIn("Anti-patterns", template)
+        self.assertIn("Hierarchical pre-computed codec formats", template)
 
 
 if __name__ == "__main__":
