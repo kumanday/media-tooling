@@ -38,6 +38,7 @@ media-tooling-init = "media_tooling.project_init:main"
 media-loudnorm = "media_tooling.loudnorm:main"
 media-pack-transcript = "media_tooling.pack_transcript:main"
 media-translate-subtitles = "media_tooling.subtitle_translate:main"
+media-edl-render = "media_tooling.edl_render:main"
 
 [tool.ruff]
 target-version = "py312"
