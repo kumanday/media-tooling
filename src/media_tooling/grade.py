@@ -7,10 +7,10 @@ Two modes:
 
   2. Auto mode (DEFAULT) — analyze the clip mathematically and emit a subtle
      per-clip correction. Samples N frames via ffmpeg ``signalstats``, computes
-     mean brightness, RMS contrast, saturation. Emits a bounded filter string
+     mean brightness, luminance range, saturation. Emits a bounded filter string
      that corrects under-exposure, flatness, and mild desaturation without
      applying any creative color shift. All adjustments capped at ±8% on any
-     axis.
+     axis (i.e. every parameter in [0.92, 1.08]).
 
      The goal is "make it look clean without looking graded". Never applies
      creative LUTs, teal/orange splits, or filmic curves. For creative looks,
@@ -95,8 +95,9 @@ def _sample_frame_stats(
     SATAVG etc. in the metadata. We average across the sample range.
 
     Returns:
-        ``{"y_mean": float, "y_std": float, "sat_mean": float}``
+        ``{"y_mean": float, "y_range": float, "sat_mean": float}``
         where all values are normalised to 0..1 regardless of source bit depth.
+        ``y_range`` is the average (YMAX - YMIN) normalised by bit-depth max.
     """
     fps = max(0.5, min(n_samples / max(duration, 0.1), 10.0))
 
@@ -104,12 +105,15 @@ def _sample_frame_stats(
         metadata_path = f.name
 
     try:
+        # Escape path for ffmpeg filter syntax: colons and backslashes
+        # are special in filter chains. Use ffmpeg's escaping convention.
+        escaped_path = metadata_path.replace("\\", "\\\\\\\\").replace(":", "\\\\:")
         cmd = [
             "ffmpeg", "-y", "-hide_banner", "-nostats",
             "-ss", f"{start:.3f}",
             "-i", str(video),
             "-t", f"{duration:.3f}",
-            "-vf", f"fps={fps:.2f},signalstats,metadata=print:file={metadata_path}",
+            "-vf", f"fps={fps:.2f},signalstats,metadata=print:file={escaped_path}",
             "-f", "null", "-",
         ]
         subprocess.run(
@@ -148,7 +152,7 @@ def _sample_frame_stats(
 
         if not y_avgs:
             # Analysis failed — return neutral defaults (no correction)
-            return {"y_mean": 0.5, "y_std": 0.18, "sat_mean": 0.25}
+            return {"y_mean": 0.5, "y_range": 0.72, "sat_mean": 0.25}
 
         # Normalize by native bit-depth max value
         max_val = (2 ** bit_depth) - 1
@@ -165,7 +169,7 @@ def _sample_frame_stats(
 
         return {
             "y_mean": y_mean,
-            "y_std": y_range / 4.0,  # range ÷ 4 ≈ stddev for normal-ish distributions
+            "y_range": y_range,
             "sat_mean": sat_mean,
         }
     finally:
@@ -181,14 +185,15 @@ def auto_grade_for_clip(
     """Analyze a clip range and emit a subtle per-clip correction filter.
 
     Returns ``(filter_string, stats_dict)``. The filter is bounded to ±8%
-    on any axis and applies NO color shift. It only addresses:
+    on every axis (all parameters in [0.92, 1.08]) and applies NO color
+    shift. It only addresses:
 
       - Underexposure (lift gamma slightly if too dark)
       - Flatness (tiny contrast boost if range is narrow)
       - Desaturation (tiny sat boost if extremely flat)
 
-    If the clip is already well-balanced, returns the baseline ``subtle``
-    preset.
+    If the clip is already well-balanced, returns an empty filter string
+    (no correction applied).
     """
     if duration is None:
         # Probe duration
@@ -208,46 +213,44 @@ def auto_grade_for_clip(
     stats = _sample_frame_stats(video, start, duration)
 
     y_mean = stats["y_mean"]
-    y_range = stats["y_std"] * 4.0  # back to range
+    y_range = stats["y_range"]
     sat_mean = stats["sat_mean"]
 
     # ------ Decision rules ---------------------------------------------------
-    # All caps bounded to ±8%. Target "clean, not graded".
+    # All adjustments start at 1.0 (neutral). Corrections are only applied
+    # when the analysis shows a measurable problem. Everything is clamped
+    # hard to ±8% → [0.92, 1.08].
 
-    # Contrast: target y_range ≈ 0.72. Boost gently if flat, never reduce.
+    # Contrast: only boost if the luminance range is narrow (flat footage).
     contrast_adj = 1.0
     if y_range < 0.65:
-        # Map [0.50, 0.65] → [1.08, 1.03]
-        t = max(0.0, min(1.0, (y_range - 0.50) / 0.15))
-        contrast_adj = 1.08 - 0.05 * t
-    else:
-        contrast_adj = 1.03  # subtle baseline
+        # Map [0.40, 0.65] → [1.08, 1.02]
+        t = max(0.0, min(1.0, (y_range - 0.40) / 0.25))
+        contrast_adj = 1.08 - 0.06 * t
 
-    # Gamma: target y_mean ≈ 0.48. Lift gently if too dark.
+    # Gamma: target y_mean ≈ 0.48. Lift gently if too dark, pull back if overexposed.
     gamma_adj = 1.0
     if y_mean < 0.42:
-        # Map [0.30, 0.42] → [1.10, 1.02]
+        # Map [0.30, 0.42] → [1.08, 1.02]
         t = max(0.0, min(1.0, (y_mean - 0.30) / 0.12))
-        gamma_adj = 1.10 - 0.08 * t
+        gamma_adj = 1.08 - 0.06 * t
     elif y_mean > 0.60:
         # Slightly overexposed — tiny pullback
-        gamma_adj = 0.97
+        gamma_adj = 0.95
 
-    # Saturation: target sat_mean ≈ 0.25. Never desaturate aggressively;
-    # modest boost if very flat. Default to 0.98 (tiny pullback — most digital
-    # video is slightly over-saturated on consumer displays).
-    sat_adj = 0.98
-    if sat_mean < 0.18:
-        # Very flat — tiny boost
-        sat_adj = 1.04
-    elif sat_mean > 0.38:
-        # Already punchy — hold
-        sat_adj = 0.96
+    # Saturation: only adjust if clearly out of normal range.
+    sat_adj = 1.0
+    if sat_mean < 0.15:
+        # Very desaturated — tiny boost
+        sat_adj = 1.06
+    elif sat_mean > 0.40:
+        # Already punchy — mild pullback
+        sat_adj = 0.94
 
-    # Clamp all adjustments hard to ±8%
-    contrast_adj = max(0.94, min(1.08, contrast_adj))
-    gamma_adj = max(0.94, min(1.10, gamma_adj))
-    sat_adj = max(0.94, min(1.06, sat_adj))
+    # Clamp all adjustments hard to ±8% → [0.92, 1.08]
+    contrast_adj = max(0.92, min(1.08, contrast_adj))
+    gamma_adj = max(0.92, min(1.08, gamma_adj))
+    sat_adj = max(0.92, min(1.08, sat_adj))
 
     # Build filter string
     eq_parts: list[str] = []
@@ -277,12 +280,20 @@ def apply_grade(input_path: Path, output_path: Path, filter_string: str) -> None
 
     If ``filter_string`` is empty, performs a straight stream copy (no
     re-encoding). Otherwise, re-encodes with libx264.
+
+    Raises ``ValueError`` if input and output paths resolve to the same file,
+    which would cause ffmpeg to overwrite the source mid-stream.
     """
+    if input_path.resolve() == output_path.resolve():
+        raise ValueError(
+            f"input and output must be different files, got {input_path}"
+        )
+
     output_path.parent.mkdir(parents=True, exist_ok=True)
     if not filter_string:
         cmd = [
             "ffmpeg", "-y", "-i", str(input_path),
-            "-c", "copy", str(output_path),
+            "-c", "copy", "-movflags", "+faststart", str(output_path),
         ]
     else:
         cmd = [
