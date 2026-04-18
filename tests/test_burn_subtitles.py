@@ -8,6 +8,7 @@ from media_tooling.burn_subtitles import (
     BOLD_OVERLAY_FORCE_STYLE,
     NATURAL_SENTENCE_FORCE_STYLE,
     NATURAL_SENTENCE_MAX_WORDS,
+    NATURAL_SENTENCE_MIN_WORDS,
     OVERLAY_FILTER_KEYWORDS,
     SUBTITLE_FILTER_KEYWORDS,
     _sentence_case,
@@ -223,9 +224,13 @@ class NaturalSentenceChunkingTests(unittest.TestCase):
 
         for cue in result:
             word_count = len(cue["text"].split())
-            # Bounds-check in _group_words_natural_sentence guarantees no chunk exceeds max
+            # Bounds-check in _group_words_natural_sentence guarantees the range
             self.assertLessEqual(word_count, NATURAL_SENTENCE_MAX_WORDS)
-            self.assertGreaterEqual(word_count, 2)
+            self.assertGreaterEqual(word_count, NATURAL_SENTENCE_MIN_WORDS)
+
+        # Verify total words are preserved across all chunks
+        total_words = sum(len(c["text"].split()) for c in result)
+        self.assertEqual(total_words, 12)
 
     def test_sentence_case(self) -> None:
         cues = self._make_cues("Hello world this is a test sentence here")
@@ -258,8 +263,7 @@ class NaturalSentenceChunkingTests(unittest.TestCase):
 
         # Merged text "Hello world this is a test" (6 words) -> single chunk
         self.assertEqual(len(result), 1)
-        self.assertIn("Hello", result[0]["text"])
-        self.assertIn("test", result[0]["text"])
+        self.assertEqual(result[0]["text"], "Hello world this is a test")
 
     def test_gap_creates_new_segment(self) -> None:
         # Large gap between cues should create separate segments
@@ -272,6 +276,9 @@ class NaturalSentenceChunkingTests(unittest.TestCase):
         # Two separate segments due to gap; each produces one chunk
         self.assertEqual(len(result), 2)
         self.assertLess(result[0]["end"], result[1]["start"])
+        # Verify exact content: each segment's text is preserved
+        self.assertEqual(result[0]["text"], "First segment here")
+        self.assertEqual(result[1]["text"], "Second segment here")
 
 
 class FilterChainOrderingTests(unittest.TestCase):
