@@ -344,13 +344,15 @@ def find_silences(
     """Find silence gaps >= *threshold* seconds within [start, end].
 
     Returns an empty list when *words* is empty — absence of transcript
-    data is not the same as silence.
+    data is not the same as silence.  Words are sorted by start time
+    to handle out-of-order input.
     """
     if not words:
         return []
+    sorted_words = sorted(words, key=lambda w: float(w.get("start", 0)))
     gaps: list[tuple[float, float]] = []
     prev_end = start
-    for w in words:
+    for w in sorted_words:
         ws = max(start, float(w.get("start", start)))
         if ws - prev_end >= threshold:
             gaps.append((prev_end, ws))

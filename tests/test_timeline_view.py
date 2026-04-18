@@ -119,6 +119,17 @@ class TestFindSilences(unittest.TestCase):
         gaps = find_silences(words, 0.0, 1.0)
         self.assertEqual(gaps, [])  # 0.399 < 0.4
 
+    def test_out_of_order_words_produces_correct_gaps(self) -> None:
+        words = [
+            {"word": "second", "start": 2.0, "end": 2.5},
+            {"word": "first", "start": 0.0, "end": 0.5},
+        ]
+        gaps = find_silences(words, 0.0, 2.5, threshold=0.4)
+        # Between the two words (0.5 → 2.0) is a 1.5s gap; no trailing silence
+        self.assertEqual(len(gaps), 1)
+        self.assertAlmostEqual(gaps[0][0], 0.5)
+        self.assertAlmostEqual(gaps[0][1], 2.0)
+
 
 # ---------------------------------------------------------------------------
 # load_words
