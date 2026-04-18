@@ -168,8 +168,9 @@ def _sample_frame_stats(
 
     try:
         # Escape path for ffmpeg filter syntax: colons and backslashes
-        # are special in filter chains. Use ffmpeg's escaping convention.
-        escaped_path = metadata_path.replace("\\", "\\\\\\\\").replace(":", "\\\\:")
+        # are special in filter chains. Use ffmpeg's level-1 escaping:
+        #   \ → \\   and   : → \:
+        escaped_path = metadata_path.replace("\\", "\\\\").replace(":", "\\:")
         cmd = [
             "ffmpeg", "-y", "-hide_banner", "-nostats",
             "-ss", f"{start:.3f}",
@@ -180,16 +181,18 @@ def _sample_frame_stats(
         ]
         try:
             subprocess.run(
-                cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+                cmd, check=True,
+                stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True
             )
         except FileNotFoundError:
             raise RuntimeError(
                 "ffmpeg not found — ensure ffmpeg is installed and on PATH"
             )
         except subprocess.CalledProcessError as exc:
+            stderr_snippet = (exc.stderr or "").strip().splitlines()[-1] if exc.stderr else ""
             raise RuntimeError(
                 f"ffmpeg signalstats analysis failed (exit code {exc.returncode}). "
-                f"Input: {video}"
+                f"Input: {video}. {stderr_snippet}"
             )
 
         return _parse_metadata_file(metadata_path)
@@ -341,15 +344,16 @@ def apply_grade(input_path: Path, output_path: Path, filter_string: str) -> None
             str(output_path),
         ]
     try:
-        subprocess.run(cmd, check=True)
+        subprocess.run(cmd, check=True, stderr=subprocess.PIPE, text=True)
     except FileNotFoundError:
         raise RuntimeError(
             "ffmpeg not found — ensure ffmpeg is installed and on PATH"
         )
     except subprocess.CalledProcessError as exc:
+        stderr_snippet = (exc.stderr or "").strip().splitlines()[-1] if exc.stderr else ""
         raise RuntimeError(
             f"ffmpeg failed (exit code {exc.returncode}). "
-            f"Command: {' '.join(cmd)}"
+            f"Command: {' '.join(cmd)}. {stderr_snippet}"
         )
 
 
