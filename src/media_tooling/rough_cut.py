@@ -10,6 +10,53 @@ from typing import Any
 
 from PIL import Image, ImageDraw, ImageFont
 
+SINGLE_PASS_FILTERGRAPH_INDICATORS = (
+    "-filter_complex",
+    "-lavfi",
+    "xfade",
+    "acrossfade",
+)
+CONCAT_DEMUXER_FLAGS = ("-f", "concat")
+
+
+class AssemblyMethodError(ValueError):
+    """Raised when a single-pass filtergraph is detected instead of concat demuxer."""
+
+
+def validate_concat_demuxer_usage(command: list[str]) -> None:
+    """Validate that the ffmpeg command uses concat demuxer, not a single-pass filtergraph.
+
+    Hard Rule 2: Per-segment extract + lossless concat (never single-pass filtergraph).
+    A single-pass filtergraph processes all segments in one ffmpeg invocation,
+    which is fragile, non-debuggable, and prevents per-segment processing.
+
+    This guardrail inspects the command for indicators of single-pass filtergraph
+    usage and raises AssemblyMethodError if detected.
+
+    Only validates concat assembly commands (those containing -f concat).
+    Does not validate segment extraction commands (which use -ss/-to per segment).
+    """
+    is_concat_command = False
+    for i, arg in enumerate(command):
+        if arg in CONCAT_DEMUXER_FLAGS and i + 1 < len(command):
+            next_arg = command[i + 1]
+            if next_arg == "concat" or (i > 0 and command[i - 1] == "-f" and next_arg == "concat"):
+                is_concat_command = True
+                break
+
+    if not is_concat_command:
+        return
+
+    for indicator in SINGLE_PASS_FILTERGRAPH_INDICATORS:
+        if indicator in command:
+            raise AssemblyMethodError(
+                f"Hard Rule 2 violation: single-pass filtergraph indicator "
+                f"'{indicator}' detected in concat assembly command. "
+                "Use per-segment extraction followed by lossless concat with the "
+                "concat demuxer (-f concat -safe 0 -i <manifest>) instead of a "
+                "single-pass filtergraph. See docs/hard-rules.md Rule 2."
+            )
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
@@ -304,37 +351,37 @@ def concat_manifest(
     output_path: Path,
     ffmpeg_bin: str,
 ) -> None:
-    run_command(
-        [
-            ffmpeg_bin,
-            "-y",
-            "-fflags",
-            "+genpts",
-            "-f",
-            "concat",
-            "-safe",
-            "0",
-            "-i",
-            str(manifest_path),
-            "-c:v",
-            "libx264",
-            "-preset",
-            "veryfast",
-            "-crf",
-            "20",
-            "-pix_fmt",
-            "yuv420p",
-            "-c:a",
-            "aac",
-            "-ar",
-            "48000",
-            "-ac",
-            "2",
-            "-movflags",
-            "+faststart",
-            str(output_path),
-        ]
-    )
+    command = [
+        ffmpeg_bin,
+        "-y",
+        "-fflags",
+        "+genpts",
+        "-f",
+        "concat",
+        "-safe",
+        "0",
+        "-i",
+        str(manifest_path),
+        "-c:v",
+        "libx264",
+        "-preset",
+        "veryfast",
+        "-crf",
+        "20",
+        "-pix_fmt",
+        "yuv420p",
+        "-c:a",
+        "aac",
+        "-ar",
+        "48000",
+        "-ac",
+        "2",
+        "-movflags",
+        "+faststart",
+        str(output_path),
+    ]
+    validate_concat_demuxer_usage(command)
+    run_command(command)
 
 
 def compose_card_text(*, header: str, meta: str, body: str) -> str:
