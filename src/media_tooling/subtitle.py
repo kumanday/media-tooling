@@ -230,6 +230,7 @@ def run_transcription_job(
             return
         else:
             print(f"Cache miss for {input_path}; re-transcribing.")
+            overwrite = True  # stale outputs should be replaced
 
     ensure_parent_dirs(audio_path, txt_path, srt_path, json_path)
 

@@ -19,6 +19,7 @@ from media_tooling.subtitle import (
     resegment_for_subtitles,
     resolve_backend,
     resolve_model_name,
+    run_transcription_job,
     source_matches_cache,
     transcribe_with_elevenlabs,
 )
@@ -509,6 +510,72 @@ class CachingTests(unittest.TestCase):
                 encoding="utf-8",
             )
             self.assertTrue(source_matches_cache(json_path, src, backend="whisper", computed_hash=h))
+
+    def test_skip_existing_cache_miss_overwrites_stale_files(self) -> None:
+        """--skip-existing + cache miss should overwrite stale output files, not raise FileExistsError."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            src = Path(tmpdir) / "test.wav"
+            src.write_bytes(b"original audio data")
+            txt_path = Path(tmpdir) / "test.txt"
+            srt_path = Path(tmpdir) / "test.srt"
+            json_path = Path(tmpdir) / "test.json"
+
+            # Create initial outputs with valid source_hash
+            source_hash = compute_source_hash(src)
+            txt_path.write_text("old transcript", encoding="utf-8")
+            srt_path.write_text("old subtitles", encoding="utf-8")
+            json_path.write_text(json.dumps({
+                "backend": "whisper",
+                "source_hash": source_hash,
+            }), encoding="utf-8")
+
+            # Modify source file (different content → different hash)
+            src.write_bytes(b"modified audio data")
+
+            # Verify cache miss is detected
+            self.assertFalse(source_matches_cache(json_path, src, backend="whisper"))
+
+            # Now run transcription with skip_existing=True and overwrite=False.
+            # The fix ensures overwrite is forced True on cache miss so stale files are replaced.
+            with patch("media_tooling.subtitle.transcribe_media") as mock_transcribe, \
+                 patch("media_tooling.subtitle.probe_media_duration", return_value=10.0), \
+                 patch("media_tooling.subtitle.resolve_command_directory", return_value=Path("/usr/bin")), \
+                 patch("media_tooling.subtitle.temporarily_prepended_path"), \
+                 patch("media_tooling.subtitle.resolve_ffprobe_bin", return_value="ffprobe"), \
+                 patch("media_tooling.subtitle.is_video_file", return_value=False):
+                mock_transcribe.return_value = {
+                    "segments": [{"start": 0.0, "end": 1.0, "text": "new transcript"}],
+                    "text": "new transcript",
+                    "language": "en",
+                }
+                # This should NOT raise FileExistsError
+                run_transcription_job(
+                    input_path=src,
+                    model_name="tiny",
+                    backend="whisper",
+                    language="en",
+                    batch_size=16,
+                    quant=None,
+                    device=None,
+                    compute_type=None,
+                    audio_path=src,  # .wav input, no extraction needed
+                    txt_path=txt_path,
+                    srt_path=srt_path,
+                    json_path=json_path,
+                    ffmpeg_bin="ffmpeg",
+                    overwrite=False,
+                    skip_existing=True,
+                    initial_prompt=None,
+                    disable_timestamp_correction=True,
+                )
+
+            # Verify outputs were updated (not the old content)
+            txt_content = txt_path.read_text(encoding="utf-8")
+            self.assertIn("new transcript", txt_content)
+            json_data = json.loads(json_path.read_text(encoding="utf-8"))
+            # Backend resolves to whatever the machine supports (mlx/faster-whisper)
+            self.assertIn("backend", json_data)
+            self.assertIn("source_hash", json_data)
 
 
 class ElevenLabsErrorHandlingTests(unittest.TestCase):
