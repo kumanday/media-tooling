@@ -205,6 +205,47 @@ class BatchSubtitleBackendTests(unittest.TestCase):
             _, call_kwargs = mock_run.call_args
             self.assertEqual(call_kwargs["api_key"], "explicit-key")
 
+    def test_run_transcription_job_error_reported_as_failure(self) -> None:
+        """When run_transcription_job raises, the failure is reported and exit code is 1."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            inputs_file = self._make_manifest(root, ["a.mp4"])
+
+            with (
+                patch.object(
+                    __import__("sys"),
+                    "argv",
+                    [
+                        "media-batch-subtitle",
+                        "--inputs-file",
+                        str(inputs_file),
+                        "--audio-dir",
+                        str(root / "audio"),
+                        "--transcripts-dir",
+                        str(root / "transcripts"),
+                        "--subtitles-dir",
+                        str(root / "subs"),
+                        "--backend",
+                        "elevenlabs",
+                    ],
+                ),
+                patch.dict(
+                    __import__("os").environ,
+                    {},
+                    clear=True,
+                ),
+                patch(
+                    "media_tooling.batch_subtitle.run_transcription_job",
+                    side_effect=RuntimeError(
+                        "An API key is required for the elevenlabs backend "
+                        "(set ELEVENLABS_API_KEY env var or pass --api-key)."
+                    ),
+                ),
+            ):
+                result = main()
+
+            self.assertEqual(result, 1)
+
 
 class BatchSubtitleBackendChoiceTests(unittest.TestCase):
     """Test that all valid --backend choices are accepted."""
@@ -286,6 +327,49 @@ class BatchSubtitleBackendChoiceTests(unittest.TestCase):
             self.assertEqual(result, 0)
             _, call_kwargs = mock_run.call_args
             self.assertEqual(call_kwargs["backend"], "faster-whisper")
+
+    def test_backend_elevenlabs_without_key_reports_failure(self) -> None:
+        """--backend elevenlabs without --api-key or env var reports failure."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            inputs_file = root / "inputs.txt"
+            media_dir = root / "media"
+            media_dir.mkdir()
+            media_path = media_dir / "a.mp4"
+            media_path.touch()
+            inputs_file.write_text(str(media_path), encoding="utf-8")
+
+            with (
+                patch.object(
+                    __import__("sys"),
+                    "argv",
+                    [
+                        "media-batch-subtitle",
+                        "--inputs-file",
+                        str(inputs_file),
+                        "--audio-dir",
+                        str(root / "audio"),
+                        "--transcripts-dir",
+                        str(root / "transcripts"),
+                        "--subtitles-dir",
+                        str(root / "subs"),
+                        "--backend",
+                        "elevenlabs",
+                    ],
+                ),
+                patch.dict(
+                    __import__("os").environ,
+                    {},
+                    clear=True,
+                ),
+                patch(
+                    "media_tooling.subtitle._requests_module",
+                    __import__("unittest.mock").MagicMock(),
+                ),
+            ):
+                result = main()
+
+            self.assertNotEqual(result, 0)
 
 
 if __name__ == "__main__":
