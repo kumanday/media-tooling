@@ -25,6 +25,7 @@ PROJECT_MEMORY_PATH = "edit/project.md"
 PROJECT_MEMORY_INITIAL_CONTENT = """\
 # Project Memory
 """
+
 SKILL_NAMES = (
     "media-corpus-ingest",
     "media-subtitle-pipeline",
