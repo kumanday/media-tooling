@@ -9,6 +9,7 @@ dependencies = [
     "faster-whisper>=1.1.0; sys_platform != 'darwin' or platform_machine != 'arm64'",
     "mlx<0.29.5; sys_platform == 'darwin' and platform_machine == 'arm64'",
     "onnxruntime<1.24; sys_platform == 'darwin' and platform_machine == 'x86_64'",
+    "numpy>=1.26",
     "pillow>=11.2.1",
 ]
 
@@ -32,9 +33,12 @@ media-batch-contact-sheet = "media_tooling.batch_contact_sheet:main"
 media-batch-subtitle = "media_tooling.batch_subtitle:main"
 media-burn-subtitles = "media_tooling.burn_subtitles:main"
 media-contact-sheet = "media_tooling.contact_sheet:main"
+media-grade = "media_tooling.grade:main"
 media-rough-cut = "media_tooling.rough_cut:main"
 media-subtitle = "media_tooling.subtitle:main"
+media-timeline-view = "media_tooling.timeline_view:main"
 media-tooling-init = "media_tooling.project_init:main"
+media-pack-transcript = "media_tooling.pack_transcript:main"
 media-translate-subtitles = "media_tooling.subtitle_translate:main"
 
 [tool.ruff]
@@ -69,6 +73,10 @@ module = [
     "PIL.*",
     "requests",
 ]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["numpy"]
 ignore_missing_imports = true
 
 [tool.hatch.build.targets.wheel.force-include]
