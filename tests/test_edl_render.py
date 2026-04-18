@@ -467,7 +467,8 @@ class SrtTimestampTests(unittest.TestCase):
 
 
 class BuildMasterSrtTests(unittest.TestCase):
-    def test_builds_srt_with_output_timeline_offsets(self) -> None:
+    @patch("media_tooling.edl_render.probe_duration", return_value=9999.0)
+    def test_builds_srt_with_output_timeline_offsets(self, mock_probe: MagicMock) -> None:
         """Master SRT uses output-timeline offsets (Hard Rule 5)."""
         with tempfile.TemporaryDirectory() as tmpdir:
             edit_dir = Path(tmpdir)
@@ -506,7 +507,8 @@ class BuildMasterSrtTests(unittest.TestCase):
             # So the first cue should start at ~30ms
             self.assertIn("00:00:00,030", srt_content)
 
-    def test_multi_range_srt_offsets_use_padded_durations(self) -> None:
+    @patch("media_tooling.edl_render.probe_duration", return_value=9999.0)
+    def test_multi_range_srt_offsets_use_padded_durations(self, mock_probe: MagicMock) -> None:
         """Multiple ranges: segment offsets use padded durations (Hard Rule 5).
 
         This is the critical SRT offset drift fix — if we used unpadded
@@ -558,7 +560,8 @@ class BuildMasterSrtTests(unittest.TestCase):
             # word "second" at 10.0: out_start = (10.0-9.97) + 1.06 = 1.09
             self.assertIn("00:00:01,090", srt_content)
 
-    def test_srt_offsets_match_padded_segment_timeline(self) -> None:
+    @patch("media_tooling.edl_render.probe_duration", return_value=9999.0)
+    def test_srt_offsets_match_padded_segment_timeline(self, mock_probe: MagicMock) -> None:
         """SRT offset accumulation must use padded durations, not raw EDL ranges.
 
         Regression test for the SRT offset drift bug: with default 30ms
@@ -614,7 +617,8 @@ class BuildMasterSrtTests(unittest.TestCase):
             # Verify unpadded value would NOT appear
             self.assertNotIn("00:00:02,000 -->", srt_content)
 
-    def test_missing_transcript_skips_segment(self) -> None:
+    @patch("media_tooling.edl_render.probe_duration", return_value=9999.0)
+    def test_missing_transcript_skips_segment(self, mock_probe: MagicMock) -> None:
         """Missing transcript for a source produces a warning but no crash."""
         with tempfile.TemporaryDirectory() as tmpdir:
             edit_dir = Path(tmpdir)
@@ -719,10 +723,11 @@ class ExtractSegmentTests(unittest.TestCase):
 
 
 class ExtractAllSegmentsTests(unittest.TestCase):
+    @patch("media_tooling.edl_render.probe_duration", return_value=9999.0)
     @patch("media_tooling.edl_render.subprocess.run")
     @patch("media_tooling.edl_render.auto_grade_for_clip")
     def test_auto_grade_per_segment(
-        self, mock_auto: MagicMock, mock_run: MagicMock
+        self, mock_auto: MagicMock, mock_run: MagicMock, mock_probe: MagicMock
     ) -> None:
         mock_auto.return_value = ("eq=contrast=1.05", {})
         mock_run.return_value = MagicMock(returncode=0)
@@ -741,8 +746,9 @@ class ExtractAllSegmentsTests(unittest.TestCase):
         vf_value = cmd[vf_idx + 1]
         self.assertIn("eq=contrast=1.05", vf_value)
 
+    @patch("media_tooling.edl_render.probe_duration", return_value=9999.0)
     @patch("media_tooling.edl_render.subprocess.run")
-    def test_preset_grade_per_segment(self, mock_run: MagicMock) -> None:
+    def test_preset_grade_per_segment(self, mock_run: MagicMock, mock_probe: MagicMock) -> None:
         mock_run.return_value = MagicMock(returncode=0)
         with tempfile.TemporaryDirectory() as tmpdir:
             edit_dir = Path(tmpdir)
@@ -760,9 +766,10 @@ class ExtractAllSegmentsTests(unittest.TestCase):
         vf_value = cmd[vf_idx + 1]
         self.assertIn("contrast=1.03", vf_value)
 
+    @patch("media_tooling.edl_render.probe_duration", return_value=9999.0)
     @patch("media_tooling.edl_render.subprocess.run")
     def test_corrupt_transcript_falls_back_to_raw_cut_points(
-        self, mock_run: MagicMock
+        self, mock_run: MagicMock, mock_probe: MagicMock
     ) -> None:
         """Corrupt transcript JSON in extract_all_segments warns and uses raw cuts."""
         mock_run.return_value = MagicMock(returncode=0)
@@ -1068,6 +1075,66 @@ class RenderEDLTests(unittest.TestCase):
             # burn_subtitles_last should have been called (dict had path)
             self.assertTrue(mock_burn.called)
             self.assertEqual(result, 0)
+
+    @patch("media_tooling.edl_render.probe_duration", return_value=5.0)
+    @patch("media_tooling.edl_render.subprocess.run")
+    def test_source_duration_clamps_padding(
+        self, mock_run: MagicMock, mock_probe: MagicMock
+    ) -> None:
+        """apply_padding receives source_duration from ffprobe, clamps right edge."""
+        mock_run.return_value = MagicMock(returncode=0)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            edit_dir = Path(tmpdir)
+            edl = {
+                "version": 1,
+                "sources": ["source1.mp4"],
+                "ranges": [
+                    # End is at 4.9, pad would push to 4.93, but source_duration=5.0
+                    {"source": "source1.mp4", "start": 0.0, "end": 4.9},
+                ],
+            }
+            seg_paths = extract_all_segments(edl, edit_dir)
+        # Source duration was probed once
+        self.assertEqual(mock_probe.call_count, 1)
+        self.assertEqual(len(seg_paths), 1)
+
+    @patch("media_tooling.edl_render.probe_duration", side_effect=RuntimeError("ffprobe failed"))
+    @patch("media_tooling.edl_render.subprocess.run")
+    def test_probe_failure_falls_back_to_unclamped(
+        self, mock_run: MagicMock, mock_probe: MagicMock
+    ) -> None:
+        """If ffprobe fails, source_duration is inf and padding is unclamped."""
+        mock_run.return_value = MagicMock(returncode=0)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            edit_dir = Path(tmpdir)
+            edl = {
+                "version": 1,
+                "sources": ["source1.mp4"],
+                "ranges": [
+                    {"source": "source1.mp4", "start": 0.0, "end": 5.0},
+                ],
+            }
+            with patch("builtins.print"):
+                seg_paths = extract_all_segments(edl, edit_dir)
+        self.assertEqual(len(seg_paths), 1)
+
+    def test_render_edl_returns_1_when_output_missing(self) -> None:
+        """render_edl returns 1 (failure) when the output file doesn't exist."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            edit_dir = Path(tmpdir)
+            edl_path = edit_dir / "test_edl.json"
+            edl_path.write_text(json.dumps(_minimal_edl()), encoding="utf-8")
+            output_path = edit_dir / "nonexistent_output.mp4"
+            with patch("media_tooling.edl_render.extract_all_segments") as mock_extract, \
+                 patch("media_tooling.edl_render.concat_segments"):
+                mock_extract.return_value = [edit_dir / "seg_00.mp4"]
+                # concat doesn't create the base file, so output never gets created
+                from media_tooling.edl_render import render_edl
+                result = render_edl(
+                    edl_path, output_path,
+                    no_subtitles=True, no_loudnorm=True,
+                )
+        self.assertEqual(result, 1)
 
 
 if __name__ == "__main__":
