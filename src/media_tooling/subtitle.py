@@ -598,24 +598,26 @@ def call_scribe_api(
     max_retries = 3
     base_backoff = 2.0
     last_exc: Exception | None = None
+    # Read file content into memory so the handle is not held open during
+    # retry sleeps (avoids holding a kernel fd idle for up to 60 s on 429s).
+    file_content = audio_path.read_bytes()
     for attempt in range(max_retries):
-        with open(audio_path, "rb") as f:
-            try:
-                resp = _requests_module.post(
-                    ELEVENLABS_SCRIBE_URL,
-                    headers={"xi-api-key": api_key},
-                    files={"file": (audio_path.name, f, "audio/wav")},
-                    data=data,
-                    timeout=300,
-                )
-            except Exception as exc:
-                last_exc = exc
-                if attempt < max_retries - 1:
-                    time.sleep(base_backoff * (2 ** attempt))
-                    continue
-                raise RuntimeError(
-                    f"ElevenLabs Scribe API request failed after {max_retries} attempts: {exc}"
-                ) from exc
+        try:
+            resp = _requests_module.post(
+                ELEVENLABS_SCRIBE_URL,
+                headers={"xi-api-key": api_key},
+                files={"file": (audio_path.name, file_content, "audio/wav")},
+                data=data,
+                timeout=300,
+            )
+        except Exception as exc:
+            last_exc = exc
+            if attempt < max_retries - 1:
+                time.sleep(base_backoff * (2 ** attempt))
+                continue
+            raise RuntimeError(
+                f"ElevenLabs Scribe API request failed after {max_retries} attempts: {exc}"
+            ) from exc
 
         if resp.status_code == 200:
             scribe_response = resp.json()

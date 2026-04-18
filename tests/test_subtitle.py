@@ -359,6 +359,28 @@ class ScribeResponseParsingTests(unittest.TestCase):
         parse_scribe_response(scribe_response)
         self.assertEqual(scribe_response, original_copy)
 
+    def test_parse_scribe_response_all_none_speaker_ids(self) -> None:
+        """When all words have speaker_id=None (diarization failed/disabled),
+        parse_scribe_response should produce a single segment with speaker_id=None
+        and normalize_backend_segment should silently drop it."""
+        scribe_response = {
+            "text": "Hello world",
+            "words": [
+                {"text": "Hello", "start": 0.0, "end": 1.0, "speaker_id": None},
+                {"text": "world", "start": 1.0, "end": 2.0, "speaker_id": None},
+            ],
+            "audio_events": [],
+        }
+        result = parse_scribe_response(scribe_response)
+        # All Nones → single segment with speaker_id=None
+        self.assertEqual(len(result["segments"]), 1)
+        self.assertIsNone(result["segments"][0]["speaker_id"])
+        self.assertEqual(result["segments"][0]["text"], "Hello world")
+        # normalize_backend_segment silently drops None speaker_id
+        from media_tooling.subtitle import normalize_backend_segment
+        normalized = normalize_backend_segment(result["segments"][0])
+        self.assertNotIn("speaker_id", normalized)
+
     def test_speaker_id_propagated_through_resegmentation(self) -> None:
         segment = {
             "start": 0.0,
