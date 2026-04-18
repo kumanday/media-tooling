@@ -639,6 +639,32 @@ class BuildMasterSrtTests(unittest.TestCase):
             # No cue entries since there's no transcript
             self.assertNotIn("-->", content)
 
+    @patch("media_tooling.edl_render.probe_duration", return_value=9999.0)
+    def test_unreadable_transcript_skips_segment(self, mock_probe: MagicMock) -> None:
+        """Unreadable transcript (OSError) in build_master_srt warns and skips."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            edit_dir = Path(tmpdir)
+            transcripts_dir = edit_dir / "transcripts"
+            transcripts_dir.mkdir()
+            tr_path = transcripts_dir / "source1.mp4.json"
+            tr_path.write_text('{"words": []}', encoding="utf-8")
+            edl = {
+                "version": 1,
+                "sources": ["source1.mp4"],
+                "ranges": [
+                    {"source": "source1.mp4", "start": 0.0, "end": 5.0},
+                ],
+            }
+            out_path = edit_dir / "master.srt"
+            with patch.object(Path, "read_text", side_effect=OSError("permission denied")), \
+                 patch("builtins.print") as mock_print:
+                build_master_srt(edl, edit_dir, out_path)
+            warning_calls = [
+                c for c in mock_print.call_args_list
+                if "unreadable transcript" in str(c)
+            ]
+            self.assertGreater(len(warning_calls), 0)
+
 
 # ── Segment extraction tests ────────────────────────────────────────────────
 
