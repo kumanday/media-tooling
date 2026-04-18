@@ -177,6 +177,18 @@ class ProjectInitTests(unittest.TestCase):
     def test_project_memory_initial_content_has_required_sections(self) -> None:
         self.assertIn("# Project Memory", PROJECT_MEMORY_INITIAL_CONTENT)
 
+    def test_project_agents_template_contains_hard_rules_section(self) -> None:
+        template = load_project_agents_template()
+
+        self.assertIn("Hard Rules", template)
+        self.assertIn("Subtitles applied last in filter chain", template)
+
+    def test_project_agents_template_contains_anti_patterns_section(self) -> None:
+        template = load_project_agents_template()
+
+        self.assertIn("Anti-patterns", template)
+        self.assertIn("Hierarchical pre-computed codec formats", template)
+
 
 if __name__ == "__main__":
     unittest.main()
