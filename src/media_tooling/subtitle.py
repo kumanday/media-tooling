@@ -224,10 +224,6 @@ def run_transcription_job(
     if skip_existing and txt_path.exists() and srt_path.exists() and json_path.exists():
         if source_matches_cache(json_path, input_path, backend=resolved_backend, computed_hash=source_hash_value):
             print(f"Skipping existing outputs for {input_path}")
-            # Backfill source_hash into legacy JSON that lacks it, so future
-            # runs can detect source changes instead of always falling through.
-            if source_hash_value is not None:
-                _backfill_source_hash(json_path, source_hash_value)
             return
         else:
             print(f"Cache miss for {input_path}; re-transcribing.")
