@@ -321,6 +321,26 @@ class ScribeResponseParsingTests(unittest.TestCase):
         self.assertEqual(result["segments"][0]["speaker_id"], "speaker_0")
         self.assertEqual(result["segments"][0]["text"], "Uh Hello there")
 
+    def test_parse_scribe_response_mid_stream_none_inherits_previous(self) -> None:
+        """Mid-stream None speaker_ids inherit from previous segment, not first speaker."""
+        scribe_response = {
+            "text": "Hello yeah right",
+            "words": [
+                {"text": "Hello", "start": 0.0, "end": 1.0, "speaker_id": "speaker_0"},
+                {"text": "yeah", "start": 1.0, "end": 2.0, "speaker_id": "speaker_1"},
+                {"text": "right", "start": 2.0, "end": 3.0, "speaker_id": None},
+            ],
+            "audio_events": [],
+        }
+        result = parse_scribe_response(scribe_response)
+        # "right" (None speaker_id after speaker_1) should inherit speaker_1,
+        # NOT be incorrectly pre-filled with speaker_0 (the first non-None).
+        self.assertEqual(len(result["segments"]), 2)
+        self.assertEqual(result["segments"][0]["speaker_id"], "speaker_0")
+        self.assertEqual(result["segments"][0]["text"], "Hello")
+        self.assertEqual(result["segments"][1]["speaker_id"], "speaker_1")
+        self.assertEqual(result["segments"][1]["text"], "yeah right")
+
     def test_speaker_id_propagated_through_resegmentation(self) -> None:
         segment = {
             "start": 0.0,

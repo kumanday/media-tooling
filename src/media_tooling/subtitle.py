@@ -612,19 +612,23 @@ def call_scribe_api(
 def parse_scribe_response(scribe_response: dict[str, Any]) -> dict[str, Any]:
     raw_words = scribe_response.get("words", [])
 
-    # Pre-fill initial None speaker_ids from the first non-None speaker.
+    # Pre-fill LEADING None speaker_ids from the first non-None speaker.
     # When diarization is uncertain, the API may return None for early words;
     # without this pass the first segment gets speaker_id=None and
     # normalization drops the key, producing a tiny no-speaker fragment
     # when a real speaker_id appears on the next word.
+    # Only leading Nones (before the first non-None) are filled; mid-stream
+    # Nones are handled by the "inherit from previous segment" logic below.
+    first_non_none_idx: int | None = None
     first_non_none_speaker: str | None = None
-    for raw_word in raw_words:
+    for idx, raw_word in enumerate(raw_words):
         sid = raw_word.get("speaker_id")
         if sid is not None:
+            first_non_none_idx = idx
             first_non_none_speaker = sid
             break
-    if first_non_none_speaker is not None:
-        for raw_word in raw_words:
+    if first_non_none_speaker is not None and first_non_none_idx is not None and first_non_none_idx > 0:
+        for raw_word in raw_words[:first_non_none_idx]:
             if raw_word.get("speaker_id") is None:
                 raw_word["speaker_id"] = first_non_none_speaker
 
