@@ -18,6 +18,7 @@ from media_tooling.subtitle import (
     parse_scribe_response,
     resegment_for_subtitles,
     resolve_backend,
+    resolve_model_name,
     source_matches_cache,
     transcribe_with_elevenlabs,
 )
@@ -536,20 +537,16 @@ class ModelNameOverrideTests(unittest.TestCase):
     """Verify that ElevenLabs runs report 'scribe_v1' as the model name."""
 
     def test_elevenlabs_model_name_overrides_input(self) -> None:
-        """For ElevenLabs, display_model and effective_model should be 'scribe_v1'."""
-        backend = "elevenlabs"
-        model_name = "small"
-        display_model = "scribe_v1" if backend == "elevenlabs" else model_name
-        effective_model = "scribe_v1" if backend == "elevenlabs" else model_name
-        self.assertEqual(display_model, "scribe_v1")
-        self.assertEqual(effective_model, "scribe_v1")
+        """For ElevenLabs, resolve_model_name should return 'scribe_v1'."""
+        self.assertEqual(resolve_model_name("elevenlabs", "small"), "scribe_v1")
 
     def test_whisper_model_name_unchanged(self) -> None:
         """For Whisper backends, model name should pass through unchanged."""
-        backend = "whisper"
-        model_name = "small"
-        display_model = "scribe_v1" if backend == "elevenlabs" else model_name
-        self.assertEqual(display_model, "small")
+        self.assertEqual(resolve_model_name("whisper", "small"), "small")
+
+    def test_mlx_model_name_unchanged(self) -> None:
+        """For MLX backend, model name should pass through unchanged."""
+        self.assertEqual(resolve_model_name("mlx", "large"), "large")
 
     def test_source_matches_cache_accepts_computed_hash(self) -> None:
         """source_matches_cache should use the pre-computed hash when provided."""

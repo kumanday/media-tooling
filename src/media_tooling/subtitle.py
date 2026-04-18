@@ -272,7 +272,7 @@ def run_transcription_job(
         else:
             audio_path = input_path
 
-    effective_model = "scribe_v1" if resolved_backend == "elevenlabs" else model_name
+    effective_model = resolve_model_name(resolved_backend, model_name)
     print(
         f"Transcribing {audio_path} with model '{effective_model}' using backend '{resolved_backend}'",
         flush=True,
@@ -412,6 +412,15 @@ def resolve_backend(requested_backend: str) -> str:
         return requested_backend
 
     raise RuntimeError(f"Unsupported backend: {requested_backend}")
+
+
+def resolve_model_name(backend: str, model_name: str) -> str:
+    """Return the effective model name for a given backend.
+
+    ElevenLabs uses 'scribe_v1' regardless of the --model argument;
+    Whisper backends pass through the user-supplied model name.
+    """
+    return "scribe_v1" if backend == "elevenlabs" else model_name
 
 
 def mlx_backend_available() -> bool:
