@@ -13,6 +13,9 @@ dependencies = [
     "pillow>=11.2.1",
 ]
 
+[project.optional-dependencies]
+elevenlabs = ["requests>=2.31"]
+
 [dependency-groups]
 dev = [
     "mypy>=1.11",
@@ -26,6 +29,7 @@ required-environments = [
 ]
 
 [project.scripts]
+media-batch-burn-subtitles = "media_tooling.batch_burn_subtitles:main"
 media-batch-contact-sheet = "media_tooling.batch_contact_sheet:main"
 media-batch-subtitle = "media_tooling.batch_subtitle:main"
 media-burn-subtitles = "media_tooling.burn_subtitles:main"
@@ -43,7 +47,7 @@ media-edl-render = "media_tooling.edl_render:main"
 [tool.ruff]
 target-version = "py312"
 src = ["src", "tests"]
-exclude = [".agents"]
+extend-exclude = [".agents"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I"]
@@ -70,6 +74,7 @@ module = [
     "lightning_whisper_mlx.*",
     "PIL",
     "PIL.*",
+    "requests",
 ]
 ignore_missing_imports = true
 

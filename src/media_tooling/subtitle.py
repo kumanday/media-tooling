@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import hashlib
 import json
 import os
 import platform
@@ -9,7 +10,10 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 from collections.abc import Iterator
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 from pathlib import Path
 from typing import Any
 
@@ -25,6 +29,11 @@ try:
 except ImportError:  # pragma: no cover - depends on platform install
     BatchedInferencePipeline = None
     WhisperModel = None
+
+try:
+    import requests as _requests_module
+except ImportError:  # pragma: no cover - optional dependency
+    _requests_module = None
 
 VIDEO_SUFFIXES = {
     ".avi",
@@ -49,7 +58,8 @@ AUDIO_SUFFIXES = {
 }
 
 DEFAULT_MODEL = "small"
-DEFAULT_BACKEND = "auto"
+DEFAULT_BACKEND = "whisper"
+ELEVENLABS_SCRIBE_URL = "https://api.elevenlabs.io/v1/speech-to-text"
 TIMESTAMP_RATIO_TOLERANCE = 0.02
 TIMESTAMP_EXPECTED_MLX_RATIO = 10
 SUBTITLE_TARGET_DURATION_SECONDS = 4.0
@@ -67,11 +77,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--model",
         default=DEFAULT_MODEL,
-        help=f"Whisper model to use. Default: {DEFAULT_MODEL}.",
+        help=f"Model to use (ignored for elevenlabs backend). Default: {DEFAULT_MODEL}.",
     )
     parser.add_argument(
         "--backend",
-        choices=["auto", "mlx", "faster-whisper"],
+        choices=["whisper", "auto", "mlx", "faster-whisper", "elevenlabs"],
         default=DEFAULT_BACKEND,
         help=f"Transcription backend. Default: {DEFAULT_BACKEND}.",
     )
@@ -209,80 +219,148 @@ def run_transcription_job(
     initial_prompt: str | None,
     disable_timestamp_correction: bool,
 ) -> None:
-    if skip_existing and txt_path.exists() and srt_path.exists() and json_path.exists():
-        print(f"Skipping existing outputs for {input_path}")
-        return
+    resolved_backend = resolve_backend(backend)
+    source_hash_value: str | None = None
+
+    if skip_existing:
+        if txt_path.exists() and srt_path.exists() and json_path.exists():
+            source_hash_value = compute_source_hash(input_path)
+            if source_matches_cache(json_path, input_path, backend=resolved_backend, computed_hash=source_hash_value):
+                print(f"Skipping existing outputs for {input_path}")
+                return
+            else:
+                print(f"Cache miss for {input_path}; re-transcribing.")
+                overwrite = True  # stale outputs should be replaced
+        else:
+            # No outputs exist yet; source_hash will be computed after transcription
+            source_hash_value = None
 
     ensure_parent_dirs(audio_path, txt_path, srt_path, json_path)
 
+    wav_cleanup_path: Path | None = None
+    persistent_audio_path = audio_path  # path that survives WAV cleanup
     if is_video_file(input_path):
-        extract_audio(
-            input_path=input_path,
-            audio_path=audio_path,
-            ffmpeg_bin=ffmpeg_bin,
-            overwrite=overwrite,
-        )
+        if resolved_backend == "elevenlabs":
+            # Extract persistent audio (same as whisper) for user reference
+            extract_audio(
+                input_path=input_path,
+                audio_path=audio_path,
+                ffmpeg_bin=ffmpeg_bin,
+                overwrite=overwrite,
+            )
+            # Also extract temp mono 16kHz PCM WAV for Scribe API upload.
+            # Use .pcm.wav suffix to avoid overwriting any existing .wav.
+            wav_audio_path = audio_path.with_suffix(".pcm.wav")
+            extract_audio_pcm_wav(
+                input_path=input_path,
+                wav_path=wav_audio_path,
+                ffmpeg_bin=ffmpeg_bin,
+            )
+            audio_path = wav_audio_path
+            wav_cleanup_path = wav_audio_path
+        else:
+            extract_audio(
+                input_path=input_path,
+                audio_path=audio_path,
+                ffmpeg_bin=ffmpeg_bin,
+                overwrite=overwrite,
+            )
     else:
-        audio_path = input_path
+        if resolved_backend == "elevenlabs":
+            # Always convert to mono 16kHz PCM WAV for Scribe API,
+            # even if input is already .wav (user .wav files are rarely mono 16kHz).
+            # Use .pcm.wav suffix to avoid overwriting the original file.
+            wav_audio_path = audio_path.with_suffix(".pcm.wav")
+            extract_audio_pcm_wav(
+                input_path=input_path,
+                wav_path=wav_audio_path,
+                ffmpeg_bin=ffmpeg_bin,
+            )
+            audio_path = wav_audio_path
+            wav_cleanup_path = wav_audio_path
+        else:
+            audio_path = input_path
 
-    resolved_backend = resolve_backend(backend)
+    effective_model = resolve_model_name(resolved_backend, model_name)
+    # Show the user-friendly source path, not the temp PCM WAV used internally
+    # for ElevenLabs uploads.
+    display_path = input_path if resolved_backend == "elevenlabs" else audio_path
     print(
-        f"Transcribing {audio_path} with model '{model_name}' using backend '{resolved_backend}'",
+        f"Transcribing {display_path} with model '{effective_model}' using backend '{resolved_backend}'",
         flush=True,
     )
-    ffmpeg_parent = resolve_command_directory(ffmpeg_bin)
-    with temporarily_prepended_path(ffmpeg_parent):
-        result = transcribe_media(
-            backend=resolved_backend,
-            audio_path=audio_path,
-            model_name=model_name,
-            language=language,
-            batch_size=batch_size,
-            quant=quant,
-            device=device,
-            compute_type=compute_type,
-            initial_prompt=initial_prompt,
+    try:
+        ffmpeg_parent = resolve_command_directory(ffmpeg_bin)
+        with temporarily_prepended_path(ffmpeg_parent):
+            result = transcribe_media(
+                backend=resolved_backend,
+                audio_path=audio_path,
+                model_name=model_name,
+                language=language,
+                batch_size=batch_size,
+                quant=quant,
+                device=device,
+                compute_type=compute_type,
+                initial_prompt=initial_prompt,
+            )
+        segments = normalize_segments(result.get("segments", []))
+        # Probe the original input for duration — the PCM WAV (for ElevenLabs)
+        # has the same duration, but probing the source is more robust and
+        # avoids issues if the WAV extraction was incomplete.
+        audio_duration = probe_media_duration(
+            input_path=input_path,
+            ffprobe_bin=resolve_ffprobe_bin(ffmpeg_bin),
         )
-    segments = normalize_segments(result.get("segments", []))
-    audio_duration = probe_media_duration(
-        input_path=audio_path,
-        ffprobe_bin=resolve_ffprobe_bin(ffmpeg_bin),
-    )
-    segments, timestamp_correction = maybe_correct_suspicious_timestamps(
-        segments=segments,
-        media_duration=audio_duration,
-        backend=resolved_backend,
-        enabled=not disable_timestamp_correction,
-    )
-    source_segment_count = len(segments)
-    segments, subtitle_segmentation = resegment_for_subtitles(segments)
+        segments, timestamp_correction = maybe_correct_suspicious_timestamps(
+            segments=segments,
+            media_duration=audio_duration,
+            backend=resolved_backend,
+            enabled=not disable_timestamp_correction,
+        )
+        source_segment_count = len(segments)
+        segments, subtitle_segmentation = resegment_for_subtitles(segments)
 
-    txt_text = build_txt(segments)
-    srt_text = build_srt(segments)
-    payload = {
-        "input_path": str(input_path),
-        "audio_path": str(audio_path),
-        "backend": resolved_backend,
-        "model": model_name,
-        "language": result.get("language"),
-        "audio_duration": audio_duration,
-        "timestamp_correction": timestamp_correction,
-        "text": result.get("text", "").strip(),
-        "source_segment_count": source_segment_count,
-        "segment_count": len(segments),
-        "subtitle_segmentation": subtitle_segmentation,
-        "segments": segments,
-    }
+        txt_text = build_txt(segments)
+        srt_text = build_srt(segments)
+        payload: dict[str, Any] = {
+            "input_path": str(input_path),
+            "audio_path": str(persistent_audio_path),
+            "backend": resolved_backend,
+            "model": effective_model,
+            "language": result.get("language"),
+            "audio_duration": audio_duration,
+            "timestamp_correction": timestamp_correction,
+            "text": result.get("text", "").strip(),
+            "source_segment_count": source_segment_count,
+            "segment_count": len(segments),
+            "subtitle_segmentation": subtitle_segmentation,
+            "segments": segments,
+        }
+        if source_hash_value is not None:
+            payload["source_hash"] = source_hash_value
+        elif skip_existing:
+            # First run with --skip-existing: compute hash now so future
+            # runs can detect source changes without re-transcribing.
+            payload["source_hash"] = compute_source_hash(input_path)
 
-    write_text(txt_path, txt_text, overwrite)
-    write_text(srt_path, srt_text, overwrite)
-    write_text(json_path, json.dumps(payload, indent=2), overwrite)
+        # Always include audio_events for consistent JSON schema across backends.
+        # ElevenLabs provides actual audio event tags; Whisper produces an empty list.
+        payload["audio_events"] = result.get("audio_events", [])
+
+        write_text(txt_path, txt_text, overwrite)
+        write_text(srt_path, srt_text, overwrite)
+        write_text(json_path, json.dumps(payload, indent=2), overwrite)
+    finally:
+        # Clean up temporary PCM WAV file created for ElevenLabs upload
+        if wav_cleanup_path is not None and wav_cleanup_path.exists():
+            wav_cleanup_path.unlink()
+            print(f"Cleaned up temporary WAV: {wav_cleanup_path}")
 
     print(f"Transcript: {txt_path}")
     print(f"Subtitles:  {srt_path}")
     print(f"Metadata:   {json_path}")
     if is_video_file(input_path):
-        print(f"Audio:      {audio_path}")
+        print(f"Audio:      {persistent_audio_path}")
 
 
 def resolve_output_paths(
@@ -321,7 +399,7 @@ def resolve_output_paths(
 
 
 def resolve_backend(requested_backend: str) -> str:
-    if requested_backend == "auto":
+    if requested_backend in ("auto", "whisper"):
         if mlx_backend_available():
             return "mlx"
         if faster_whisper_available():
@@ -344,7 +422,25 @@ def resolve_backend(requested_backend: str) -> str:
             )
         return requested_backend
 
+    if requested_backend == "elevenlabs":
+        if not elevenlabs_backend_available():
+            raise RuntimeError(
+                "The elevenlabs backend requires the 'requests' package "
+                "(install with: pip install media-tooling[elevenlabs]) "
+                "and the ELEVENLABS_API_KEY environment variable."
+            )
+        return requested_backend
+
     raise RuntimeError(f"Unsupported backend: {requested_backend}")
+
+
+def resolve_model_name(backend: str, model_name: str) -> str:
+    """Return the effective model name for a given backend.
+
+    ElevenLabs uses 'scribe_v1' regardless of the --model argument;
+    Whisper backends pass through the user-supplied model name.
+    """
+    return "scribe_v1" if backend == "elevenlabs" else model_name
 
 
 def mlx_backend_available() -> bool:
@@ -358,6 +454,10 @@ def mlx_backend_available() -> bool:
 
 def faster_whisper_available() -> bool:
     return WhisperModel is not None and BatchedInferencePipeline is not None
+
+
+def elevenlabs_backend_available() -> bool:
+    return _requests_module is not None and bool(os.environ.get("ELEVENLABS_API_KEY", "").strip())
 
 
 def transcribe_media(
@@ -390,6 +490,12 @@ def transcribe_media(
             device=device,
             compute_type=compute_type,
             initial_prompt=initial_prompt,
+        )
+    if backend == "elevenlabs":
+        # model_name is intentionally not forwarded — ElevenLabs always uses scribe_v1
+        return transcribe_with_elevenlabs(
+            audio_path=audio_path,
+            language=language,
         )
     raise RuntimeError(f"Unsupported backend: {backend}")
 
@@ -458,6 +564,247 @@ def transcribe_with_faster_whisper(
         "text": full_text,
         "segments": segments,
     }
+
+
+def transcribe_with_elevenlabs(
+    *,
+    audio_path: Path,
+    language: str | None,
+) -> dict[str, Any]:
+    if _requests_module is None:
+        raise RuntimeError(
+            "The elevenlabs backend requires the 'requests' package. "
+            "Install with: pip install media-tooling[elevenlabs]"
+        )
+    api_key = os.environ.get("ELEVENLABS_API_KEY", "").strip()
+    if not api_key:
+        raise RuntimeError(
+            "ELEVENLABS_API_KEY environment variable is required for the elevenlabs backend."
+        )
+    return call_scribe_api(audio_path=audio_path, api_key=api_key, language=language)
+
+
+def call_scribe_api(
+    *,
+    audio_path: Path,
+    api_key: str,
+    language: str | None = None,
+) -> dict[str, Any]:
+    if _requests_module is None:  # pragma: no cover — defense in depth
+        raise RuntimeError("requests library is required for ElevenLabs transcription")
+    data: dict[str, str] = {
+        "model_id": "scribe_v1",
+        "diarize": "true",
+        "tag_audio_events": "true",
+        "timestamps_granularity": "word",
+    }
+    if language:
+        data["language_code"] = language
+
+    max_retries = 3
+    base_backoff = 2.0
+    last_exc: Exception | None = None
+    # Read file content into memory so the handle is not held open during
+    # retry sleeps (avoids holding a kernel fd idle for up to 60 s on 429s).
+    file_content = audio_path.read_bytes()
+    for attempt in range(max_retries):
+        try:
+            resp = _requests_module.post(
+                ELEVENLABS_SCRIBE_URL,
+                headers={"xi-api-key": api_key},
+                files={"file": (audio_path.name, file_content, "audio/wav")},
+                data=data,
+                timeout=300,
+            )
+        except Exception as exc:
+            last_exc = exc
+            if attempt < max_retries - 1:
+                time.sleep(base_backoff * (2 ** attempt))
+                continue
+            raise RuntimeError(
+                f"ElevenLabs Scribe API request failed after {max_retries} attempts: {exc}"
+            ) from exc
+
+        if resp.status_code == 200:
+            scribe_response = resp.json()
+            return parse_scribe_response(scribe_response)
+
+        # Retry on transient server errors (429 rate-limit, 5xx)
+        if resp.status_code in (429, 500, 502, 503, 504) and attempt < max_retries - 1:
+            retry_after = resp.headers.get("Retry-After")
+            wait = base_backoff * (2 ** attempt)
+            if retry_after:
+                try:
+                    wait = min(float(retry_after), 60.0)  # cap at 60s
+                except ValueError:
+                    # Retry-After may be an HTTP-date (e.g. "Fri, 18 Apr 2026 11:00:00 GMT")
+                    try:
+                        target = parsedate_to_datetime(retry_after)
+                        delta = (target - datetime.now(timezone.utc)).total_seconds()
+                        if delta > 0:
+                            wait = min(delta, 60.0)  # cap at 60s
+                    except (ValueError, TypeError):
+                        pass  # fall back to exponential backoff
+            time.sleep(wait)
+            continue
+
+        raise RuntimeError(f"ElevenLabs Scribe returned {resp.status_code}: {resp.text[:500]}")
+
+    # Should not reach here, but just in case
+    raise RuntimeError(f"ElevenLabs Scribe API request failed after {max_retries} attempts: {last_exc}")
+
+
+def parse_scribe_response(scribe_response: dict[str, Any]) -> dict[str, Any]:
+    # Work on a shallow copy of the words list to avoid mutating the caller's dict.
+    raw_words = [dict(w) for w in scribe_response.get("words", [])]
+
+    # Pre-fill LEADING None speaker_ids from the first non-None speaker.
+    # When diarization is uncertain, the API may return None for early words;
+    # without this pass the first segment gets speaker_id=None and
+    # normalization drops the key, producing a tiny no-speaker fragment
+    # when a real speaker_id appears on the next word.
+    # Only leading Nones (before the first non-None) are filled; mid-stream
+    # Nones are handled by the "inherit from previous segment" logic below.
+    first_non_none_idx: int | None = None
+    first_non_none_speaker: str | None = None
+    for idx, raw_word in enumerate(raw_words):
+        sid = raw_word.get("speaker_id")
+        if sid is not None:
+            first_non_none_idx = idx
+            first_non_none_speaker = sid
+            break
+    if first_non_none_speaker is not None and first_non_none_idx is not None and first_non_none_idx > 0:
+        for raw_word in raw_words[:first_non_none_idx]:
+            if raw_word.get("speaker_id") is None:
+                raw_word["speaker_id"] = first_non_none_speaker
+
+    segments: list[dict[str, Any]] = []
+    current_segment: dict[str, Any] | None = None
+    current_words: list[dict[str, Any]] = []
+
+    for raw_word in raw_words:
+        word_text = raw_word.get("text", raw_word.get("word", ""))
+        speaker_id = raw_word.get("speaker_id")
+        # When diarization is uncertain, the API may return None for speaker_id.
+        # Treat it as "same speaker as previous segment" to prevent fragmentation
+        # into many tiny alternating segments on None↔speaker_N transitions.
+        if speaker_id is None and current_segment is not None:
+            speaker_id = current_segment.get("speaker_id")
+        start = float(raw_word.get("start", 0))
+        end = float(raw_word.get("end", 0))
+
+        if current_segment is None or current_segment.get("speaker_id") != speaker_id:
+            if current_segment is not None:
+                current_segment["words"] = current_words
+                current_segment["text"] = "".join(w["word"] for w in current_words).strip()
+                segments.append(current_segment)
+            current_segment = {
+                "start": start,
+                "end": end,
+                "text": "",
+                "words": [],
+                "speaker_id": speaker_id,
+            }
+            current_words = []
+
+        current_words.append({
+            "word": word_text if not current_words else f" {word_text}",
+            "start": start,
+            "end": end,
+        })
+        current_segment["end"] = end
+
+    if current_segment is not None and current_words:
+        current_segment["words"] = current_words
+        current_segment["text"] = "".join(w["word"] for w in current_words).strip()
+        segments.append(current_segment)
+
+    full_text = " ".join(segment["text"] for segment in segments).strip()
+    audio_events = scribe_response.get("audio_events", [])
+    language_code = scribe_response.get("language_code", scribe_response.get("language"))
+
+    return {
+        "language": language_code,
+        "text": full_text,
+        "segments": segments,
+        "audio_events": audio_events,
+    }
+
+
+def extract_audio_pcm_wav(
+    input_path: Path,
+    wav_path: Path,
+    ffmpeg_bin: str,
+) -> None:
+    """Extract audio as mono 16kHz PCM WAV for ElevenLabs Scribe upload.
+
+    Always overwrites existing PCM WAV files to avoid stale-derived
+    audio after source changes (Hard Rule 9: cache integrity).
+    """
+    cmd = [
+        ffmpeg_bin,
+        "-y",
+        "-i", str(input_path),
+        "-vn",
+        "-ac", "1",
+        "-ar", "16000",
+        "-c:a", "pcm_s16le",
+        str(wav_path),
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"ffmpeg PCM WAV extraction failed.\n{result.stderr}"
+        )
+    print(f"Extracted PCM WAV: {wav_path}")
+
+
+def compute_source_hash(source_path: Path) -> str:
+    """Hash file content for cache invalidation.
+
+    Uses SHA-256 of file content rather than mtime/size to avoid
+    false invalidations from metadata-only changes (touch, rsync -a)
+    which would waste paid API credits on re-transcription.
+    """
+    h = hashlib.sha256()
+    with open(source_path, "rb") as f:
+        while True:
+            chunk = f.read(65536)
+            if not chunk:
+                break
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def source_matches_cache(
+    json_path: Path,
+    input_path: Path,
+    backend: str | None = None,
+    computed_hash: str | None = None,
+) -> bool:
+    if not json_path.exists():
+        return False
+    try:
+        cached = json.loads(json_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return False
+    # Check backend field regardless of source_hash presence
+    if backend is not None and cached.get("backend") != backend:
+        return False
+    cached_hash = cached.get("source_hash")
+    if not cached_hash:
+        # Outputs produced without --skip-existing lack source_hash;
+        # honor skip-existing by falling back to backend match when
+        # hash is absent.  This means a source change after a run
+        # without --skip-existing will not be detected until the
+        # user runs without --skip-existing or with --overwrite.
+        # Users who need full cache integrity should always use
+        # --skip-existing.
+        return True
+    current_hash = computed_hash or compute_source_hash(input_path)
+    if cached_hash != current_hash:
+        return False
+    return True
 
 
 def ensure_parent_dirs(*paths: Path) -> None:
@@ -634,8 +981,12 @@ def maybe_correct_suspicious_timestamps(
         correction["reason"] = "ratio-does-not-match-observed-mlx-compression"
         return segments, correction
 
+    # Keys that are rebuilt by the scaling logic; everything else is forwarded
+    # as-is so that fields like `speaker_id` are not silently dropped.
+    _rebuilt_keys = {"start", "end", "text", "words"}
     scaled_segments = [
         {
+            **{k: v for k, v in segment.items() if k not in _rebuilt_keys},
             "start": round(segment["start"] * ratio, 3),
             "end": round(segment["end"] * ratio, 3),
             "text": segment["text"],
@@ -686,18 +1037,23 @@ def normalize_backend_segment(segment: Any) -> dict[str, Any]:
         end = float(segment["end"])
         text = str(segment["text"]).strip()
         raw_words = segment.get("words", [])
+        speaker_id = segment.get("speaker_id")
     else:
         start = float(segment.start)
         end = float(segment.end)
         text = str(segment.text).strip()
         raw_words = getattr(segment, "words", None) or []
+        speaker_id = getattr(segment, "speaker_id", None)
 
-    return {
+    result: dict[str, Any] = {
         "start": start,
         "end": end,
         "text": text,
         "words": normalize_words(raw_words),
     }
+    if speaker_id is not None:
+        result["speaker_id"] = speaker_id
+    return result
 
 
 def normalize_words(raw_words: list[Any]) -> list[dict[str, Any]]:
@@ -751,8 +1107,9 @@ def resegment_for_subtitles(
 
 def split_segment_for_subtitles(segment: dict[str, Any]) -> list[dict[str, Any]]:
     words = segment.get("words") or build_pseudo_words(segment)
+    speaker_id = segment.get("speaker_id")
     if len(words) <= 1:
-        return [minimal_segment(segment["start"], segment["end"], segment["text"])]
+        return [minimal_segment(segment["start"], segment["end"], segment["text"], speaker_id=speaker_id)]
 
     blocks: list[dict[str, Any]] = []
     block_start_index = 0
@@ -784,7 +1141,7 @@ def split_segment_for_subtitles(segment: dict[str, Any]) -> list[dict[str, Any]]
                     candidate_duration >= SUBTITLE_TARGET_DURATION_SECONDS
                     and is_preferred_break(words, current_index)
                 ):
-                    blocks.append(minimal_segment(candidate_start, candidate_end, candidate_text))
+                    blocks.append(minimal_segment(candidate_start, candidate_end, candidate_text, speaker_id=speaker_id))
                     block_start_index = current_index + 1
                     committed_block = True
                     break
@@ -807,6 +1164,7 @@ def split_segment_for_subtitles(segment: dict[str, Any]) -> list[dict[str, Any]]
                     chosen_words[0]["start"],
                     chosen_words[-1]["end"],
                     join_words(chosen_words),
+                    speaker_id=speaker_id,
                 )
             )
             block_start_index = split_index + 1
@@ -822,6 +1180,7 @@ def split_segment_for_subtitles(segment: dict[str, Any]) -> list[dict[str, Any]]
                 trailing_words[0]["start"],
                 trailing_words[-1]["end"],
                 join_words(trailing_words),
+                speaker_id=speaker_id,
             )
         )
         break
@@ -853,12 +1212,20 @@ def build_pseudo_words(segment: dict[str, Any]) -> list[dict[str, Any]]:
     return words
 
 
-def minimal_segment(start: float, end: float, text: str) -> dict[str, Any]:
-    return {
+def minimal_segment(
+    start: float,
+    end: float,
+    text: str,
+    speaker_id: str | None = None,
+) -> dict[str, Any]:
+    segment: dict[str, Any] = {
         "start": round(start, 3),
         "end": round(end, 3),
         "text": collapse_whitespace(text),
     }
+    if speaker_id is not None:
+        segment["speaker_id"] = speaker_id
+    return segment
 
 
 def join_words(words: list[dict[str, Any]]) -> str:
@@ -900,14 +1267,19 @@ def merge_tiny_adjacent_blocks(blocks: list[dict[str, Any]]) -> list[dict[str, A
         combined_text = f"{merged[-1]['text']} {block['text']}".strip()
         combined_duration = block["end"] - merged[-1]["start"]
         combined_word_count = len(combined_text.split())
+        same_speaker = merged[-1].get("speaker_id") == block.get("speaker_id")
 
         if (
-            duration < 1.0
+            same_speaker
+            and duration < 1.0
             and len(combined_text) <= SUBTITLE_MAX_CHARACTERS
             and combined_duration <= SUBTITLE_MAX_DURATION_SECONDS
             and combined_word_count <= SUBTITLE_MAX_WORDS
         ):
-            merged[-1] = minimal_segment(merged[-1]["start"], block["end"], combined_text)
+            merged[-1] = minimal_segment(
+                merged[-1]["start"], block["end"], combined_text,
+                speaker_id=merged[-1].get("speaker_id"),
+            )
             continue
 
         merged.append(block)
@@ -916,21 +1288,27 @@ def merge_tiny_adjacent_blocks(blocks: list[dict[str, Any]]) -> list[dict[str, A
 
 
 def build_txt(segments: list[dict[str, Any]]) -> str:
-    return "\n".join(
-        f"[{format_timestamp(segment['start'])} --> {format_timestamp(segment['end'])}] {segment['text']}"
-        for segment in segments
-    ).strip() + "\n"
+    lines = []
+    for segment in segments:
+        speaker = segment.get("speaker_id")
+        prefix = f"[{speaker}] " if speaker else ""
+        lines.append(
+            f"[{format_timestamp(segment['start'])} --> {format_timestamp(segment['end'])}] {prefix}{segment['text']}"
+        )
+    return "\n".join(lines).strip() + "\n"
 
 
 def build_srt(segments: list[dict[str, Any]]) -> str:
     blocks = []
     for index, segment in enumerate(segments, start=1):
+        speaker = segment.get("speaker_id")
+        text = f"[{speaker}] {segment['text']}" if speaker else segment["text"]
         blocks.append(
             "\n".join(
                 [
                     str(index),
                     f"{format_srt_timestamp(segment['start'])} --> {format_srt_timestamp(segment['end'])}",
-                    segment["text"],
+                    text,
                 ]
             )
         )
