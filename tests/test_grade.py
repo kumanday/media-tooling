@@ -326,21 +326,75 @@ class AutoGradeForClipTests(unittest.TestCase):
 
     @patch("media_tooling.grade._sample_frame_stats")
     @patch("media_tooling.grade.subprocess.check_output")
-    def test_threshold_continuity(
+    def test_threshold_continuity_contrast(
         self, mock_probe: MagicMock, mock_stats: MagicMock
     ) -> None:
-        """Proportional maps are continuous at threshold boundaries."""
-        # Test contrast at y_range=0.65 boundary
+        """Contrast proportional map is continuous at y_range=0.65 boundary."""
         mock_stats.return_value = {"y_mean": 0.48, "y_range": 0.649, "sat_mean": 0.25}
         f1, _ = auto_grade_for_clip(Path("test.mp4"))
         mock_stats.return_value = {"y_mean": 0.48, "y_range": 0.651, "sat_mean": 0.25}
         f2, _ = auto_grade_for_clip(Path("test.mp4"))
-        # Both should produce very similar results near the boundary
-        # f1 has contrast, f2 doesn't — but at boundary contrast should be ~1.0
-        # so the jump should be negligible (< 0.5%)
+        # At boundary, contrast should be ~1.0 (jump < 0.5%)
         if f1 and "contrast=" in f1:
             c1 = float(f1.split("contrast=")[1].split(":")[0])
             self.assertLess(abs(c1 - 1.0), 0.005, "contrast at boundary should be ~1.0")
+
+    @patch("media_tooling.grade._sample_frame_stats")
+    @patch("media_tooling.grade.subprocess.check_output")
+    def test_threshold_continuity_gamma_dark(
+        self, mock_probe: MagicMock, mock_stats: MagicMock
+    ) -> None:
+        """Gamma dark proportional map is continuous at y_mean=0.42 boundary."""
+        mock_stats.return_value = {"y_mean": 0.419, "y_range": 0.72, "sat_mean": 0.25}
+        f1, _ = auto_grade_for_clip(Path("test.mp4"))
+        mock_stats.return_value = {"y_mean": 0.421, "y_range": 0.72, "sat_mean": 0.25}
+        f2, _ = auto_grade_for_clip(Path("test.mp4"))
+        if f1 and "gamma=" in f1:
+            g1 = float(f1.split("gamma=")[1].split(":")[0])
+            self.assertLess(abs(g1 - 1.0), 0.005, "gamma at dark boundary should be ~1.0")
+
+    @patch("media_tooling.grade._sample_frame_stats")
+    @patch("media_tooling.grade.subprocess.check_output")
+    def test_threshold_continuity_gamma_over(
+        self, mock_probe: MagicMock, mock_stats: MagicMock
+    ) -> None:
+        """Gamma overexposed proportional map is continuous at y_mean=0.60 boundary."""
+        mock_stats.return_value = {"y_mean": 0.599, "y_range": 0.72, "sat_mean": 0.25}
+        f1, _ = auto_grade_for_clip(Path("test.mp4"))
+        mock_stats.return_value = {"y_mean": 0.601, "y_range": 0.72, "sat_mean": 0.25}
+        f2, _ = auto_grade_for_clip(Path("test.mp4"))
+        # At boundary gamma should be ~1.0 (no adjustment)
+        if f2 and "gamma=" in f2:
+            g2 = float(f2.split("gamma=")[1].split(":")[0])
+            self.assertLess(abs(g2 - 1.0), 0.005, "gamma at overexposed boundary should be ~1.0")
+
+    @patch("media_tooling.grade._sample_frame_stats")
+    @patch("media_tooling.grade.subprocess.check_output")
+    def test_threshold_continuity_sat_low(
+        self, mock_probe: MagicMock, mock_stats: MagicMock
+    ) -> None:
+        """Saturation low proportional map is continuous at sat_mean=0.15 boundary."""
+        mock_stats.return_value = {"y_mean": 0.48, "y_range": 0.72, "sat_mean": 0.149}
+        f1, _ = auto_grade_for_clip(Path("test.mp4"))
+        mock_stats.return_value = {"y_mean": 0.48, "y_range": 0.72, "sat_mean": 0.151}
+        f2, _ = auto_grade_for_clip(Path("test.mp4"))
+        if f1 and "saturation=" in f1:
+            s1 = float(f1.split("saturation=")[1].split(":")[0])
+            self.assertLess(abs(s1 - 1.0), 0.005, "saturation at low boundary should be ~1.0")
+
+    @patch("media_tooling.grade._sample_frame_stats")
+    @patch("media_tooling.grade.subprocess.check_output")
+    def test_threshold_continuity_sat_high(
+        self, mock_probe: MagicMock, mock_stats: MagicMock
+    ) -> None:
+        """Saturation high proportional map is continuous at sat_mean=0.40 boundary."""
+        mock_stats.return_value = {"y_mean": 0.48, "y_range": 0.72, "sat_mean": 0.399}
+        f1, _ = auto_grade_for_clip(Path("test.mp4"))
+        mock_stats.return_value = {"y_mean": 0.48, "y_range": 0.72, "sat_mean": 0.401}
+        f2, _ = auto_grade_for_clip(Path("test.mp4"))
+        if f2 and "saturation=" in f2:
+            s2 = float(f2.split("saturation=")[1].split(":")[0])
+            self.assertLess(abs(s2 - 1.0), 0.005, "saturation at high boundary should be ~1.0")
 
 
 class ApplyGradeTests(unittest.TestCase):
@@ -407,6 +461,13 @@ class ApplyGradeTests(unittest.TestCase):
             with self.assertRaises(RuntimeError) as ctx:
                 apply_grade(Path("in.mp4"), Path("out.mp4"), "")
         self.assertIn("exit code", str(ctx.exception))
+
+    def test_mkdir_failure_raises_runtime_error(self) -> None:
+        """OSError from mkdir is wrapped as RuntimeError."""
+        with patch.object(Path, "mkdir", side_effect=OSError("permission denied")):
+            with self.assertRaises(RuntimeError) as ctx:
+                apply_grade(Path("in.mp4"), Path("/readonly/out.mp4"), "")
+        self.assertIn("cannot create output directory", str(ctx.exception))
 
 
 class CLIMainTests(unittest.TestCase):
