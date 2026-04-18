@@ -321,7 +321,7 @@ def _group_words_natural_sentence(words: list[str]) -> list[list[str]]:
         current.append(word)
         word_count = len(current)
         ends_with_hard_punct = bool(word) and word[-1] in HARD_SENTENCE_PUNCTUATION
-        ends_with_soft_punct = bool(word) and word[-1] in _PUNCT_BREAK
+        ends_with_soft_punct = bool(word) and word[-1] in SOFT_SENTENCE_PUNCTUATION
 
         if word_count >= NATURAL_SENTENCE_MAX_WORDS:
             chunks.append(current)
@@ -335,7 +335,12 @@ def _group_words_natural_sentence(words: list[str]) -> list[list[str]]:
 
     if current:
         # If remaining words are fewer than min, try to append to last chunk
-        if chunks and len(current) < NATURAL_SENTENCE_MIN_WORDS:
+        # only if the merged chunk would not exceed max words
+        if (
+            chunks
+            and len(current) < NATURAL_SENTENCE_MIN_WORDS
+            and len(chunks[-1]) + len(current) <= NATURAL_SENTENCE_MAX_WORDS
+        ):
             chunks[-1].extend(current)
         else:
             chunks.append(current)

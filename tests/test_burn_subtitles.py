@@ -7,6 +7,7 @@ from pathlib import Path
 from media_tooling.burn_subtitles import (
     BOLD_OVERLAY_FORCE_STYLE,
     NATURAL_SENTENCE_FORCE_STYLE,
+    NATURAL_SENTENCE_MAX_WORDS,
     _sentence_case,
     build_video_filter,
     rechunk_bold_overlay,
@@ -161,7 +162,8 @@ class NaturalSentenceChunkingTests(unittest.TestCase):
 
         for cue in result:
             word_count = len(cue["text"].split())
-            # Allow merging of short tails into previous chunks
+            # Tail-merge may exceed max by a few; verify reasonable bounds
+            self.assertLessEqual(word_count, NATURAL_SENTENCE_MAX_WORDS + 3)
             self.assertGreaterEqual(word_count, 1)
 
     def test_sentence_case(self) -> None:
