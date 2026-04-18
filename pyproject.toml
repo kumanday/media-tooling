@@ -12,6 +12,9 @@ dependencies = [
     "pillow>=11.2.1",
 ]
 
+[project.optional-dependencies]
+elevenlabs = ["requests>=2.31"]
+
 [dependency-groups]
 dev = [
     "mypy>=1.11",
@@ -62,6 +65,7 @@ module = [
     "lightning_whisper_mlx.*",
     "PIL",
     "PIL.*",
+    "requests",
 ]
 ignore_missing_imports = true
 

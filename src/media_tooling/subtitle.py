@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import hashlib
 import json
 import os
 import platform
@@ -26,6 +27,11 @@ except ImportError:  # pragma: no cover - depends on platform install
     BatchedInferencePipeline = None
     WhisperModel = None
 
+try:
+    import requests as _requests_module
+except ImportError:  # pragma: no cover - optional dependency
+    _requests_module = None
+
 VIDEO_SUFFIXES = {
     ".avi",
     ".m4v",
@@ -49,7 +55,8 @@ AUDIO_SUFFIXES = {
 }
 
 DEFAULT_MODEL = "small"
-DEFAULT_BACKEND = "auto"
+DEFAULT_BACKEND = "whisper"
+ELEVENLABS_SCRIBE_URL = "https://api.elevenlabs.io/v1/speech-to-text"
 TIMESTAMP_RATIO_TOLERANCE = 0.02
 TIMESTAMP_EXPECTED_MLX_RATIO = 10
 SUBTITLE_TARGET_DURATION_SECONDS = 4.0
@@ -71,7 +78,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--backend",
-        choices=["auto", "mlx", "faster-whisper"],
+        choices=["whisper", "auto", "mlx", "faster-whisper", "elevenlabs"],
         default=DEFAULT_BACKEND,
         help=f"Transcription backend. Default: {DEFAULT_BACKEND}.",
     )
@@ -209,23 +216,47 @@ def run_transcription_job(
     initial_prompt: str | None,
     disable_timestamp_correction: bool,
 ) -> None:
+    resolved_backend = resolve_backend(backend)
+
     if skip_existing and txt_path.exists() and srt_path.exists() and json_path.exists():
-        print(f"Skipping existing outputs for {input_path}")
-        return
+        if resolved_backend == "elevenlabs" and not source_matches_cache(json_path, input_path):
+            print(f"Source file changed for {input_path}; re-transcribing.")
+        else:
+            print(f"Skipping existing outputs for {input_path}")
+            return
 
     ensure_parent_dirs(audio_path, txt_path, srt_path, json_path)
 
     if is_video_file(input_path):
-        extract_audio(
-            input_path=input_path,
-            audio_path=audio_path,
-            ffmpeg_bin=ffmpeg_bin,
-            overwrite=overwrite,
-        )
+        if resolved_backend == "elevenlabs":
+            wav_audio_path = audio_path.with_suffix(".wav")
+            extract_audio_pcm_wav(
+                input_path=input_path,
+                wav_path=wav_audio_path,
+                ffmpeg_bin=ffmpeg_bin,
+                overwrite=overwrite,
+            )
+            audio_path = wav_audio_path
+        else:
+            extract_audio(
+                input_path=input_path,
+                audio_path=audio_path,
+                ffmpeg_bin=ffmpeg_bin,
+                overwrite=overwrite,
+            )
     else:
-        audio_path = input_path
+        if resolved_backend == "elevenlabs" and audio_path.suffix.lower() != ".wav":
+            wav_audio_path = audio_path.with_suffix(".wav")
+            extract_audio_pcm_wav(
+                input_path=audio_path,
+                wav_path=wav_audio_path,
+                ffmpeg_bin=ffmpeg_bin,
+                overwrite=overwrite,
+            )
+            audio_path = wav_audio_path
+        else:
+            audio_path = input_path
 
-    resolved_backend = resolve_backend(backend)
     print(
         f"Transcribing {audio_path} with model '{model_name}' using backend '{resolved_backend}'",
         flush=True,
@@ -259,7 +290,7 @@ def run_transcription_job(
 
     txt_text = build_txt(segments)
     srt_text = build_srt(segments)
-    payload = {
+    payload: dict[str, Any] = {
         "input_path": str(input_path),
         "audio_path": str(audio_path),
         "backend": resolved_backend,
@@ -273,6 +304,10 @@ def run_transcription_job(
         "subtitle_segmentation": subtitle_segmentation,
         "segments": segments,
     }
+
+    if resolved_backend == "elevenlabs":
+        payload["source_hash"] = compute_source_hash(input_path)
+        payload["audio_events"] = result.get("audio_events", [])
 
     write_text(txt_path, txt_text, overwrite)
     write_text(srt_path, srt_text, overwrite)
@@ -321,7 +356,7 @@ def resolve_output_paths(
 
 
 def resolve_backend(requested_backend: str) -> str:
-    if requested_backend == "auto":
+    if requested_backend in ("auto", "whisper"):
         if mlx_backend_available():
             return "mlx"
         if faster_whisper_available():
@@ -344,6 +379,15 @@ def resolve_backend(requested_backend: str) -> str:
             )
         return requested_backend
 
+    if requested_backend == "elevenlabs":
+        if not elevenlabs_backend_available():
+            raise RuntimeError(
+                "The elevenlabs backend requires the 'requests' package "
+                "(install with: pip install media-tooling[elevenlabs]) "
+                "and the ELEVENLABS_API_KEY environment variable."
+            )
+        return requested_backend
+
     raise RuntimeError(f"Unsupported backend: {requested_backend}")
 
 
@@ -358,6 +402,10 @@ def mlx_backend_available() -> bool:
 
 def faster_whisper_available() -> bool:
     return WhisperModel is not None and BatchedInferencePipeline is not None
+
+
+def elevenlabs_backend_available() -> bool:
+    return _requests_module is not None and bool(os.environ.get("ELEVENLABS_API_KEY", "").strip())
 
 
 def transcribe_media(
@@ -390,6 +438,11 @@ def transcribe_media(
             device=device,
             compute_type=compute_type,
             initial_prompt=initial_prompt,
+        )
+    if backend == "elevenlabs":
+        return transcribe_with_elevenlabs(
+            audio_path=audio_path,
+            language=language,
         )
     raise RuntimeError(f"Unsupported backend: {backend}")
 
@@ -458,6 +511,156 @@ def transcribe_with_faster_whisper(
         "text": full_text,
         "segments": segments,
     }
+
+
+def transcribe_with_elevenlabs(
+    *,
+    audio_path: Path,
+    language: str | None,
+) -> dict[str, Any]:
+    if _requests_module is None:
+        raise RuntimeError(
+            "The elevenlabs backend requires the 'requests' package. "
+            "Install with: pip install media-tooling[elevenlabs]"
+        )
+    api_key = os.environ.get("ELEVENLABS_API_KEY", "").strip()
+    if not api_key:
+        raise RuntimeError(
+            "ELEVENLABS_API_KEY environment variable is required for the elevenlabs backend."
+        )
+    return call_scribe_api(audio_path=audio_path, api_key=api_key, language=language)
+
+
+def call_scribe_api(
+    *,
+    audio_path: Path,
+    api_key: str,
+    language: str | None = None,
+) -> dict[str, Any]:
+    assert _requests_module is not None  # ensured by caller
+    data: dict[str, str] = {
+        "model_id": "scribe_v1",
+        "diarize": "true",
+        "tag_audio_events": "true",
+        "timestamps_granularity": "word",
+    }
+    if language:
+        data["language_code"] = language
+
+    with open(audio_path, "rb") as f:
+        resp = _requests_module.post(
+            ELEVENLABS_SCRIBE_URL,
+            headers={"xi-api-key": api_key},
+            files={"file": (audio_path.name, f, "audio/wav")},
+            data=data,
+            timeout=1800,
+        )
+
+    if resp.status_code != 200:
+        raise RuntimeError(f"ElevenLabs Scribe returned {resp.status_code}: {resp.text[:500]}")
+
+    scribe_response = resp.json()
+    return parse_scribe_response(scribe_response)
+
+
+def parse_scribe_response(scribe_response: dict[str, Any]) -> dict[str, Any]:
+    raw_words = scribe_response.get("words", [])
+    segments: list[dict[str, Any]] = []
+    current_segment: dict[str, Any] | None = None
+    current_words: list[dict[str, Any]] = []
+
+    for raw_word in raw_words:
+        word_text = raw_word.get("text", raw_word.get("word", ""))
+        speaker_id = raw_word.get("speaker_id")
+        start = float(raw_word.get("start", 0))
+        end = float(raw_word.get("end", 0))
+
+        if current_segment is None or current_segment.get("speaker_id") != speaker_id:
+            if current_segment is not None:
+                current_segment["words"] = current_words
+                current_segment["text"] = "".join(w["word"] for w in current_words).strip()
+                segments.append(current_segment)
+            current_segment = {
+                "start": start,
+                "end": end,
+                "text": "",
+                "words": [],
+                "speaker_id": speaker_id,
+            }
+            current_words = []
+
+        current_words.append({
+            "word": word_text if not current_words else f" {word_text}",
+            "start": start,
+            "end": end,
+        })
+        current_segment["end"] = end
+
+    if current_segment is not None and current_words:
+        current_segment["words"] = current_words
+        current_segment["text"] = "".join(w["word"] for w in current_words).strip()
+        segments.append(current_segment)
+
+    full_text = " ".join(segment["text"] for segment in segments).strip()
+    audio_events = scribe_response.get("audio_events", [])
+    language_code = scribe_response.get("language_code", scribe_response.get("language"))
+
+    return {
+        "language": language_code,
+        "text": full_text,
+        "segments": segments,
+        "audio_events": audio_events,
+    }
+
+
+def extract_audio_pcm_wav(
+    input_path: Path,
+    wav_path: Path,
+    ffmpeg_bin: str,
+    overwrite: bool,
+) -> None:
+    """Extract audio as mono 16kHz PCM WAV for ElevenLabs Scribe upload."""
+    if wav_path.exists() and not overwrite:
+        print(f"Reusing existing PCM WAV {wav_path}")
+        return
+
+    cmd = [
+        ffmpeg_bin,
+        "-y" if overwrite else "-n",
+        "-i", str(input_path),
+        "-vn",
+        "-ac", "1",
+        "-ar", "16000",
+        "-c:a", "pcm_s16le",
+        str(wav_path),
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"ffmpeg PCM WAV extraction failed.\n{result.stderr}"
+        )
+    print(f"Extracted PCM WAV: {wav_path}")
+
+
+def compute_source_hash(source_path: Path) -> str:
+    h = hashlib.sha256()
+    h.update(str(source_path.resolve()).encode("utf-8"))
+    h.update(str(source_path.stat().st_size).encode("utf-8"))
+    h.update(str(source_path.stat().st_mtime).encode("utf-8"))
+    return h.hexdigest()
+
+
+def source_matches_cache(json_path: Path, input_path: Path) -> bool:
+    if not json_path.exists():
+        return False
+    try:
+        cached = json.loads(json_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return False
+    cached_hash = cached.get("source_hash")
+    if not cached_hash:
+        return False
+    return cached_hash == compute_source_hash(input_path)
 
 
 def ensure_parent_dirs(*paths: Path) -> None:
@@ -686,18 +889,23 @@ def normalize_backend_segment(segment: Any) -> dict[str, Any]:
         end = float(segment["end"])
         text = str(segment["text"]).strip()
         raw_words = segment.get("words", [])
+        speaker_id = segment.get("speaker_id")
     else:
         start = float(segment.start)
         end = float(segment.end)
         text = str(segment.text).strip()
         raw_words = getattr(segment, "words", None) or []
+        speaker_id = getattr(segment, "speaker_id", None)
 
-    return {
+    result: dict[str, Any] = {
         "start": start,
         "end": end,
         "text": text,
         "words": normalize_words(raw_words),
     }
+    if speaker_id is not None:
+        result["speaker_id"] = speaker_id
+    return result
 
 
 def normalize_words(raw_words: list[Any]) -> list[dict[str, Any]]:
@@ -751,8 +959,9 @@ def resegment_for_subtitles(
 
 def split_segment_for_subtitles(segment: dict[str, Any]) -> list[dict[str, Any]]:
     words = segment.get("words") or build_pseudo_words(segment)
+    speaker_id = segment.get("speaker_id")
     if len(words) <= 1:
-        return [minimal_segment(segment["start"], segment["end"], segment["text"])]
+        return [minimal_segment(segment["start"], segment["end"], segment["text"], speaker_id=speaker_id)]
 
     blocks: list[dict[str, Any]] = []
     block_start_index = 0
@@ -784,7 +993,7 @@ def split_segment_for_subtitles(segment: dict[str, Any]) -> list[dict[str, Any]]
                     candidate_duration >= SUBTITLE_TARGET_DURATION_SECONDS
                     and is_preferred_break(words, current_index)
                 ):
-                    blocks.append(minimal_segment(candidate_start, candidate_end, candidate_text))
+                    blocks.append(minimal_segment(candidate_start, candidate_end, candidate_text, speaker_id=speaker_id))
                     block_start_index = current_index + 1
                     committed_block = True
                     break
@@ -807,6 +1016,7 @@ def split_segment_for_subtitles(segment: dict[str, Any]) -> list[dict[str, Any]]
                     chosen_words[0]["start"],
                     chosen_words[-1]["end"],
                     join_words(chosen_words),
+                    speaker_id=speaker_id,
                 )
             )
             block_start_index = split_index + 1
@@ -822,6 +1032,7 @@ def split_segment_for_subtitles(segment: dict[str, Any]) -> list[dict[str, Any]]
                 trailing_words[0]["start"],
                 trailing_words[-1]["end"],
                 join_words(trailing_words),
+                speaker_id=speaker_id,
             )
         )
         break
@@ -853,12 +1064,20 @@ def build_pseudo_words(segment: dict[str, Any]) -> list[dict[str, Any]]:
     return words
 
 
-def minimal_segment(start: float, end: float, text: str) -> dict[str, Any]:
-    return {
+def minimal_segment(
+    start: float,
+    end: float,
+    text: str,
+    speaker_id: str | None = None,
+) -> dict[str, Any]:
+    segment: dict[str, Any] = {
         "start": round(start, 3),
         "end": round(end, 3),
         "text": collapse_whitespace(text),
     }
+    if speaker_id is not None:
+        segment["speaker_id"] = speaker_id
+    return segment
 
 
 def join_words(words: list[dict[str, Any]]) -> str:
@@ -907,7 +1126,10 @@ def merge_tiny_adjacent_blocks(blocks: list[dict[str, Any]]) -> list[dict[str, A
             and combined_duration <= SUBTITLE_MAX_DURATION_SECONDS
             and combined_word_count <= SUBTITLE_MAX_WORDS
         ):
-            merged[-1] = minimal_segment(merged[-1]["start"], block["end"], combined_text)
+            merged[-1] = minimal_segment(
+                merged[-1]["start"], block["end"], combined_text,
+                speaker_id=merged[-1].get("speaker_id"),
+            )
             continue
 
         merged.append(block)
