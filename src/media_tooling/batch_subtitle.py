@@ -38,8 +38,8 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--backend",
-        choices=["auto", "mlx", "faster-whisper"],
-        default="auto",
+        choices=["whisper", "auto", "mlx", "faster-whisper", "elevenlabs"],
+        default="whisper",
         help="Transcription backend.",
     )
     parser.add_argument(
@@ -94,6 +94,11 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Disable the post-transcription timestamp sanity check and auto-correction.",
     )
+    parser.add_argument(
+        "--api-key",
+        default=None,
+        help="API key for the transcription backend (e.g. ElevenLabs). Falls back to ELEVENLABS_API_KEY env var.",
+    )
     return parser.parse_args()
 
 def main() -> int:
@@ -132,6 +137,7 @@ def main() -> int:
                 skip_existing=args.skip_existing,
                 initial_prompt=args.initial_prompt,
                 disable_timestamp_correction=args.disable_timestamp_correction,
+                api_key=args.api_key,
             )
         except Exception as exc:  # noqa: BLE001
             failures.append(f"{item}: {exc}")

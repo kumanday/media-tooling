@@ -220,7 +220,6 @@ class BackendDispatchTests(unittest.TestCase):
     def test_elevenlabs_not_available_without_key(self) -> None:
         with patch("media_tooling.subtitle._requests_module", MagicMock()), \
              patch.dict(os.environ, {}, clear=True):
-            # Remove ELEVENLABS_API_KEY if it exists
             os.environ.pop("ELEVENLABS_API_KEY", None)
             self.assertFalse(elevenlabs_backend_available())
 
@@ -228,6 +227,26 @@ class BackendDispatchTests(unittest.TestCase):
         with patch("media_tooling.subtitle._requests_module", None), \
              patch.dict(os.environ, {"ELEVENLABS_API_KEY": "test-key"}):
             self.assertFalse(elevenlabs_backend_available())
+
+    def test_elevenlabs_backend_available_with_explicit_api_key(self) -> None:
+        """When api_key is explicitly provided, env var is not required."""
+        with patch("media_tooling.subtitle._requests_module", MagicMock()), \
+             patch.dict(os.environ, {}, clear=True):
+            os.environ.pop("ELEVENLABS_API_KEY", None)
+            self.assertTrue(elevenlabs_backend_available(api_key="explicit-key"))
+
+    def test_elevenlabs_backend_available_with_empty_api_key(self) -> None:
+        """An empty api_key should not make elevenlabs available."""
+        with patch("media_tooling.subtitle._requests_module", MagicMock()):
+            self.assertFalse(elevenlabs_backend_available(api_key=""))
+
+    def test_resolve_backend_elevenlabs_with_explicit_api_key(self) -> None:
+        """resolve_backend('elevenlabs') works with explicit api_key even without env var."""
+        with patch("media_tooling.subtitle._requests_module", MagicMock()), \
+             patch.dict(os.environ, {}, clear=True):
+            os.environ.pop("ELEVENLABS_API_KEY", None)
+            result = resolve_backend("elevenlabs", api_key="explicit-key")
+            self.assertEqual(result, "elevenlabs")
 
 
 class ScribeResponseParsingTests(unittest.TestCase):
@@ -682,6 +701,75 @@ class ElevenLabsErrorHandlingTests(unittest.TestCase):
                 call_kwargs = mock_requests.post.call_args
                 self.assertEqual(call_kwargs.kwargs["headers"]["xi-api-key"], "test-key")
                 self.assertIn("language_code", call_kwargs.kwargs["data"])
+        finally:
+            os.unlink(wav_path)
+
+    def test_transcribe_with_elevenlabs_uses_explicit_api_key(self) -> None:
+        """When api_key is passed explicitly, it is used instead of env var."""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "text": "Hello",
+            "language_code": "en",
+            "words": [
+                {"text": "Hello", "start": 0.0, "end": 1.0, "speaker_id": "speaker_0"},
+            ],
+            "audio_events": [],
+        }
+
+        mock_requests = MagicMock()
+        mock_requests.post.return_value = mock_response
+
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
+            f.write(b"fake wav data")
+            wav_path = Path(f.name)
+
+        try:
+            with patch("media_tooling.subtitle._requests_module", mock_requests), \
+                 patch.dict(os.environ, {}, clear=True):
+                os.environ.pop("ELEVENLABS_API_KEY", None)
+                result = transcribe_with_elevenlabs(
+                    audio_path=wav_path,
+                    language=None,
+                    api_key="explicit-key",
+                )
+                self.assertEqual(result["text"], "Hello")
+                call_kwargs = mock_requests.post.call_args
+                self.assertEqual(call_kwargs.kwargs["headers"]["xi-api-key"], "explicit-key")
+        finally:
+            os.unlink(wav_path)
+
+    def test_transcribe_with_elevenlabs_explicit_key_overrides_env(self) -> None:
+        """When both env var and api_key are provided, api_key takes precedence."""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "text": "Hello",
+            "language_code": "en",
+            "words": [
+                {"text": "Hello", "start": 0.0, "end": 1.0, "speaker_id": "speaker_0"},
+            ],
+            "audio_events": [],
+        }
+
+        mock_requests = MagicMock()
+        mock_requests.post.return_value = mock_response
+
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
+            f.write(b"fake wav data")
+            wav_path = Path(f.name)
+
+        try:
+            with patch("media_tooling.subtitle._requests_module", mock_requests), \
+                 patch.dict(os.environ, {"ELEVENLABS_API_KEY": "env-key"}):
+                result = transcribe_with_elevenlabs(
+                    audio_path=wav_path,
+                    language=None,
+                    api_key="explicit-key",
+                )
+                self.assertEqual(result["text"], "Hello")
+                call_kwargs = mock_requests.post.call_args
+                self.assertEqual(call_kwargs.kwargs["headers"]["xi-api-key"], "explicit-key")
         finally:
             os.unlink(wav_path)
 

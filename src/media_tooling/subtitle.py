@@ -218,8 +218,9 @@ def run_transcription_job(
     skip_existing: bool,
     initial_prompt: str | None,
     disable_timestamp_correction: bool,
+    api_key: str | None = None,
 ) -> None:
-    resolved_backend = resolve_backend(backend)
+    resolved_backend = resolve_backend(backend, api_key=api_key)
     source_hash_value: str | None = None
 
     if skip_existing:
@@ -302,6 +303,7 @@ def run_transcription_job(
                 device=device,
                 compute_type=compute_type,
                 initial_prompt=initial_prompt,
+                api_key=api_key,
             )
         segments = normalize_segments(result.get("segments", []))
         # Probe the original input for duration — the PCM WAV (for ElevenLabs)
@@ -398,7 +400,7 @@ def resolve_output_paths(
     return audio_path, txt_path, srt_path, json_path
 
 
-def resolve_backend(requested_backend: str) -> str:
+def resolve_backend(requested_backend: str, *, api_key: str | None = None) -> str:
     if requested_backend in ("auto", "whisper"):
         if mlx_backend_available():
             return "mlx"
@@ -423,7 +425,7 @@ def resolve_backend(requested_backend: str) -> str:
         return requested_backend
 
     if requested_backend == "elevenlabs":
-        if not elevenlabs_backend_available():
+        if not elevenlabs_backend_available(api_key=api_key):
             raise RuntimeError(
                 "The elevenlabs backend requires the 'requests' package "
                 "(install with: pip install media-tooling[elevenlabs]) "
@@ -456,8 +458,12 @@ def faster_whisper_available() -> bool:
     return WhisperModel is not None and BatchedInferencePipeline is not None
 
 
-def elevenlabs_backend_available() -> bool:
-    return _requests_module is not None and bool(os.environ.get("ELEVENLABS_API_KEY", "").strip())
+def elevenlabs_backend_available(*, api_key: str | None = None) -> bool:
+    if _requests_module is None:
+        return False
+    if api_key is not None:
+        return bool(api_key.strip())
+    return bool(os.environ.get("ELEVENLABS_API_KEY", "").strip())
 
 
 def transcribe_media(
@@ -471,6 +477,7 @@ def transcribe_media(
     device: str | None,
     compute_type: str | None,
     initial_prompt: str | None,
+    api_key: str | None = None,
 ) -> dict[str, Any]:
     if backend == "mlx":
         return transcribe_with_mlx(
@@ -496,6 +503,7 @@ def transcribe_media(
         return transcribe_with_elevenlabs(
             audio_path=audio_path,
             language=language,
+            api_key=api_key,
         )
     raise RuntimeError(f"Unsupported backend: {backend}")
 
@@ -570,18 +578,19 @@ def transcribe_with_elevenlabs(
     *,
     audio_path: Path,
     language: str | None,
+    api_key: str | None = None,
 ) -> dict[str, Any]:
     if _requests_module is None:
         raise RuntimeError(
             "The elevenlabs backend requires the 'requests' package. "
             "Install with: pip install media-tooling[elevenlabs]"
         )
-    api_key = os.environ.get("ELEVENLABS_API_KEY", "").strip()
-    if not api_key:
+    resolved_key = api_key or os.environ.get("ELEVENLABS_API_KEY", "").strip()
+    if not resolved_key:
         raise RuntimeError(
             "ELEVENLABS_API_KEY environment variable is required for the elevenlabs backend."
         )
-    return call_scribe_api(audio_path=audio_path, api_key=api_key, language=language)
+    return call_scribe_api(audio_path=audio_path, api_key=resolved_key, language=language)
 
 
 def call_scribe_api(
