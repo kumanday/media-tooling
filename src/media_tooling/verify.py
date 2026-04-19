@@ -88,6 +88,7 @@ class VerifyReport:
     findings: list[Finding] = field(default_factory=list)
     pass_count: int = 0
     fail_count: int = 0
+    warning_count: int = 0  # non-blocking failures (don't affect overall verdict)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -96,6 +97,7 @@ class VerifyReport:
             "passed": self.passed,
             "pass_count": self.pass_count,
             "fail_count": self.fail_count,
+            "warning_count": self.warning_count,
             "findings": [f.to_dict() for f in self.findings],
         }
 
@@ -103,10 +105,11 @@ class VerifyReport:
         self.findings.append(finding)
         if finding.passed:
             self.pass_count += 1
+        elif finding.non_blocking:
+            self.warning_count += 1
         else:
             self.fail_count += 1
-            if not finding.non_blocking:
-                self.passed = False
+            self.passed = False
 
 
 # ---------------------------------------------------------------------------
@@ -457,15 +460,16 @@ def generate_boundary_timelines(
     output_dir: Path,
     ffmpeg_bin: str = "ffmpeg",
     window: float = CUT_BOUNDARY_WINDOW_S,
-) -> tuple[list[str], list[tuple[int, float, str]]]:
+) -> tuple[dict[int, str], list[tuple[int, float, str]]]:
     """Generate timeline_view PNGs at every cut boundary.
 
-    Returns a tuple of (successful_png_paths, failed_boundaries).
+    Returns a tuple of (boundary_png_map, failed_boundaries).
+    ``boundary_png_map`` maps boundary index → PNG path (only successful).
     Each failed entry is (index, cut_time, error_message).
     """
     from media_tooling.timeline_view import generate_timeline
 
-    png_paths: list[str] = []
+    png_map: dict[int, str] = {}
     failed: list[tuple[int, float, str]] = []
     for i, cut_time in enumerate(cut_boundaries):
         start = max(0.0, cut_time - window)
@@ -481,13 +485,13 @@ def generate_boundary_timelines(
                 transcript_path=None,
                 ffmpeg_bin=ffmpeg_bin,
             )
-            png_paths.append(str(out_path))
+            png_map[i] = str(out_path)
         except Exception as exc:
             failed.append((i, cut_time, str(exc)))
             print(f"  warning: timeline generation failed at {cut_time:.2f}s: {exc}",
                   file=sys.stderr)
 
-    return png_paths, failed
+    return png_map, failed
 
 
 # ---------------------------------------------------------------------------
@@ -612,9 +616,14 @@ def run_verification(
                         recheck_findings.pop(ri)
                         break
 
-        # Recalculate pass/fail counts
+        # Recalculate pass/fail/warning counts
         report.pass_count = sum(1 for f in report.findings if f.passed)
-        report.fail_count = sum(1 for f in report.findings if not f.passed)
+        report.fail_count = sum(
+            1 for f in report.findings if not f.passed and not f.non_blocking
+        )
+        report.warning_count = sum(
+            1 for f in report.findings if not f.passed and f.non_blocking
+        )
         report.passed = report.fail_count == 0
 
     # Flag remaining failures after max_passes exhausted
@@ -630,28 +639,18 @@ def run_verification(
     if generate_timelines and cut_boundaries:
         timeline_dir = output_dir or video_path.parent / "verify_timelines"
         timeline_dir.mkdir(parents=True, exist_ok=True)
-        png_paths, failed_boundaries = generate_boundary_timelines(
+        png_map, failed_boundaries = generate_boundary_timelines(
             video_path, cut_boundaries, timeline_dir, ffmpeg_bin,
         )
 
-        # Build a mapping from boundary index to PNG path
-        # (png_paths only contains successful paths in generation order)
-        boundary_png_map: dict[int, str] = {}
-        successful_idx = 0
-        for i in range(len(cut_boundaries)):
-            if i not in {fi for fi, _, _ in failed_boundaries}:
-                if successful_idx < len(png_paths):
-                    boundary_png_map[i] = png_paths[successful_idx]
-                    successful_idx += 1
-
         # Report on timeline PNGs (non-blocking: doesn't affect overall verdict)
-        if png_paths:
+        if png_map:
             png_passed = len(failed_boundaries) == 0
             report.add(Finding(
                 check="timeline_pngs",
                 passed=png_passed,
                 details=(
-                    f"Generated {len(png_paths)}/{len(cut_boundaries)} "
+                    f"Generated {len(png_map)}/{len(cut_boundaries)} "
                     f"timeline PNG(s) in {timeline_dir}"
                 ),
                 severity="info" if png_passed else "warning",
@@ -660,13 +659,10 @@ def run_verification(
             # Attach PNG paths to the corresponding visual discontinuity findings
             for finding in report.findings:
                 if finding.check == "visual_discontinuity" and finding.cut_time is not None:
-                    idx: int | None = None
                     for bi, bt in enumerate(cut_boundaries):
                         if math.isclose(bt, finding.cut_time, abs_tol=0.01):
-                            idx = bi
+                            finding.timeline_png = png_map.get(bi)
                             break
-                    if idx is not None and idx in boundary_png_map:
-                        finding.timeline_png = boundary_png_map[idx]
         else:
             report.add(Finding(
                 check="timeline_pngs",
@@ -790,10 +786,16 @@ def _print_report(report: VerifyReport) -> None:
     print(f"{'='*60}")
     for f in report.findings:
         icon = "✓" if f.passed else "✗"
-        suffix = " (non-blocking)" if f.non_blocking else ""
-        print(f"  {icon} [{f.check}] [{f.severity}]{suffix} {f.details}")
+        severity_tag = f" ({f.severity})" if f.severity != "info" else ""
+        suffix = " [non-blocking]" if f.non_blocking else ""
+        print(f"  {icon} [{f.check}]{severity_tag}{suffix} {f.details}")
     print(f"{'-'*60}")
-    print(f"  Total: {report.pass_count} passed, {report.fail_count} failed")
+    parts = [f"{report.pass_count} passed"]
+    if report.fail_count:
+        parts.append(f"{report.fail_count} failed")
+    if report.warning_count:
+        parts.append(f"{report.warning_count} warning(s)")
+    print(f"  Total: {', '.join(parts)}")
     print(f"{'='*60}\n")
 
 
