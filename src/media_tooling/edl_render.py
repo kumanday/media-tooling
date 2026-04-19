@@ -1342,7 +1342,7 @@ def build_final_composite(
         )
         out_label = "[outv]"
     else:
-        filter_parts.append(f"{current}copy[outv]")
+        filter_parts.append(f"{current}null[outv]")
         out_label = "[outv]"
 
     filter_complex = ";".join(filter_parts)
