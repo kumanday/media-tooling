@@ -64,6 +64,7 @@ class Finding:
     severity: str = "info"  # info | warning | fail
     cut_time: float | None = None
     timeline_png: str | None = None
+    non_blocking: bool = False  # if True, doesn't affect overall report.passed
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -73,6 +74,7 @@ class Finding:
             "severity": self.severity,
             "cut_time": self.cut_time,
             "timeline_png": self.timeline_png,
+            "non_blocking": self.non_blocking,
         }
 
 
@@ -103,7 +105,8 @@ class VerifyReport:
             self.pass_count += 1
         else:
             self.fail_count += 1
-            self.passed = False
+            if not finding.non_blocking:
+                self.passed = False
 
 
 # ---------------------------------------------------------------------------
@@ -631,7 +634,17 @@ def run_verification(
             video_path, cut_boundaries, timeline_dir, ffmpeg_bin,
         )
 
-        # Report on successful PNGs
+        # Build a mapping from boundary index to PNG path
+        # (png_paths only contains successful paths in generation order)
+        boundary_png_map: dict[int, str] = {}
+        successful_idx = 0
+        for i in range(len(cut_boundaries)):
+            if i not in {fi for fi, _, _ in failed_boundaries}:
+                if successful_idx < len(png_paths):
+                    boundary_png_map[i] = png_paths[successful_idx]
+                    successful_idx += 1
+
+        # Report on timeline PNGs (non-blocking: doesn't affect overall verdict)
         if png_paths:
             png_passed = len(failed_boundaries) == 0
             report.add(Finding(
@@ -642,6 +655,7 @@ def run_verification(
                     f"timeline PNG(s) in {timeline_dir}"
                 ),
                 severity="info" if png_passed else "warning",
+                non_blocking=True,
             ))
             # Attach PNG paths to the corresponding visual discontinuity findings
             for finding in report.findings:
@@ -651,17 +665,18 @@ def run_verification(
                         if math.isclose(bt, finding.cut_time, abs_tol=0.01):
                             idx = bi
                             break
-                    if idx is not None and idx < len(png_paths):
-                        finding.timeline_png = png_paths[idx]
+                    if idx is not None and idx in boundary_png_map:
+                        finding.timeline_png = boundary_png_map[idx]
         else:
             report.add(Finding(
                 check="timeline_pngs",
                 passed=False,
                 details=f"timeline PNG generation failed for all {len(cut_boundaries)} cut boundary/ies",
                 severity="warning",
+                non_blocking=True,
             ))
 
-        # Report each failed boundary as a separate finding
+        # Report each failed boundary as a separate finding (non-blocking)
         for fail_idx, fail_ct, fail_err in failed_boundaries:
             report.add(Finding(
                 check="timeline_png_generation",
@@ -671,14 +686,8 @@ def run_verification(
                     f"({fail_ct:.2f}s): {fail_err}"
                 ),
                 severity="warning",
+                non_blocking=True,
             ))
-            # Mark the corresponding visual discontinuity finding
-            for finding in report.findings:
-                if (finding.check == "visual_discontinuity"
-                        and finding.cut_time is not None
-                        and math.isclose(finding.cut_time, fail_ct, abs_tol=0.01)):
-                    finding.timeline_png = None
-                    break
 
     return report
 
@@ -781,7 +790,8 @@ def _print_report(report: VerifyReport) -> None:
     print(f"{'='*60}")
     for f in report.findings:
         icon = "✓" if f.passed else "✗"
-        print(f"  {icon} [{f.check}] {f.details}")
+        suffix = " (non-blocking)" if f.non_blocking else ""
+        print(f"  {icon} [{f.check}] [{f.severity}]{suffix} {f.details}")
     print(f"{'-'*60}")
     print(f"  Total: {report.pass_count} passed, {report.fail_count} failed")
     print(f"{'='*60}\n")

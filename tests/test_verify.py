@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import tempfile
 import unittest
 from pathlib import Path
@@ -147,6 +148,7 @@ class TestFindingAndReport(unittest.TestCase):
         self.assertEqual(d["check"], "test")
         self.assertTrue(d["passed"])
         self.assertIsNone(d["cut_time"])
+        self.assertFalse(d["non_blocking"])
 
     def test_finding_with_cut_time(self) -> None:
         f = Finding(
@@ -155,6 +157,11 @@ class TestFindingAndReport(unittest.TestCase):
         )
         d = f.to_dict()
         self.assertEqual(d["cut_time"], 10.0)
+
+    def test_finding_non_blocking_to_dict(self) -> None:
+        f = Finding(check="x", passed=False, details="info", non_blocking=True)
+        d = f.to_dict()
+        self.assertTrue(d["non_blocking"])
 
     def test_report_starts_as_passed(self) -> None:
         report = VerifyReport(video="v.mp4", edl="e.json", passed=True)
@@ -172,6 +179,14 @@ class TestFindingAndReport(unittest.TestCase):
         report.add(Finding(check="x", passed=False, details="bad", severity="fail"))
         self.assertEqual(report.fail_count, 1)
         self.assertFalse(report.passed)
+
+    def test_report_add_non_blocking_fail(self) -> None:
+        report = VerifyReport(video="v.mp4", edl="e.json", passed=True)
+        report.add(Finding(check="x", passed=False, details="info",
+                           severity="warning", non_blocking=True))
+        self.assertEqual(report.fail_count, 1)
+        # non-blocking failure does NOT flip the overall verdict
+        self.assertTrue(report.passed)
 
     def test_report_to_dict(self) -> None:
         report = VerifyReport(video="v.mp4", edl="e.json", passed=True)
@@ -548,7 +563,7 @@ class TestRunVerification(unittest.TestCase):
         mock_probe: MagicMock,
         mock_timelines: MagicMock,
     ) -> None:
-        """When timeline PNG generation fails, a warning finding is produced."""
+        """When timeline PNG generation fails, a non-blocking warning finding is produced."""
         mock_extract.return_value = Path("/tmp/frame.jpg")
         mock_env.return_value = np.full(500, 0.3, dtype=np.float32)
         report = run_verification(
@@ -561,7 +576,10 @@ class TestRunVerification(unittest.TestCase):
         self.assertEqual(len(timeline_findings), 1)
         self.assertFalse(timeline_findings[0].passed)
         self.assertEqual(timeline_findings[0].severity, "warning")
+        self.assertTrue(timeline_findings[0].non_blocking)
         self.assertIn("failed", timeline_findings[0].details)
+        # Timeline failure is non-blocking: overall report still passes
+        self.assertTrue(report.passed)
 
     @patch("media_tooling.verify.generate_boundary_timelines")
     @patch("media_tooling.verify.probe_duration", return_value=30.0)
@@ -578,7 +596,7 @@ class TestRunVerification(unittest.TestCase):
         mock_probe: MagicMock,
         mock_timelines: MagicMock,
     ) -> None:
-        """When some timeline PNGs fail, each failure gets a finding."""
+        """When some timeline PNGs fail, each failure gets a non-blocking finding."""
         mock_extract.return_value = Path("/tmp/frame.jpg")
         mock_env.return_value = np.full(500, 0.3, dtype=np.float32)
         # 2 boundaries: first succeeds, second fails
@@ -596,12 +614,80 @@ class TestRunVerification(unittest.TestCase):
         self.assertEqual(len(png_findings), 1)
         self.assertFalse(png_findings[0].passed)
         self.assertIn("1/2", png_findings[0].details)
+        # Timeline findings are non-blocking: overall report still passes
+        self.assertTrue(png_findings[0].non_blocking)
+        self.assertTrue(report.passed)
         # Individual failure finding
         fail_findings = [f for f in report.findings
                          if f.check == "timeline_png_generation"]
         self.assertEqual(len(fail_findings), 1)
         self.assertFalse(fail_findings[0].passed)
+        self.assertTrue(fail_findings[0].non_blocking)
         self.assertIn("20.00s", fail_findings[0].details)
+
+    @patch("media_tooling.verify.generate_boundary_timelines")
+    @patch("media_tooling.verify.probe_duration", return_value=30.0)
+    @patch("media_tooling.verify.compute_envelope")
+    @patch("media_tooling.verify._extract_single_frame")
+    @patch("media_tooling.verify._compute_frame_delta", return_value=0.05)
+    @patch("media_tooling.verify._sample_luminance", return_value=0.5)
+    def test_timeline_png_index_mapping_with_gaps(
+        self,
+        mock_lum: MagicMock,
+        mock_delta: MagicMock,
+        mock_extract: MagicMock,
+        mock_env: MagicMock,
+        mock_probe: MagicMock,
+        mock_timelines: MagicMock,
+    ) -> None:
+        """PNG-to-boundary mapping is correct even when middle boundary fails."""
+        mock_extract.return_value = Path("/tmp/frame.jpg")
+        mock_env.return_value = np.full(500, 0.3, dtype=np.float32)
+        # 3-boundary EDL: boundary 0 (10.0s) succeeds, boundary 1 (20.0s) fails,
+        # boundary 2 (30.0s) succeeds. PNG paths are in generation order (only 0 and 2).
+        mock_timelines.return_value = (
+            ["/tmp/boundary_000_10.00s.png", "/tmp/boundary_002_30.00s.png"],
+            [(1, 20.0, "ffmpeg error")],
+        )
+        # Use an EDL with 3 boundaries
+        edl_3 = {
+            "version": 1,
+            "sources": ["s.mp4"],
+            "ranges": [
+                {"source": "s.mp4", "start": 0.0, "end": 10.0},
+                {"source": "s.mp4", "start": 20.0, "end": 30.0},
+                {"source": "s.mp4", "start": 40.0, "end": 50.0},
+                {"source": "s.mp4", "start": 60.0, "end": 70.0},
+            ],
+            "total_duration_s": 40.0,
+        }
+        report = run_verification(
+            Path("video.mp4"),
+            edl_3,
+            generate_timelines=True,
+        )
+        # boundary 0 (10.0s) should get its PNG
+        vis_10 = [f for f in report.findings
+                  if f.check == "visual_discontinuity"
+                  and f.cut_time is not None
+                  and math.isclose(f.cut_time, 10.0, abs_tol=0.01)]
+        self.assertEqual(len(vis_10), 1)
+        self.assertIsNotNone(vis_10[0].timeline_png)
+        # boundary 1 (20.0s) has no PNG
+        vis_20 = [f for f in report.findings
+                  if f.check == "visual_discontinuity"
+                  and f.cut_time is not None
+                  and math.isclose(f.cut_time, 20.0, abs_tol=0.01)]
+        self.assertEqual(len(vis_20), 1)
+        self.assertIsNone(vis_20[0].timeline_png)
+        # boundary 2 (30.0s) should get its PNG (NOT boundary 1's)
+        vis_30 = [f for f in report.findings
+                  if f.check == "visual_discontinuity"
+                  and f.cut_time is not None
+                  and math.isclose(f.cut_time, 30.0, abs_tol=0.01)]
+        self.assertEqual(len(vis_30), 1)
+        self.assertIsNotNone(vis_30[0].timeline_png)
+        self.assertIn("002_30.00s", vis_30[0].timeline_png)
 
     @patch("media_tooling.verify.probe_duration", return_value=30.0)
     @patch("media_tooling.verify.verify_audio_pop")
@@ -794,6 +880,32 @@ class TestReportFormat(unittest.TestCase):
         self.assertEqual(f1["check"], "visual_discontinuity")
         self.assertFalse(f1["passed"])
         self.assertEqual(f1["cut_time"], 5.0)
+
+    def test_print_report_shows_severity(self) -> None:
+        """_print_report output includes severity level for each finding."""
+        from io import StringIO
+
+        from media_tooling.verify import _print_report
+
+        report = VerifyReport(video="test.mp4", edl="edl.json", passed=True)
+        report.add(Finding(check="duration", passed=True, details="ok",
+                           severity="info"))
+        report.add(Finding(check="audio_pop", passed=False, details="check not performed",
+                           severity="warning", non_blocking=True))
+        buf = StringIO()
+        import sys
+        old_stdout = sys.stdout
+        sys.stdout = buf
+        try:
+            _print_report(report)
+        finally:
+            sys.stdout = old_stdout
+        output = buf.getvalue()
+        # Severity should be visible in output
+        self.assertIn("[info]", output)
+        self.assertIn("[warning]", output)
+        # Non-blocking should be indicated
+        self.assertIn("(non-blocking)", output)
 
 
 if __name__ == "__main__":
