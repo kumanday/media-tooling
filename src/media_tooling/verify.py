@@ -166,6 +166,7 @@ def verify_duration(
             passed=False,
             details="EDL has no total_duration_s field; duration check not performed.",
             severity="warning",
+            non_blocking=True,
         )
 
     try:
@@ -275,6 +276,7 @@ def verify_visual_discontinuity(
                 details="Could not extract frames at cut boundary; check not performed.",
                 severity="warning",
                 cut_time=cut_time,
+                non_blocking=True,
             )
 
         delta = _compute_frame_delta(frame_before, frame_after)
@@ -285,6 +287,7 @@ def verify_visual_discontinuity(
                 details="Frame comparison failed; check not performed.",
                 severity="warning",
                 cut_time=cut_time,
+                non_blocking=True,
             )
 
         passed = delta < threshold
@@ -329,6 +332,7 @@ def verify_audio_pop(
             details=f"Could not compute envelope: {exc}; check not performed.",
             severity="warning",
             cut_time=cut_time,
+            non_blocking=True,
         )
 
     if envelope.size == 0 or envelope.max() == 0:
@@ -338,6 +342,7 @@ def verify_audio_pop(
             details="No audio data near cut boundary; check not performed.",
             severity="warning",
             cut_time=cut_time,
+            non_blocking=True,
         )
 
     # Check for any spike above threshold near the cut boundary
@@ -390,9 +395,9 @@ def verify_grade_consistency(
 ) -> Finding:
     """Sample luminance at key points and check for grade consistency.
 
-    Samples: first 2 s, last 2 s, and *n_midpoints* evenly-spaced
-    mid-points.  If any pair of samples differs by more than
-    *tolerance*, the check fails.
+    Samples at approximately 1 s from the start, 1 s from the end,
+    and *n_midpoints* evenly-spaced mid-points.  If any pair of
+    samples differs by more than *tolerance*, the check fails.
     """
     if total_duration < 4.0:
         return Finding(
@@ -400,16 +405,17 @@ def verify_grade_consistency(
             passed=False,
             details="Video too short for grade consistency sampling; check not performed.",
             severity="warning",
+            non_blocking=True,
         )
 
     sample_times: list[float] = []
-    # First 2 s
+    # ~1 s from start
     sample_times.append(min(1.0, total_duration * 0.1))
     # Mid-points
     for i in range(1, n_midpoints + 1):
         frac = i / (n_midpoints + 1)
         sample_times.append(total_duration * frac)
-    # Last 2 s
+    # ~1 s from end
     sample_times.append(max(total_duration - 1.0, total_duration * 0.9))
 
     luminances: list[tuple[float, float]] = []
@@ -424,6 +430,7 @@ def verify_grade_consistency(
             passed=False,
             details="Insufficient frames for grade consistency check; not performed.",
             severity="warning",
+            non_blocking=True,
         )
 
     # Find max pairwise delta
@@ -569,13 +576,16 @@ def run_verification(
             passed=False,
             details="cannot verify grade consistency: video duration unavailable",
             severity="warning",
+            non_blocking=True,
         ))
 
-    # 6. Retry loop: re-evaluate failed checks up to max_passes
+    # 6. Retry loop: re-evaluate failed (blocking) checks up to max_passes
+    # Non-blocking warnings (structural issues like missing audio data,
+    # unavailable tools) are excluded — retrying won't fix them.
     for pass_num in range(1, max_passes + 1):
-        failed_checks = [f for f in report.findings if not f.passed]
+        failed_checks = [f for f in report.findings if not f.passed and not f.non_blocking]
         if not failed_checks:
-            break  # all checks passing
+            break  # all blocking checks passing
 
         # Re-run only the checkable failures (not info-only findings like cut_boundaries)
         recheck_findings: list[Finding] = []
