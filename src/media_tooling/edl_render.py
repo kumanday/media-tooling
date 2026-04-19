@@ -169,6 +169,10 @@ def validate_edl(edl: dict[str, Any]) -> None:
                     f"subtitles dict contains unknown keys: {invalid}. "
                     f"Allowed: {allowed}"
                 )
+            if "path" in subtitles and not isinstance(subtitles["path"], str):
+                raise EDLSchemaError(
+                    f"subtitles 'path' must be a string, got {type(subtitles['path']).__name__}"
+                )
         else:
             raise EDLSchemaError(
                 f"subtitles must be a string path or dict, got {type(subtitles).__name__}"
