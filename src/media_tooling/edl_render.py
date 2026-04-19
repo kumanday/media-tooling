@@ -34,7 +34,7 @@ from typing import Any
 from PIL import Image, ImageDraw, ImageFont
 
 from media_tooling.burn_subtitles import burn_subtitles
-from media_tooling.ffprobe_utils import probe_duration
+from media_tooling.ffprobe_utils import probe_duration, probe_video_size
 from media_tooling.grade import PRESETS, auto_grade_for_clip, get_preset
 from media_tooling.loudnorm import apply_loudnorm_preview, apply_loudnorm_two_pass
 from media_tooling.rough_cut import quote_concat_path, validate_concat_demuxer_usage
@@ -1047,6 +1047,7 @@ def _is_image_path(path: str) -> bool:
 def build_overlay_filter_parts(
     overlays: list[dict[str, Any]],
     base_fps: int = 30,
+    base_size: tuple[int, int] | None = None,
 ) -> list[str]:
     """Build PTS-shift filter parts for each overlay input.
 
@@ -1058,19 +1059,28 @@ def build_overlay_filter_parts(
     ffmpeg would treat the image as a single-frame video and the
     ``enable='between(t,...)'`` window would have no frames to show.
 
+    If *base_size* ``(width, height)`` is provided, each overlay is
+    scaled to match the base video resolution and its pixel format is
+    normalized to ``yuva420p`` (with alpha for overlay compositing).
+    This prevents visible artifacts when overlay and base resolutions
+    differ.
+
     Returns a list of filter strings like
-    ``[1:v]fps=30,setpts=PTS-STARTPTS+5.000/TB[a1]``.
+    ``[1:v]fps=30,scale=1920:1080,format=yuva420p,setpts=PTS-STARTPTS+5.000/TB[a1]``.
     """
     parts: list[str] = []
     for idx, ov in enumerate(overlays, start=1):
         t = float(ov["start"])
         resolved = ov.get("_resolved_path", "")
+        filters: list[str] = []
         if _is_image_path(resolved):
-            parts.append(
-                f"[{idx}:v]fps={base_fps},setpts=PTS-STARTPTS+{t:.3f}/TB[a{idx}]"
-            )
-        else:
-            parts.append(f"[{idx}:v]setpts=PTS-STARTPTS+{t:.3f}/TB[a{idx}]")
+            filters.append(f"fps={base_fps}")
+        if base_size is not None:
+            w, h = base_size
+            filters.append(f"scale={w}:{h}")
+            filters.append("format=yuva420p")
+        filters.append(f"setpts=PTS-STARTPTS+{t:.3f}/TB")
+        parts.append(f"[{idx}:v]{','.join(filters)}[a{idx}]")
     return parts
 
 
@@ -1091,10 +1101,12 @@ def build_overlay_chain(
 
     Each overlay is composited onto the base with
     ``overlay=enable='between(t,start,end)'``, ordered by z_order
-    (ascending, lowest first).
+    (ascending, lowest first).  ``eof_action=end`` prevents short video
+    overlays from showing a stale last frame past the overlay's natural
+    duration.
 
     Returns a list of filter strings like
-    ``[0:v][a1]overlay=enable='between(t,5.000,10.000)':x=50:y=100[v1]``.
+    ``[0:v][a1]overlay=enable='between(t,5.000,10.000)':eof_action=end:x=50:y=100[v1]``.
     """
     indexed = _sorted_overlay_indices(overlays)
 
@@ -1109,7 +1121,7 @@ def build_overlay_chain(
         next_label = f"[v{idx}]"
         parts.append(
             f"{current}[a{idx}]overlay=enable='between(t,{t:.3f},{end:.3f})'"
-            f":x={x}:y={y}{next_label}"
+            f":eof_action=end:x={x}:y={y}{next_label}"
         )
         current = next_label
     return parts
@@ -1167,8 +1179,17 @@ def build_final_composite(
     # Build filter_complex
     filter_parts: list[str] = []
 
+    # Probe base video dimensions for overlay scale normalization
+    base_size: tuple[int, int] | None = None
+    try:
+        base_size = probe_video_size(base_path)
+    except (RuntimeError, FileNotFoundError):
+        # If probing fails, proceed without scale/format normalization
+        pass
+
     # PTS-shift every overlay (Hard Rule 4)
-    filter_parts.extend(build_overlay_filter_parts(overlays))
+    # Scale overlays to base dimensions and normalize pixel format
+    filter_parts.extend(build_overlay_filter_parts(overlays, base_size=base_size))
 
     # Chain overlays on top of base with enable-between
     chain_parts = build_overlay_chain(overlays)
@@ -1254,16 +1275,24 @@ def resolve_overlay_sources(
 ) -> list[dict[str, Any]]:
     """Resolve overlay source paths and generate PIL cards.
 
-    For overlays with ``source``, resolves the path relative to *edit_dir*.
-    For overlays with ``card``, generates a PNG card via Pillow.
+    For overlays with ``source``, resolves the path relative to *edit_dir*
+    and verifies the file exists.  For overlays with ``card``, generates
+    a PNG card via Pillow.
 
     Returns a new list of overlay dicts with ``_resolved_path`` added.
+
+    Raises ``FileNotFoundError`` if a source overlay file does not exist.
     """
     resolved: list[dict[str, Any]] = []
     for i, ov in enumerate(overlays):
         ov = dict(ov)  # shallow copy
         if "source" in ov:
-            ov["_resolved_path"] = str(resolve_path(ov["source"], edit_dir))
+            resolved_path = resolve_path(ov["source"], edit_dir)
+            if not resolved_path.exists():
+                raise FileNotFoundError(
+                    f"overlay[{i}] source file not found: {resolved_path}"
+                )
+            ov["_resolved_path"] = str(resolved_path)
         elif "card" in ov:
             cards_dir = edit_dir / "cards"
             cards_dir.mkdir(parents=True, exist_ok=True)

@@ -1899,6 +1899,40 @@ class BuildOverlayFilterPartsTests(unittest.TestCase):
         self.assertIn("fps=30", parts[0])  # image gets fps
         self.assertNotIn("fps=", parts[1])  # video does not
 
+    def test_base_size_adds_scale_and_format(self) -> None:
+        """When base_size is provided, overlays get scale + format filters."""
+        overlays = [
+            {"source": "overlay.png", "start": 5.0, "end": 10.0,
+             "_resolved_path": "/tmp/overlay.png"},
+        ]
+        parts = build_overlay_filter_parts(overlays, base_size=(1920, 1080))
+        self.assertEqual(len(parts), 1)
+        self.assertIn("scale=1920:1080", parts[0])
+        self.assertIn("format=yuva420p", parts[0])
+        self.assertIn("fps=30", parts[0])
+        self.assertIn("setpts=PTS-STARTPTS+5.000/TB", parts[0])
+
+    def test_base_size_video_overlay_gets_scale(self) -> None:
+        """Video overlays also get scale+format when base_size is set."""
+        overlays = [
+            {"source": "clip.mp4", "start": 5.0, "end": 10.0,
+             "_resolved_path": "/tmp/clip.mp4"},
+        ]
+        parts = build_overlay_filter_parts(overlays, base_size=(1280, 720))
+        self.assertIn("scale=1280:720", parts[0])
+        self.assertIn("format=yuva420p", parts[0])
+        self.assertNotIn("fps=", parts[0])  # video doesn't need fps
+
+    def test_no_base_size_no_scale(self) -> None:
+        """Without base_size, no scale or format filters are added."""
+        overlays = [
+            {"source": "overlay.png", "start": 5.0, "end": 10.0,
+             "_resolved_path": "/tmp/overlay.png"},
+        ]
+        parts = build_overlay_filter_parts(overlays, base_size=None)
+        self.assertNotIn("scale=", parts[0])
+        self.assertNotIn("format=", parts[0])
+
 
 # ── IsImagePath helper tests ──────────────────────────────────────────────────
 
@@ -1970,6 +2004,7 @@ class BuildOverlayChainTests(unittest.TestCase):
         parts = build_overlay_chain(overlays)
         self.assertEqual(len(parts), 1)
         self.assertIn("overlay=enable='between(t,5.000,10.000)'", parts[0])
+        self.assertIn("eof_action=end", parts[0])
         self.assertIn(":x=50:y=100", parts[0])
         self.assertIn("[0:v][a1]", parts[0])
         self.assertIn("[v1]", parts[0])
@@ -1998,6 +2033,15 @@ class BuildOverlayChainTests(unittest.TestCase):
         ]
         parts = build_overlay_chain(overlays)
         self.assertIn("enable='between(t,3.500,7.250)'", parts[0])
+
+    def test_eof_action_prevents_stale_last_frame(self) -> None:
+        """eof_action=end prevents short video overlays from showing
+        stale last frame past the overlay's natural duration."""
+        overlays = [
+            {"source": "short.mp4", "start": 5.0, "end": 10.0}
+        ]
+        parts = build_overlay_chain(overlays)
+        self.assertIn("eof_action=end", parts[0])
 
 
 # ── PIL overlay card generation tests ─────────────────────────────────────────
@@ -2051,6 +2095,9 @@ class ResolveOverlaySourcesTests(unittest.TestCase):
     def test_source_overlay_resolves_path(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             edit_dir = Path(tmpdir)
+            # Create the source file so resolution succeeds
+            overlay_file = edit_dir / "overlay.png"
+            overlay_file.write_bytes(b"\x00" * 10)
             overlays = [{"source": "overlay.png", "start": 5.0, "end": 10.0}]
             resolved = resolve_overlay_sources(overlays, edit_dir)
             self.assertEqual(len(resolved), 1)
@@ -2072,18 +2119,44 @@ class ResolveOverlaySourcesTests(unittest.TestCase):
             self.assertIn("overlay_card_0.png", resolved[0]["_resolved_path"])
 
     def test_source_overlay_does_not_modify_original(self) -> None:
-        overlays = [{"source": "overlay.png", "start": 5.0, "end": 10.0}]
-        resolved = resolve_overlay_sources(overlays, Path("/tmp"))
-        self.assertNotIn("_resolved_path", overlays[0])
-        self.assertIn("_resolved_path", resolved[0])
+        with tempfile.TemporaryDirectory() as tmpdir:
+            edit_dir = Path(tmpdir)
+            overlay_file = edit_dir / "overlay.png"
+            overlay_file.write_bytes(b"\x00" * 10)
+            overlays = [{"source": "overlay.png", "start": 5.0, "end": 10.0}]
+            resolved = resolve_overlay_sources(overlays, edit_dir)
+            self.assertNotIn("_resolved_path", overlays[0])
+            self.assertIn("_resolved_path", resolved[0])
+
+    def test_missing_source_file_raises(self) -> None:
+        """resolve_overlay_sources raises FileNotFoundError for missing source."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            edit_dir = Path(tmpdir)
+            overlays = [{"source": "nonexistent.png", "start": 5.0, "end": 10.0}]
+            with self.assertRaises(FileNotFoundError) as ctx:
+                resolve_overlay_sources(overlays, edit_dir)
+            self.assertIn("source file not found", str(ctx.exception))
+            self.assertIn("nonexistent.png", str(ctx.exception))
+
+    def test_existing_source_file_passes(self) -> None:
+        """resolve_overlay_sources succeeds when source file exists."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            edit_dir = Path(tmpdir)
+            overlay_file = edit_dir / "overlay.png"
+            overlay_file.write_bytes(b"\x00" * 10)
+            overlays = [{"source": "overlay.png", "start": 5.0, "end": 10.0}]
+            resolved = resolve_overlay_sources(overlays, edit_dir)
+            self.assertEqual(len(resolved), 1)
+            self.assertIn("_resolved_path", resolved[0])
 
 
 # ── Build final composite tests ───────────────────────────────────────────────
 
 
 class BuildFinalCompositeTests(unittest.TestCase):
+    @patch("media_tooling.edl_render.probe_video_size", return_value=(1920, 1080))
     @patch("media_tooling.edl_render.subprocess.run")
-    def test_overlays_with_subtitles(self, mock_run: MagicMock) -> None:
+    def test_overlays_with_subtitles(self, mock_run: MagicMock, mock_probe: MagicMock) -> None:
         """build_final_composite builds filter_complex with PTS shift,
         enable-between, and subtitles last."""
         mock_run.return_value = MagicMock(returncode=0)
@@ -2122,8 +2195,9 @@ class BuildFinalCompositeTests(unittest.TestCase):
         self.assertLess(overlay_pos, subs_pos,
                         "subtitles filter must come after overlay filter")
 
+    @patch("media_tooling.edl_render.probe_video_size", return_value=(1920, 1080))
     @patch("media_tooling.edl_render.subprocess.run")
-    def test_overlays_without_subtitles(self, mock_run: MagicMock) -> None:
+    def test_overlays_without_subtitles(self, mock_run: MagicMock, mock_probe: MagicMock) -> None:
         """build_final_composite with overlays but no subtitles
         uses null filter for final output label."""
         mock_run.return_value = MagicMock(returncode=0)
@@ -2149,8 +2223,9 @@ class BuildFinalCompositeTests(unittest.TestCase):
         self.assertNotIn("subtitles=", cmd_str)
         self.assertIn("null[outv]", cmd_str)
 
+    @patch("media_tooling.edl_render.probe_video_size", return_value=(1280, 720))
     @patch("media_tooling.edl_render.subprocess.run")
-    def test_video_overlay_no_loop(self, mock_run: MagicMock) -> None:
+    def test_video_overlay_no_loop(self, mock_run: MagicMock, mock_probe: MagicMock) -> None:
         """Video overlay inputs should NOT get -loop 1."""
         mock_run.return_value = MagicMock(returncode=0)
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -2171,8 +2246,9 @@ class BuildFinalCompositeTests(unittest.TestCase):
         self.assertNotIn("fps=", cmd_str)
         self.assertIn("setpts=PTS-STARTPTS", cmd_str)
 
+    @patch("media_tooling.edl_render.probe_video_size", return_value=(1920, 1080))
     @patch("media_tooling.edl_render.subprocess.run")
-    def test_codec_matches_subtitle_path(self, mock_run: MagicMock) -> None:
+    def test_codec_matches_subtitle_path(self, mock_run: MagicMock, mock_probe: MagicMock) -> None:
         """Compositing codec settings should match burn_subtitles."""
         mock_run.return_value = MagicMock(returncode=0)
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -2192,8 +2268,9 @@ class BuildFinalCompositeTests(unittest.TestCase):
         self.assertIn("veryfast", cmd)
         self.assertIn("20", cmd)  # CRF 20
 
+    @patch("media_tooling.edl_render.probe_video_size", return_value=(1920, 1080))
     @patch("media_tooling.edl_render.subprocess.run")
-    def test_shortest_flag_with_loop(self, mock_run: MagicMock) -> None:
+    def test_shortest_flag_with_loop(self, mock_run: MagicMock, mock_probe: MagicMock) -> None:
         """-shortest must be present when -loop 1 is used for image overlays."""
         mock_run.return_value = MagicMock(returncode=0)
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -2211,6 +2288,51 @@ class BuildFinalCompositeTests(unittest.TestCase):
         cmd = mock_run.call_args[0][0]
         self.assertIn("-shortest", cmd)
         self.assertIn("-loop", cmd)
+
+    @patch("media_tooling.edl_render.probe_video_size", return_value=(1920, 1080))
+    @patch("media_tooling.edl_render.subprocess.run")
+    def test_scale_normalization_with_base_size(self, mock_run: MagicMock, mock_probe: MagicMock) -> None:
+        """build_final_composite applies scale+format when base video dimensions are known."""
+        mock_run.return_value = MagicMock(returncode=0)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            edit_dir = Path(tmpdir)
+            base_path = edit_dir / "base.mp4"
+            base_path.write_bytes(b"\x00" * 100)
+            out_path = edit_dir / "output.mp4"
+            overlays = [
+                {"source": "overlay.png", "start": 5.0, "end": 10.0,
+                 "_resolved_path": str(edit_dir / "overlay.png")},
+            ]
+            build_final_composite(
+                base_path, overlays, None, out_path, edit_dir
+            )
+        cmd = mock_run.call_args[0][0]
+        cmd_str = " ".join(cmd)
+        self.assertIn("scale=1920:1080", cmd_str)
+        self.assertIn("format=yuva420p", cmd_str)
+
+    @patch("media_tooling.edl_render.probe_video_size", side_effect=RuntimeError("probe failed"))
+    @patch("media_tooling.edl_render.subprocess.run")
+    def test_probe_failure_proceeds_without_scale(self, mock_run: MagicMock, mock_probe: MagicMock) -> None:
+        """If probing base video dimensions fails, compositing proceeds
+        without scale/format normalization."""
+        mock_run.return_value = MagicMock(returncode=0)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            edit_dir = Path(tmpdir)
+            base_path = edit_dir / "base.mp4"
+            base_path.write_bytes(b"\x00" * 100)
+            out_path = edit_dir / "output.mp4"
+            overlays = [
+                {"source": "overlay.png", "start": 5.0, "end": 10.0,
+                 "_resolved_path": str(edit_dir / "overlay.png")},
+            ]
+            build_final_composite(
+                base_path, overlays, None, out_path, edit_dir
+            )
+        cmd = mock_run.call_args[0][0]
+        cmd_str = " ".join(cmd)
+        self.assertNotIn("scale=", cmd_str)
+        self.assertNotIn("format=yuva420p", cmd_str)
 
     @patch("media_tooling.edl_render.burn_subtitles_last")
     def test_no_overlays_with_subtitles_delegates(
@@ -2274,6 +2396,9 @@ class RenderEDLOverlayTests(unittest.TestCase):
             edit_dir = Path(tmpdir)
             base_path = edit_dir / "base.mp4"
             base_path.write_bytes(b"\x00" * 100)
+            # Create the overlay source file so resolve_overlay_sources succeeds
+            overlay_file = edit_dir / "overlay.png"
+            overlay_file.write_bytes(b"\x00" * 10)
             edl_path = edit_dir / "test_edl.json"
             edl = _minimal_edl()
             edl["overlays"] = [

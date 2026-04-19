@@ -24,3 +24,32 @@ def probe_duration(input_path: Path, ffprobe_bin: str) -> float:
     if duration_value is None:
         raise RuntimeError(f"Could not determine duration for {input_path}")
     return float(duration_value)
+
+
+def probe_video_size(input_path: Path, ffprobe_bin: str = "ffprobe") -> tuple[int, int]:
+    """Return ``(width, height)`` of the first video stream in *input_path*.
+
+    Raises ``RuntimeError`` if the video dimensions cannot be determined.
+    """
+    command = [
+        ffprobe_bin,
+        "-v", "error",
+        "-select_streams", "v:0",
+        "-show_entries", "stream=width,height",
+        "-of", "json",
+        str(input_path),
+    ]
+    completed = subprocess.run(
+        command, check=False, capture_output=True, text=True,
+    )
+    if completed.returncode != 0:
+        raise RuntimeError(f"ffprobe failed for {input_path}:\n{completed.stderr.strip()}")
+    payload = json.loads(completed.stdout)
+    streams = payload.get("streams", [])
+    if not streams:
+        raise RuntimeError(f"No video stream found in {input_path}")
+    w = streams[0].get("width")
+    h = streams[0].get("height")
+    if w is None or h is None:
+        raise RuntimeError(f"Could not determine video size for {input_path}")
+    return int(w), int(h)
