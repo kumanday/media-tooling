@@ -182,6 +182,8 @@ Before presenting the output to the user, verify your own work.
 
 1. **Run `media-timeline-view` on the rendered output** (not the sources) at
    every cut boundary (±1.5s window). Save images to `$PROJECT_DIR/edit/verify/`.
+   `media-timeline-view` works on any MP4 — source files and rendered output
+   alike.
 2. **Check each boundary image for:**
    - Visual discontinuity / flash / jump at the cut
    - Waveform spike at the boundary (audio pop that slipped past the 30ms fade)
@@ -258,8 +260,9 @@ This ensures continuity when the same project is revisited across sessions.
 ## Hard Rules (production correctness — non-negotiable)
 
 These 12 rules are enforced by code guardrails where possible and must never be
-violated regardless of aesthetic preference. See `docs/hard-rules.md` for the
-full rationale and enforcement details.
+violated regardless of aesthetic preference. Full rationale and enforcement
+details are in `docs/hard-rules.md` (available in the media-tooling repository;
+not bundled when the skill is deployed standalone).
 
 | # | Rule | Enforced by |
 |---|------|-------------|
@@ -283,7 +286,8 @@ executed. This is not optional. See Anti-pattern 11.
 ## Anti-patterns (things that consistently fail)
 
 Avoid these 13 patterns at all times. They produce broken or low-quality output
-regardless of style. See `docs/hard-rules.md` for detailed explanations.
+regardless of style. Full explanations are in `docs/hard-rules.md` (available in
+the media-tooling repository; not bundled when the skill is deployed standalone).
 
 | # | Anti-pattern | Related Hard Rule |
 |---|-------------|-------------------|
@@ -363,10 +367,11 @@ Step 8: Iterate on feedback and persist session memory.
 }
 ```
 
-- `sources`: **dict** mapping short names to absolute paths (preferred), or a
-  **list** of absolute paths (matched by basename; duplicates rejected). Use a
-  dict when short names are needed for range references, or when multiple
-  sources share the same basename.
+- `sources`: **dict** mapping short names to absolute paths. Use a dict when
+  short names are needed for range references, or when multiple sources share
+  the same basename. A **list** of absolute paths is accepted as a shorthand
+  when all basenames are unique (matched by basename; duplicates rejected),
+  but dict is preferred for clarity.
 - `ranges`: ordered list of segments to include. Each requires `source`,
   `start`, `end`. Optional: `beat`, `quote`, `reason`, `grade`.
 - `grade`: top-level default grade preset or raw ffmpeg filter. Overridden by
