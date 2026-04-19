@@ -490,7 +490,7 @@ class TestRunVerification(unittest.TestCase):
         mock_env: MagicMock,
         mock_probe: MagicMock,
     ) -> None:
-        """With max_passes=1, no retry occurs and failures are flagged."""
+        """With max_passes=1, one retry occurs and persistent failures are flagged."""
         mock_extract.return_value = Path("/tmp/frame.jpg")
         mock_env.return_value = np.full(500, 0.3, dtype=np.float32)
         # Always fail visual check
@@ -533,7 +533,7 @@ class TestRunVerification(unittest.TestCase):
         for f in warning_findings:
             self.assertNotIn("unresolved after max passes", f.details)
 
-    @patch("media_tooling.verify.generate_boundary_timelines", return_value=[])
+    @patch("media_tooling.verify.generate_boundary_timelines", return_value=([], []))
     @patch("media_tooling.verify.probe_duration", return_value=30.0)
     @patch("media_tooling.verify.compute_envelope")
     @patch("media_tooling.verify._extract_single_frame")
@@ -562,6 +562,97 @@ class TestRunVerification(unittest.TestCase):
         self.assertFalse(timeline_findings[0].passed)
         self.assertEqual(timeline_findings[0].severity, "warning")
         self.assertIn("failed", timeline_findings[0].details)
+
+    @patch("media_tooling.verify.generate_boundary_timelines")
+    @patch("media_tooling.verify.probe_duration", return_value=30.0)
+    @patch("media_tooling.verify.compute_envelope")
+    @patch("media_tooling.verify._extract_single_frame")
+    @patch("media_tooling.verify._compute_frame_delta", return_value=0.05)
+    @patch("media_tooling.verify._sample_luminance", return_value=0.5)
+    def test_partial_timeline_failure_reported(
+        self,
+        mock_lum: MagicMock,
+        mock_delta: MagicMock,
+        mock_extract: MagicMock,
+        mock_env: MagicMock,
+        mock_probe: MagicMock,
+        mock_timelines: MagicMock,
+    ) -> None:
+        """When some timeline PNGs fail, each failure gets a finding."""
+        mock_extract.return_value = Path("/tmp/frame.jpg")
+        mock_env.return_value = np.full(500, 0.3, dtype=np.float32)
+        # 2 boundaries: first succeeds, second fails
+        mock_timelines.return_value = (
+            ["/tmp/boundary_000_10.00s.png"],
+            [(1, 20.0, "ffmpeg error")],
+        )
+        report = run_verification(
+            Path("video.mp4"),
+            _minimal_edl(),
+            generate_timelines=True,
+        )
+        # timeline_pngs finding should show partial success
+        png_findings = [f for f in report.findings if f.check == "timeline_pngs"]
+        self.assertEqual(len(png_findings), 1)
+        self.assertFalse(png_findings[0].passed)
+        self.assertIn("1/2", png_findings[0].details)
+        # Individual failure finding
+        fail_findings = [f for f in report.findings
+                         if f.check == "timeline_png_generation"]
+        self.assertEqual(len(fail_findings), 1)
+        self.assertFalse(fail_findings[0].passed)
+        self.assertIn("20.00s", fail_findings[0].details)
+
+    @patch("media_tooling.verify.probe_duration", return_value=30.0)
+    @patch("media_tooling.verify.verify_audio_pop")
+    @patch("media_tooling.verify.verify_visual_discontinuity")
+    @patch("media_tooling.verify.verify_grade_consistency")
+    def test_max_passes_default_gives_three_retries(
+        self,
+        mock_grade: MagicMock,
+        mock_visual: MagicMock,
+        mock_audio: MagicMock,
+        mock_probe: MagicMock,
+    ) -> None:
+        """With max_passes=3, there should be exactly 3 retry iterations."""
+        # Two-boundary EDL: visual gets called twice per pass
+        # We want both boundaries to fail through retries 1-2, then pass on retry 3.
+        mock_visual.side_effect = [
+            # Initial pass
+            Finding(check="visual_discontinuity", passed=False, details="fail",
+                    severity="fail", cut_time=10.0),
+            Finding(check="visual_discontinuity", passed=False, details="fail",
+                    severity="fail", cut_time=20.0),
+            # Retry 1
+            Finding(check="visual_discontinuity", passed=False, details="fail",
+                    severity="fail", cut_time=10.0),
+            Finding(check="visual_discontinuity", passed=False, details="fail",
+                    severity="fail", cut_time=20.0),
+            # Retry 2
+            Finding(check="visual_discontinuity", passed=False, details="fail",
+                    severity="fail", cut_time=10.0),
+            Finding(check="visual_discontinuity", passed=False, details="fail",
+                    severity="fail", cut_time=20.0),
+            # Retry 3 — passes
+            Finding(check="visual_discontinuity", passed=True, details="ok",
+                    severity="info", cut_time=10.0),
+            Finding(check="visual_discontinuity", passed=True, details="ok",
+                    severity="info", cut_time=20.0),
+        ]
+        mock_audio.return_value = Finding(
+            check="audio_pop", passed=True, details="ok", cut_time=10.0,
+        )
+        mock_grade.return_value = Finding(
+            check="grade_consistency", passed=True, details="ok", severity="info",
+        )
+        report = run_verification(
+            Path("video.mp4"),
+            _minimal_edl(),
+            max_passes=3,
+            generate_timelines=False,
+        )
+        # With 3 retries, the 3rd retry should succeed
+        self.assertTrue(report.passed)
 
     @patch("media_tooling.verify.probe_duration", return_value=30.0)
     @patch("media_tooling.verify.verify_audio_pop")

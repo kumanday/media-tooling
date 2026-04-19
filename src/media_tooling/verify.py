@@ -454,14 +454,16 @@ def generate_boundary_timelines(
     output_dir: Path,
     ffmpeg_bin: str = "ffmpeg",
     window: float = CUT_BOUNDARY_WINDOW_S,
-) -> list[str]:
+) -> tuple[list[str], list[tuple[int, float, str]]]:
     """Generate timeline_view PNGs at every cut boundary.
 
-    Returns a list of generated PNG paths.
+    Returns a tuple of (successful_png_paths, failed_boundaries).
+    Each failed entry is (index, cut_time, error_message).
     """
     from media_tooling.timeline_view import generate_timeline
 
     png_paths: list[str] = []
+    failed: list[tuple[int, float, str]] = []
     for i, cut_time in enumerate(cut_boundaries):
         start = max(0.0, cut_time - window)
         end = cut_time + window
@@ -478,10 +480,11 @@ def generate_boundary_timelines(
             )
             png_paths.append(str(out_path))
         except Exception as exc:
+            failed.append((i, cut_time, str(exc)))
             print(f"  warning: timeline generation failed at {cut_time:.2f}s: {exc}",
                   file=sys.stderr)
 
-    return png_paths
+    return png_paths, failed
 
 
 # ---------------------------------------------------------------------------
@@ -562,7 +565,7 @@ def run_verification(
         ))
 
     # 6. Retry loop: re-evaluate failed checks up to max_passes
-    for pass_num in range(1, max_passes):
+    for pass_num in range(1, max_passes + 1):
         failed_checks = [f for f in report.findings if not f.passed]
         if not failed_checks:
             break  # all checks passing
@@ -624,15 +627,21 @@ def run_verification(
     if generate_timelines and cut_boundaries:
         timeline_dir = output_dir or video_path.parent / "verify_timelines"
         timeline_dir.mkdir(parents=True, exist_ok=True)
-        png_paths = generate_boundary_timelines(
+        png_paths, failed_boundaries = generate_boundary_timelines(
             video_path, cut_boundaries, timeline_dir, ffmpeg_bin,
         )
+
+        # Report on successful PNGs
         if png_paths:
+            png_passed = len(failed_boundaries) == 0
             report.add(Finding(
                 check="timeline_pngs",
-                passed=True,
-                details=f"Generated {len(png_paths)} timeline PNG(s) in {timeline_dir}",
-                severity="info",
+                passed=png_passed,
+                details=(
+                    f"Generated {len(png_paths)}/{len(cut_boundaries)} "
+                    f"timeline PNG(s) in {timeline_dir}"
+                ),
+                severity="info" if png_passed else "warning",
             ))
             # Attach PNG paths to the corresponding visual discontinuity findings
             for finding in report.findings:
@@ -651,6 +660,25 @@ def run_verification(
                 details=f"timeline PNG generation failed for all {len(cut_boundaries)} cut boundary/ies",
                 severity="warning",
             ))
+
+        # Report each failed boundary as a separate finding
+        for fail_idx, fail_ct, fail_err in failed_boundaries:
+            report.add(Finding(
+                check="timeline_png_generation",
+                passed=False,
+                details=(
+                    f"Timeline PNG failed at boundary {fail_idx} "
+                    f"({fail_ct:.2f}s): {fail_err}"
+                ),
+                severity="warning",
+            ))
+            # Mark the corresponding visual discontinuity finding
+            for finding in report.findings:
+                if (finding.check == "visual_discontinuity"
+                        and finding.cut_time is not None
+                        and math.isclose(finding.cut_time, fail_ct, abs_tol=0.01)):
+                    finding.timeline_png = None
+                    break
 
     return report
 
