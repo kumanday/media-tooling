@@ -2185,7 +2185,7 @@ class BuildFinalCompositeTests(unittest.TestCase):
                  "_resolved_path": str(edit_dir / "overlay.png")},
             ]
             build_final_composite(
-                base_path, overlays, srt_path, out_path, edit_dir
+                base_path, overlays, srt_path, out_path
             )
         # Verify the ffmpeg command was called
         self.assertTrue(mock_run.called)
@@ -2222,7 +2222,7 @@ class BuildFinalCompositeTests(unittest.TestCase):
                  "_resolved_path": str(edit_dir / "overlay.png")},
             ]
             build_final_composite(
-                base_path, overlays, None, out_path, edit_dir
+                base_path, overlays, None, out_path
             )
         self.assertTrue(mock_run.called)
         cmd = mock_run.call_args[0][0]
@@ -2249,7 +2249,7 @@ class BuildFinalCompositeTests(unittest.TestCase):
                  "_resolved_path": str(edit_dir / "clip.mp4")},
             ]
             build_final_composite(
-                base_path, overlays, None, out_path, edit_dir
+                base_path, overlays, None, out_path
             )
         cmd = mock_run.call_args[0][0]
         cmd_str = " ".join(cmd)
@@ -2272,7 +2272,7 @@ class BuildFinalCompositeTests(unittest.TestCase):
                  "_resolved_path": str(edit_dir / "overlay.png")},
             ]
             build_final_composite(
-                base_path, overlays, None, out_path, edit_dir
+                base_path, overlays, None, out_path
             )
         cmd = mock_run.call_args[0][0]
         # Verify codec matches burn_subtitles settings
@@ -2294,7 +2294,7 @@ class BuildFinalCompositeTests(unittest.TestCase):
                  "_resolved_path": str(edit_dir / "card.png")},
             ]
             build_final_composite(
-                base_path, overlays, None, out_path, edit_dir
+                base_path, overlays, None, out_path
             )
         cmd = mock_run.call_args[0][0]
         self.assertIn("-shortest", cmd)
@@ -2315,7 +2315,7 @@ class BuildFinalCompositeTests(unittest.TestCase):
                  "_resolved_path": str(edit_dir / "overlay.png")},
             ]
             build_final_composite(
-                base_path, overlays, None, out_path, edit_dir
+                base_path, overlays, None, out_path
             )
         cmd = mock_run.call_args[0][0]
         cmd_str = " ".join(cmd)
@@ -2338,7 +2338,7 @@ class BuildFinalCompositeTests(unittest.TestCase):
                  "_resolved_path": str(edit_dir / "overlay.png")},
             ]
             build_final_composite(
-                base_path, overlays, None, out_path, edit_dir
+                base_path, overlays, None, out_path
             )
         cmd = mock_run.call_args[0][0]
         cmd_str = " ".join(cmd)
@@ -2360,7 +2360,7 @@ class BuildFinalCompositeTests(unittest.TestCase):
                  "_resolved_path": str(edit_dir / "overlay.png")},
             ]
             build_final_composite(
-                base_path, overlays, None, out_path, edit_dir,
+                base_path, overlays, None, out_path,
                 ffprobe_bin="/custom/ffprobe",
             )
         mock_probe.assert_called_once_with(base_path, ffprobe_bin="/custom/ffprobe")
@@ -2380,7 +2380,7 @@ class BuildFinalCompositeTests(unittest.TestCase):
                                 encoding="utf-8")
             out_path = edit_dir / "output.mp4"
             build_final_composite(
-                base_path, [], srt_path, out_path, edit_dir
+                base_path, [], srt_path, out_path
             )
         self.assertTrue(mock_burn.called)
 
@@ -2396,8 +2396,28 @@ class BuildFinalCompositeTests(unittest.TestCase):
             base_path = edit_dir / "base.mp4"
             base_path.write_bytes(b"\x00" * 100)
             out_path = edit_dir / "output.mp4"
-            build_final_composite(base_path, [], None, out_path, edit_dir)
+            build_final_composite(base_path, [], None, out_path)
         self.assertTrue(mock_copy.called)
+
+    @patch("media_tooling.edl_render.subprocess.run")
+    def test_overlay_missing_resolved_path_raises(self, mock_run: MagicMock) -> None:
+        """build_final_composite raises ValueError if overlay lacks
+        _resolved_path (caller must call resolve_overlay_sources first)."""
+        mock_run.return_value = MagicMock(returncode=0)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            edit_dir = Path(tmpdir)
+            base_path = edit_dir / "base.mp4"
+            base_path.write_bytes(b"\x00" * 100)
+            out_path = edit_dir / "output.mp4"
+            overlays = [
+                {"source": "overlay.png", "start": 5.0, "end": 10.0},
+            ]
+            with self.assertRaises(ValueError) as ctx:
+                build_final_composite(
+                    base_path, overlays, None, out_path
+                )
+            self.assertIn("_resolved_path", str(ctx.exception))
+            self.assertIn("resolve_overlay_sources", str(ctx.exception))
 
 
 # ── Render EDL integration tests with overlays ────────────────────────────────

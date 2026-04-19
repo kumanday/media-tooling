@@ -1078,6 +1078,10 @@ def build_overlay_filter_parts(
     for idx, ov in enumerate(overlays, start=1):
         t = float(ov["start"])
         resolved = ov.get("_resolved_path", "")
+        if not resolved and "_resolved_path" not in ov:
+            # _resolved_path not set — cannot determine image vs video.
+            # Proceed without fps filter; the overlay may be invisible.
+            pass
         filters: list[str] = []
         if _is_image_path(resolved):
             filters.append(f"fps={base_fps}")
@@ -1138,7 +1142,6 @@ def build_final_composite(
     overlays: list[dict[str, Any]],
     subtitles_path: Path | None,
     out_path: Path,
-    edit_dir: Path,
     sub_style: str = "bold-overlay",
     sub_style_args: str | None = None,
     ffmpeg_bin: str = "ffmpeg",
@@ -1149,6 +1152,10 @@ def build_final_composite(
     Composites overlay sources onto the base video with PTS-shifted timing
     (Hard Rule 4) and enable-between visibility windows, then burns
     subtitles last (Hard Rule 1).
+
+    Each overlay must have ``_resolved_path`` set (via
+    ``resolve_overlay_sources``).  If it is missing, ``ValueError`` is
+    raised rather than silently producing broken output.
 
     If there are no overlays and no subtitles, copies the base to output.
     """
@@ -1175,8 +1182,18 @@ def build_final_composite(
     # continuous frames from the static image instead of treating it as a
     # single-frame video.  The fps filter in the filter_complex then sets
     # the frame rate before the PTS shift.
+    #
+    # Every overlay must have _resolved_path set by resolve_overlay_sources.
+    # Direct access (not .get()) ensures a clear KeyError if the caller
+    # skips resolution — consistent with build_overlay_filter_parts which
+    # also requires _resolved_path.
     inputs: list[str] = ["-i", str(base_path)]
-    for ov in overlays:
+    for i, ov in enumerate(overlays):
+        if "_resolved_path" not in ov:
+            raise ValueError(
+                f"overlay[{i}] missing '_resolved_path' — "
+                "call resolve_overlay_sources() first"
+            )
         resolved = str(ov["_resolved_path"])
         if _is_image_path(resolved):
             inputs += ["-loop", "1", "-i", resolved]
@@ -1493,7 +1510,6 @@ def render_edl(
         try:
             build_final_composite(
                 base_path, resolved_overlays, subs_path, composite_output,
-                edit_dir,
                 sub_style=sub_style, sub_style_args=sub_style_args,
                 ffmpeg_bin=ffmpeg_bin, ffprobe_bin=ffprobe_bin,
             )
