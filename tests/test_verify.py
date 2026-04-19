@@ -453,6 +453,32 @@ class TestRunVerification(unittest.TestCase):
         self.assertEqual(len(duration_findings), 1)
         self.assertFalse(duration_findings[0].passed)
 
+    @patch("media_tooling.verify.probe_duration", side_effect=RuntimeError("ffprobe failed"))
+    @patch("media_tooling.verify.compute_envelope")
+    @patch("media_tooling.verify._extract_single_frame")
+    @patch("media_tooling.verify._compute_frame_delta", return_value=0.05)
+    def test_grade_consistency_warning_when_probe_fails(
+        self,
+        mock_delta: MagicMock,
+        mock_extract: MagicMock,
+        mock_env: MagicMock,
+        mock_probe: MagicMock,
+    ) -> None:
+        """When probe_duration fails, grade_consistency emits a warning finding."""
+        mock_extract.return_value = Path("/tmp/frame.jpg")
+        mock_env.return_value = np.full(500, 0.3, dtype=np.float32)
+        report = run_verification(
+            Path("video.mp4"),
+            _single_range_edl(),
+            generate_timelines=False,
+        )
+        grade_findings = [f for f in report.findings
+                          if f.check == "grade_consistency"]
+        self.assertEqual(len(grade_findings), 1)
+        self.assertFalse(grade_findings[0].passed)
+        self.assertEqual(grade_findings[0].severity, "warning")
+        self.assertIn("duration unavailable", grade_findings[0].details)
+
     @patch("media_tooling.verify.probe_duration", return_value=30.0)
     @patch("media_tooling.verify.compute_envelope")
     @patch("media_tooling.verify._extract_single_frame")

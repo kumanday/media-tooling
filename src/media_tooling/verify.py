@@ -553,6 +553,13 @@ def run_verification(
     if total_duration > 0:
         finding = verify_grade_consistency(video_path, total_duration, ffmpeg_bin)
         report.add(finding)
+    else:
+        report.add(Finding(
+            check="grade_consistency",
+            passed=False,
+            details="cannot verify grade consistency: video duration unavailable",
+            severity="warning",
+        ))
 
     # 6. Retry loop: re-evaluate failed checks up to max_passes
     for pass_num in range(1, max_passes):
