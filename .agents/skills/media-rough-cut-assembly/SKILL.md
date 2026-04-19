@@ -339,7 +339,7 @@ All production hard rules and anti-patterns are codified in `docs/hard-rules.md`
 - Cutting inside a spoken word (Anti-pattern 12, violates Rule 6)
 - Hierarchical pre-computed codec formats (Anti-pattern 1) — use concat demuxer instead
 
-See `docs/hard-rules.md` for the full list of 12 hard rules and 13 anti-patterns.
+See `docs/hard-rules.md` for the full list of 12 hard rules and 13 anti-patterns. Rules 4, 8–11 are not directly enforced by rough-cut assembly commands (overlay compositing, codec constraints, and delivery specs fall outside the assembly scope).
 
 ## Guardrails
 
