@@ -237,7 +237,7 @@ dashed = DashedLine(LEFT * 3, RIGHT * 3, color=GRAY, dash_length=0.15)
 line1 = Line(ORIGIN, RIGHT * 2)
 line2 = Line(ORIGIN, UP * 2 + RIGHT)
 angle = Angle(line1, line2, radius=0.5, color=YELLOW)
-angle_label = angle.get_value()  # returns the angle in radians
+angle_radians = angle.get_value()  # float — the angle in radians
 
 # Right angle marker
 right_angle = RightAngle(line1, Line(ORIGIN, UP * 2), length=0.3, color=WHITE)
