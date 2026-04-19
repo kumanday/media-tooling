@@ -1002,7 +1002,7 @@ def render_edl(
     # 4. Apply subtitles (last in filter chain — Hard Rule 1)
     current_path = base_path
     if subs_path is not None and subs_path.exists():
-        sub_output = output_path.with_suffix(".subtitled.mp4")
+        sub_output = output_path.with_stem(output_path.stem + ".subtitled")
         print(f"burning subtitles (style: {sub_style}) → {sub_output.name}")
         try:
             burn_subtitles_last(
