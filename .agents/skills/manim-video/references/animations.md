@@ -245,9 +245,12 @@ from manim import (
     smooth, linear, rush_into, rush_from,
     there_and_back, there_and_back_with_pause,
     running_start, double_smooth, wiggle,
-    lingering, exponential_decay, not_quite_there,
+    lingering, exponential_decay,
     squish_rate_func
 )
+
+# HOF rate functions (must be called, not passed directly)
+from manim import not_quite_there
 
 # running_start: pulls back before going forward (anticipation)
 self.play(FadeIn(mob, rate_func=running_start))
@@ -255,8 +258,10 @@ self.play(FadeIn(mob, rate_func=running_start))
 # there_and_back_with_pause: goes there, holds, comes back
 self.play(mob.animate.shift(UP), rate_func=there_and_back_with_pause)
 
-# not_quite_there: stops at ~70% of the full animation
-self.play(FadeIn(mob, rate_func=not_quite_there))
+# not_quite_there: HOF — stops at ~70% of the full animation
+# Must call it (with optional func/proportion) to get a rate function
+self.play(FadeIn(mob, rate_func=not_quite_there()))
+self.play(FadeIn(mob, rate_func=not_quite_there(smooth, 0.6)))
 ```
 
 ## ShowIncreasingSubsets / ShowSubmobjectsOneByOne
