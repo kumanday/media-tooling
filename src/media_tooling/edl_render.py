@@ -1071,17 +1071,22 @@ def build_overlay_filter_parts(
     This prevents visible artifacts when overlay and base resolutions
     differ.
 
+    Each overlay must have ``_resolved_path`` set (via
+    ``resolve_overlay_sources``).  If it is missing, ``ValueError`` is
+    raised — consistent with ``build_final_composite``.
+
     Returns a list of filter strings like
     ``[1:v]fps=30,scale=1920:1080,format=yuva420p,setpts=PTS-STARTPTS+5.000/TB[a1]``.
     """
     parts: list[str] = []
     for idx, ov in enumerate(overlays, start=1):
         t = float(ov["start"])
-        resolved = ov.get("_resolved_path", "")
-        if not resolved and "_resolved_path" not in ov:
-            # _resolved_path not set — cannot determine image vs video.
-            # Proceed without fps filter; the overlay may be invisible.
-            pass
+        if "_resolved_path" not in ov:
+            raise ValueError(
+                f"overlay[{idx - 1}] missing '_resolved_path' — "
+                "call resolve_overlay_sources() first"
+            )
+        resolved = str(ov["_resolved_path"])
         filters: list[str] = []
         if _is_image_path(resolved):
             filters.append(f"fps={base_fps}")
@@ -1184,9 +1189,8 @@ def build_final_composite(
     # the frame rate before the PTS shift.
     #
     # Every overlay must have _resolved_path set by resolve_overlay_sources.
-    # Direct access (not .get()) ensures a clear KeyError if the caller
-    # skips resolution — consistent with build_overlay_filter_parts which
-    # also requires _resolved_path.
+    # Both this function and build_overlay_filter_parts guard for missing
+    # _resolved_path and raise ValueError — ensuring consistent error handling.
     inputs: list[str] = ["-i", str(base_path)]
     for i, ov in enumerate(overlays):
         if "_resolved_path" not in ov:

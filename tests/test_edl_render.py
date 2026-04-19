@@ -1852,7 +1852,8 @@ class OverlayEDLValidationTests(unittest.TestCase):
 
 class BuildOverlayFilterPartsTests(unittest.TestCase):
     def test_single_overlay_pts_shift(self) -> None:
-        overlays = [{"source": "a.png", "start": 5.0, "end": 10.0}]
+        overlays = [{"source": "a.mp4", "start": 5.0, "end": 10.0,
+                     "_resolved_path": "/tmp/a.mp4"}]
         parts = build_overlay_filter_parts(overlays)
         self.assertEqual(len(parts), 1)
         self.assertIn("setpts=PTS-STARTPTS+5.000/TB", parts[0])
@@ -1861,8 +1862,10 @@ class BuildOverlayFilterPartsTests(unittest.TestCase):
 
     def test_multiple_overlay_pts_shifts(self) -> None:
         overlays = [
-            {"source": "a.mp4", "start": 5.0, "end": 10.0},
-            {"source": "b.mp4", "start": 15.0, "end": 20.0},
+            {"source": "a.mp4", "start": 5.0, "end": 10.0,
+             "_resolved_path": "/tmp/a.mp4"},
+            {"source": "b.mp4", "start": 15.0, "end": 20.0,
+             "_resolved_path": "/tmp/b.mp4"},
         ]
         parts = build_overlay_filter_parts(overlays)
         self.assertEqual(len(parts), 2)
@@ -1943,6 +1946,17 @@ class BuildOverlayFilterPartsTests(unittest.TestCase):
         parts = build_overlay_filter_parts(overlays, base_size=None)
         self.assertNotIn("scale=", parts[0])
         self.assertNotIn("format=", parts[0])
+
+    def test_missing_resolved_path_raises(self) -> None:
+        """build_overlay_filter_parts raises ValueError if overlay lacks
+        _resolved_path (consistent with build_final_composite guard)."""
+        overlays = [
+            {"source": "overlay.png", "start": 5.0, "end": 10.0},
+        ]
+        with self.assertRaises(ValueError) as ctx:
+            build_overlay_filter_parts(overlays)
+        self.assertIn("_resolved_path", str(ctx.exception))
+        self.assertIn("resolve_overlay_sources", str(ctx.exception))
 
 
 # ── IsImagePath helper tests ──────────────────────────────────────────────────
