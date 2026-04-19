@@ -374,7 +374,8 @@ Step 8: Iterate on feedback and persist session memory.
 - `sources`: **dict** mapping short names to absolute paths. Use a dict when
   short names are needed for range references, or when multiple sources share
   the same basename. A **list** of absolute paths is accepted as a shorthand
-  when all basenames are unique (matched by basename; duplicates rejected),
+  when all basenames are unique (matched by full basename including extension;
+  duplicates rejected),
   but dict is preferred for clarity. When using list form, `ranges[].source`
   references the full basename including extension (e.g.,
   `"/path/C0103.MP4"` → `"C0103.MP4"`).
