@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import tempfile
+import tomllib
 import unittest
 from pathlib import Path
 
@@ -10,6 +11,7 @@ from media_tooling.project_init import (
     PROJECT_MEMORY_INITIAL_CONTENT,
     PROJECT_MEMORY_PATH,
     PROJECT_SUBDIRECTORIES,
+    SKILL_NAMES,
     ensure_project_directories,
     ensure_project_memory,
     load_project_agents_template,
@@ -98,18 +100,8 @@ class ProjectInitTests(unittest.TestCase):
     def test_render_project_agents_block_lists_all_skill_paths(self) -> None:
         block = render_project_agents_block(Path("/tmp/toolkit-skills"))
 
-        self.assertIn(
-            "/tmp/toolkit-skills/media-corpus-ingest/SKILL.md",
-            block,
-        )
-        self.assertIn(
-            "/tmp/toolkit-skills/media-subtitle-pipeline/SKILL.md",
-            block,
-        )
-        self.assertIn(
-            "/tmp/toolkit-skills/media-rough-cut-assembly/SKILL.md",
-            block,
-        )
+        for skill_name in SKILL_NAMES:
+            self.assertIn(f"/tmp/toolkit-skills/{skill_name}/SKILL.md", block)
 
     def test_project_agents_template_contains_required_placeholder(self) -> None:
         template = load_project_agents_template()
@@ -188,6 +180,19 @@ class ProjectInitTests(unittest.TestCase):
 
         self.assertIn("Anti-patterns", template)
         self.assertIn("Hierarchical pre-computed codec formats", template)
+
+    def test_project_agents_template_lists_all_cli_commands(self) -> None:
+        template = load_project_agents_template()
+
+        pyproject = Path(__file__).resolve().parent.parent / "pyproject.toml"
+        with pyproject.open("rb") as f:
+            registered = {
+                k
+                for k in tomllib.load(f)["project"]["scripts"]
+                if k.startswith("media-") and k != "media-tooling-init"
+            }
+        for command in sorted(registered):
+            self.assertIn(command, template)
 
 
 if __name__ == "__main__":
