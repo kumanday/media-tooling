@@ -1965,7 +1965,7 @@ class BuildOverlayFilterPartsTests(unittest.TestCase):
         ]
         parts = build_overlay_filter_parts(overlays, base_size=(1920, 1080))
         self.assertEqual(len(parts), 1)
-        self.assertIn("scale=1920:1080", parts[0])
+        self.assertIn("scale=1920:-2", parts[0])
         self.assertIn("format=yuva420p", parts[0])
         self.assertIn("fps=30", parts[0])
         self.assertIn("setpts=PTS-STARTPTS+5.000/TB", parts[0])
@@ -1977,19 +1977,19 @@ class BuildOverlayFilterPartsTests(unittest.TestCase):
              "_resolved_path": "/tmp/clip.mp4"},
         ]
         parts = build_overlay_filter_parts(overlays, base_size=(1280, 720))
-        self.assertIn("scale=1280:720", parts[0])
+        self.assertIn("scale=1280:-2", parts[0])
         self.assertIn("format=yuva420p", parts[0])
         self.assertNotIn("fps=", parts[0])  # video doesn't need fps
 
-    def test_no_base_size_no_scale_but_format_preserved(self) -> None:
-        """Without base_size, no scale filter is added but format=yuva420p
-        is still applied for alpha preservation."""
+    def test_no_base_size_forces_even_dimensions(self) -> None:
+        """Without base_size, even-dimension enforcement is applied for
+        yuva420p compatibility (odd-dimension images would crash ffmpeg)."""
         overlays = [
             {"source": "overlay.png", "start": 5.0, "end": 10.0,
              "_resolved_path": "/tmp/overlay.png"},
         ]
         parts = build_overlay_filter_parts(overlays, base_size=None)
-        self.assertNotIn("scale=", parts[0])
+        self.assertIn("trunc(iw/2)*2", parts[0])
         self.assertIn("format=yuva420p", parts[0])
 
     def test_missing_resolved_path_raises(self) -> None:
@@ -2455,16 +2455,16 @@ class BuildFinalCompositeTests(unittest.TestCase):
             )
         cmd = mock_run.call_args[0][0]
         cmd_str = " ".join(cmd)
-        self.assertIn("scale=1920:1080", cmd_str)
+        self.assertIn("scale=1920:-2", cmd_str)
         self.assertIn("format=yuva420p", cmd_str)
 
     @patch("media_tooling.edl_render.probe_duration", return_value=60.0)
     @patch("media_tooling.edl_render.probe_frame_rate", return_value=30)
     @patch("media_tooling.edl_render.probe_video_size", side_effect=RuntimeError("probe failed"))
     @patch("media_tooling.edl_render.subprocess.run")
-    def test_probe_failure_proceeds_without_scale_but_with_format(self, mock_run: MagicMock, mock_probe: MagicMock, mock_fps: MagicMock, mock_duration: MagicMock) -> None:
+    def test_probe_failure_proceeds_with_even_dim_scale_and_format(self, mock_run: MagicMock, mock_probe: MagicMock, mock_fps: MagicMock, mock_duration: MagicMock) -> None:
         """If probing base video dimensions fails, compositing proceeds
-        without scale but still applies format=yuva420p for alpha."""
+        with even-dimension enforcement scale and format=yuva420p for alpha."""
         mock_run.return_value = MagicMock(returncode=0)
         with tempfile.TemporaryDirectory() as tmpdir:
             edit_dir = Path(tmpdir)
@@ -2480,7 +2480,7 @@ class BuildFinalCompositeTests(unittest.TestCase):
             )
         cmd = mock_run.call_args[0][0]
         cmd_str = " ".join(cmd)
-        self.assertNotIn("scale=", cmd_str)
+        self.assertIn("trunc(iw/2)*2", cmd_str)
         self.assertIn("format=yuva420p", cmd_str)
 
     @patch("media_tooling.edl_render.probe_duration", side_effect=RuntimeError("probe failed"))
