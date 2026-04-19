@@ -341,11 +341,11 @@ def _words_in_range(
     return out
 
 
-def _source_has_audio(source: Path, ffmpeg_bin: str = "ffmpeg") -> bool:
+def _source_has_audio(source: Path, ffprobe_bin: str = "ffprobe") -> bool:
     """Return True if *source* has at least one audio stream."""
     try:
         result = subprocess.run(
-            [ffmpeg_bin.replace("ffmpeg", "ffprobe"), "-v", "error",
+            [ffprobe_bin, "-v", "error",
              "-select_streams", "a", "-show_entries", "stream=codec_type",
              "-of", "csv=p=0", str(source)],
             capture_output=True, text=True, timeout=10,
@@ -367,6 +367,7 @@ def extract_segment(
     preview: bool = False,
     draft: bool = False,
     ffmpeg_bin: str = "ffmpeg",
+    ffprobe_bin: str = "ffprobe",
 ) -> None:
     """Extract a cut range as its own MP4 with grade + 30 ms audio fades.
 
@@ -386,7 +387,7 @@ def extract_segment(
     vf = ",".join(vf_parts)
 
     afade = build_afade_filter(duration)
-    has_audio = _source_has_audio(source, ffmpeg_bin)
+    has_audio = _source_has_audio(source, ffprobe_bin)
 
     if draft:
         preset, crf = "ultrafast", "28"
@@ -607,6 +608,7 @@ def extract_all_segments(
         extract_segment(
             src_path, padded_start, duration, seg_filter, out_path,
             preview=preview, draft=draft, ffmpeg_bin=ffmpeg_bin,
+            ffprobe_bin=ffprobe_bin,
         )
         seg_paths.append(out_path)
 
