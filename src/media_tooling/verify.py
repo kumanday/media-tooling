@@ -290,7 +290,7 @@ def verify_visual_discontinuity(
                 non_blocking=True,
             )
 
-        passed = delta < threshold
+        passed = delta <= threshold
         return Finding(
             check="visual_discontinuity",
             passed=passed,
@@ -614,7 +614,7 @@ def run_verification(
                     if old_f.cut_time is not None and rf.cut_time is not None:
                         if math.isclose(old_f.cut_time, rf.cut_time, abs_tol=0.01):
                             old_f.passed = rf.passed
-                            old_f.details = f"[pass {pass_num + 1}] {rf.details}"
+                            old_f.details = f"[retry {pass_num}] {rf.details}"
                             old_f.severity = rf.severity
                             old_f.non_blocking = rf.non_blocking
                             recheck_findings.pop(ri)
@@ -622,7 +622,7 @@ def run_verification(
                     elif old_f.cut_time is None and rf.cut_time is None:
                         # Match on check name alone for checks without cut_time
                         old_f.passed = rf.passed
-                        old_f.details = f"[pass {pass_num + 1}] {rf.details}"
+                        old_f.details = f"[retry {pass_num}] {rf.details}"
                         old_f.severity = rf.severity
                         old_f.non_blocking = rf.non_blocking
                         recheck_findings.pop(ri)
