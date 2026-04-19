@@ -76,6 +76,11 @@ def validate_edl(edl: dict[str, Any]) -> None:
 
     source_names: set[str]
     if isinstance(sources, dict):
+        for key, val in sources.items():
+            if not isinstance(val, str):
+                raise EDLSchemaError(
+                    f"sources[{key!r}] value must be a string, got {type(val).__name__}"
+                )
         source_names = set(sources.keys())
     else:
         # List sources: match by basename but reject duplicates
@@ -713,6 +718,8 @@ def build_master_srt(
             warn_label="skipping captions for this segment",
         )
         seg_duration = padded_end - padded_start
+        if seg_duration <= 0:
+            continue
 
         if not words_in_seg:
             print(
