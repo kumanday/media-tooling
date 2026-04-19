@@ -607,7 +607,7 @@ def extract_all_segments(
         else:
             seg_filter = resolved
 
-        out_path = clips_dir / f"seg_{i:02d}_{src_name}.mp4"
+        out_path = clips_dir / f"seg_{i:02d}_{Path(src_name).stem}.mp4"
 
         note = r.get("beat") or r.get("note") or ""
         print(
