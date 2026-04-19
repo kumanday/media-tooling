@@ -12,6 +12,7 @@ from media_tooling.edl_render import (
     EDLSchemaError,
     _is_image_path,
     _resolve_segment_bounds,
+    _sorted_overlay_indices,
     _source_has_audio,
     _srt_timestamp,
     _validate_overlay,
@@ -1788,6 +1789,17 @@ class ValidateOverlayTests(unittest.TestCase):
         ov = {"source": "a.png", "start": 0.0, "end": 1.0, "duration_type": "beat"}
         _validate_overlay(ov, 0)  # 1s is within 0.5-2s
 
+    def test_overlay_invalid_duration_type_raises(self) -> None:
+        ov = {"source": "a.png", "start": 0.0, "end": 5.0, "duration_type": "slow"}
+        with self.assertRaises(EDLSchemaError) as ctx:
+            _validate_overlay(ov, 0)
+        self.assertIn("must be 'sync' or 'beat'", str(ctx.exception))
+
+    def test_overlay_none_duration_type_passes(self) -> None:
+        """duration_type=None means no duration rule applies."""
+        ov = {"source": "a.png", "start": 0.0, "end": 100.0}
+        _validate_overlay(ov, 0)  # should not raise
+
 
 class OverlayEDLValidationTests(unittest.TestCase):
     """Tests for overlay validation within validate_edl()."""
@@ -1913,6 +1925,40 @@ class IsImagePathTests(unittest.TestCase):
     def test_case_insensitive(self) -> None:
         self.assertTrue(_is_image_path("/tmp/overlay.PNG"))
         self.assertTrue(_is_image_path("/tmp/overlay.Jpg"))
+
+
+# ── Sorted overlay indices tests ──────────────────────────────────────────────
+
+
+class SortedOverlayIndicesTests(unittest.TestCase):
+    def test_sorted_by_z_order(self) -> None:
+        overlays = [
+            {"source": "a.png", "start": 0, "end": 5, "z_order": 2},
+            {"source": "b.png", "start": 0, "end": 5, "z_order": 1},
+            {"source": "c.png", "start": 0, "end": 5, "z_order": 3},
+        ]
+        result = _sorted_overlay_indices(overlays)
+        indices = [idx for idx, _ in result]
+        self.assertEqual(indices, [2, 1, 3])  # z_order 1,2,3
+
+    def test_stable_sort_preserves_insertion_order(self) -> None:
+        overlays = [
+            {"source": "a.png", "start": 0, "end": 5, "z_order": 0},
+            {"source": "b.png", "start": 0, "end": 5, "z_order": 0},
+            {"source": "c.png", "start": 0, "end": 5, "z_order": 0},
+        ]
+        result = _sorted_overlay_indices(overlays)
+        indices = [idx for idx, _ in result]
+        self.assertEqual(indices, [1, 2, 3])  # insertion order preserved
+
+    def test_default_z_order_is_zero(self) -> None:
+        overlays = [
+            {"source": "a.png", "start": 0, "end": 5},  # no z_order
+            {"source": "b.png", "start": 0, "end": 5, "z_order": -1},
+        ]
+        result = _sorted_overlay_indices(overlays)
+        indices = [idx for idx, _ in result]
+        self.assertEqual(indices, [2, 1])  # -1 before 0
 
 
 class BuildOverlayChainTests(unittest.TestCase):
@@ -2145,6 +2191,26 @@ class BuildFinalCompositeTests(unittest.TestCase):
         # Verify codec matches burn_subtitles settings
         self.assertIn("veryfast", cmd)
         self.assertIn("20", cmd)  # CRF 20
+
+    @patch("media_tooling.edl_render.subprocess.run")
+    def test_shortest_flag_with_loop(self, mock_run: MagicMock) -> None:
+        """-shortest must be present when -loop 1 is used for image overlays."""
+        mock_run.return_value = MagicMock(returncode=0)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            edit_dir = Path(tmpdir)
+            base_path = edit_dir / "base.mp4"
+            base_path.write_bytes(b"\x00" * 100)
+            out_path = edit_dir / "output.mp4"
+            overlays = [
+                {"source": "card.png", "start": 5.0, "end": 10.0,
+                 "_resolved_path": str(edit_dir / "card.png")},
+            ]
+            build_final_composite(
+                base_path, overlays, None, out_path, edit_dir
+            )
+        cmd = mock_run.call_args[0][0]
+        self.assertIn("-shortest", cmd)
+        self.assertIn("-loop", cmd)
 
     @patch("media_tooling.edl_render.burn_subtitles_last")
     def test_no_overlays_with_subtitles_delegates(

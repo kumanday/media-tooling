@@ -961,6 +961,11 @@ def _validate_overlay(ov: dict[str, Any], index: int) -> None:
     # Validate duration rules
     duration = float(ov["end"]) - float(ov["start"])
     duration_type = ov.get("duration_type")
+    if duration_type is not None and duration_type not in ("sync", "beat"):
+        raise EDLSchemaError(
+            f"overlay[{index}] 'duration_type' must be 'sync' or 'beat', "
+            f"got {duration_type!r}"
+        )
     if duration_type == "sync":
         if duration < OVERLAY_SYNC_MIN or duration > OVERLAY_SYNC_MAX:
             raise EDLSchemaError(
@@ -1069,6 +1074,16 @@ def build_overlay_filter_parts(
     return parts
 
 
+def _sorted_overlay_indices(overlays: list[dict[str, Any]]) -> list[tuple[int, dict[str, Any]]]:
+    """Return overlays enumerated (1-based) sorted by z_order ascending.
+
+    Stable sort preserves insertion order for ties.
+    """
+    indexed = list(enumerate(overlays, start=1))
+    indexed.sort(key=lambda pair: float(pair[1].get("z_order", 0)))
+    return indexed
+
+
 def build_overlay_chain(
     overlays: list[dict[str, Any]],
 ) -> list[str]:
@@ -1081,9 +1096,7 @@ def build_overlay_chain(
     Returns a list of filter strings like
     ``[0:v][a1]overlay=enable='between(t,5.000,10.000)':x=50:y=100[v1]``.
     """
-    # Sort by z_order (stable sort preserves insertion order for ties)
-    indexed = list(enumerate(overlays, start=1))
-    indexed.sort(key=lambda pair: float(pair[1].get("z_order", 0)))
+    indexed = _sorted_overlay_indices(overlays)
 
     parts: list[str] = []
     current = "[0:v]"
@@ -1162,15 +1175,17 @@ def build_final_composite(
     filter_parts.extend(chain_parts)
 
     # Determine the current video label after overlays
-    # (last overlay output label)
-    indexed = list(enumerate(overlays, start=1))
-    indexed.sort(key=lambda pair: float(pair[1].get("z_order", 0)))
+    # (last overlay output label — uses same sort as build_overlay_chain)
+    indexed = _sorted_overlay_indices(overlays)
     last_idx = indexed[-1][0]
     current = f"[v{last_idx}]"
 
     # Subtitles LAST — Hard Rule 1
     if has_subs:
-        assert subtitles_path is not None  # guaranteed by has_subs check
+        if subtitles_path is None:
+            raise RuntimeError(
+                "subtitles_path unexpectedly None despite has_subs=True"
+            )
         subs_escaped = (
             str(subtitles_path.resolve())
             .replace("\\", "\\\\")
@@ -1208,6 +1223,10 @@ def build_final_composite(
         "-filter_complex", filter_complex,
         "-map", out_label,
         "-map", "0:a?",
+        # -shortest: stop encoding when the shortest input (base video)
+        # ends, preventing -loop 1 image inputs from producing output
+        # far longer than the base video.
+        "-shortest",
         "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
         "-pix_fmt", "yuv420p",
         "-c:a", "copy",
