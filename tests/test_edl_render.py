@@ -2364,6 +2364,75 @@ class BuildFinalCompositeTests(unittest.TestCase):
         filter_complex = cmd[fc_idx + 1]
         self.assertNotIn(str(srt_path.name), filter_complex)
 
+    @patch("media_tooling.edl_render.probe_duration", return_value=3.0)
+    @patch("media_tooling.edl_render.probe_frame_rate", return_value=30)
+    @patch("media_tooling.edl_render.probe_video_size", return_value=(1920, 1080))
+    @patch("media_tooling.edl_render.subprocess.run")
+    def test_overlays_with_natural_sentence_sub_style(
+        self, mock_run: MagicMock, mock_probe: MagicMock,
+        mock_fps: MagicMock, mock_duration: MagicMock,
+    ) -> None:
+        """build_final_composite supports natural-sentence sub_style
+        with rechunk_natural_sentence in overlay path."""
+        mock_run.return_value = MagicMock(returncode=0)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            edit_dir = Path(tmpdir)
+            base_path = edit_dir / "base.mp4"
+            base_path.write_bytes(b"\x00" * 100)
+            srt_path = edit_dir / "test.srt"
+            srt_path.write_text(
+                "1\n00:00:00,000 --> 00:00:05,000\nHello world test\n",
+                encoding="utf-8",
+            )
+            out_path = edit_dir / "output.mp4"
+            overlays = [
+                {"source": "overlay.png", "start": 5.0, "end": 10.0,
+                 "_resolved_path": str(edit_dir / "overlay.png")},
+            ]
+            build_final_composite(
+                base_path, overlays, srt_path, out_path,
+                sub_style="natural-sentence",
+            )
+        cmd = mock_run.call_args[0][0]
+        cmd_str = " ".join(cmd)
+        self.assertIn("subtitles=", cmd_str)
+        # Should use natural-sentence force_style, not bold-overlay
+        fc_idx = cmd.index("-filter_complex")
+        filter_complex = cmd[fc_idx + 1]
+        self.assertNotIn(str(srt_path.name), filter_complex)
+
+    @patch("media_tooling.edl_render.probe_duration", return_value=3.0)
+    @patch("media_tooling.edl_render.probe_frame_rate", return_value=30)
+    @patch("media_tooling.edl_render.probe_video_size", return_value=(1920, 1080))
+    @patch("media_tooling.edl_render.subprocess.run")
+    def test_overlays_with_unknown_sub_style_raises(
+        self, mock_run: MagicMock, mock_probe: MagicMock,
+        mock_fps: MagicMock, mock_duration: MagicMock,
+    ) -> None:
+        """build_final_composite raises ValueError for unknown sub_style."""
+        mock_run.return_value = MagicMock(returncode=0)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            edit_dir = Path(tmpdir)
+            base_path = edit_dir / "base.mp4"
+            base_path.write_bytes(b"\x00" * 100)
+            srt_path = edit_dir / "test.srt"
+            srt_path.write_text(
+                "1\n00:00:00,000 --> 00:00:05,000\nHello\n",
+                encoding="utf-8",
+            )
+            out_path = edit_dir / "output.mp4"
+            overlays = [
+                {"source": "overlay.png", "start": 5.0, "end": 10.0,
+                 "_resolved_path": str(edit_dir / "overlay.png")},
+            ]
+            with self.assertRaises(ValueError) as ctx:
+                build_final_composite(
+                    base_path, overlays, srt_path, out_path,
+                    sub_style="unknown-style",
+                )
+            self.assertIn("Unknown subtitle style", str(ctx.exception))
+            self.assertIn("unknown-style", str(ctx.exception))
+
     @patch("media_tooling.edl_render.probe_duration", return_value=60.0)
     @patch("media_tooling.edl_render.probe_frame_rate", return_value=30)
     @patch("media_tooling.edl_render.probe_video_size", return_value=(1280, 720))
