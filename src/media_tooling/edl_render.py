@@ -1016,6 +1016,12 @@ def _validate_overlay(ov: dict[str, Any], index: int) -> None:
                 f"overlay[{index}] beat-synced duration ({duration:.1f}s) "
                 f"must be {OVERLAY_BEAT_MIN}-{OVERLAY_BEAT_MAX}s"
             )
+    elif duration_type is None:
+        print(
+            f"note: overlay[{index}] has no duration_type — "
+            "duration bounds not enforced",
+            file=sys.stderr,
+        )
 
 
 # ── PIL overlay card generation ──────────────────────────────────────────────
@@ -1043,11 +1049,16 @@ def generate_overlay_card(
     img = Image.new("RGBA", (width, height), bg_color)
     draw = ImageDraw.Draw(img)
 
-    try:
-        font: ImageFont.FreeTypeFont | ImageFont.ImageFont = ImageFont.truetype(
-            "Helvetica.ttc", font_size
-        )
-    except OSError:
+    # Cross-platform font fallback: try macOS first, then Linux, then Pillow default
+    _FONT_CANDIDATES = ("Helvetica.ttc", "DejaVuSans.ttf", "LiberationSans-Regular.ttf")
+    font: ImageFont.FreeTypeFont | ImageFont.ImageFont | None = None
+    for _fc in _FONT_CANDIDATES:
+        try:
+            font = ImageFont.truetype(_fc, font_size)
+            break
+        except OSError:
+            continue
+    if font is None:
         font = ImageFont.load_default(size=font_size)
 
     if card_type == "text":
