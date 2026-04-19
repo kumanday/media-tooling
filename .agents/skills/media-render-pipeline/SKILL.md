@@ -51,7 +51,7 @@ $PROJECT_DIR/
 │   ├── project.md            ← session memory (append each session)
 │   ├── edl.json              ← edit decision list
 │   ├── animations/slot_<id>/ ← per-animation source + render + reasoning
-│   ├── clips_graded/         ← per-segment extracts with grade + fades
+│   ├── clips_graded/         ← per-segment extracts with grade + fades (created by EDL renderer)
 │   ├── master.srt            ← output-timeline subtitles
 │   ├── verify/               ← debug frames / timeline PNGs from self-eval
 │   ├── preview.mp4
@@ -216,8 +216,8 @@ Walk the user through the key moments and transitions.
 After the user reviews the preview:
 
 1. **Address feedback** — make requested changes to the EDL, re-render the
-   preview, re-run self-eval, and present the revised preview to the user.
-   Repeat until the user approves.
+   preview (`--preview`), re-run self-eval, and present the revised preview
+   to the user. Repeat until the user approves.
 2. **Final render** — once approved, produce the full-quality render:
    ```bash
    media-edl-render "$PROJECT_DIR/edit/edl.json" \
@@ -332,8 +332,8 @@ Step 8: Iterate on feedback and persist session memory.
 | `media-timeline-view` | Steps 1, 5, 6 (on-demand visual drill-down) |
 | `media-edl-render` | Steps 5, 8 (render with EDL) |
 | `media-burn-subtitles` | Step 5 (subtitle burning, usually via EDL render) |
-| `media-grade` | Step 5 (per-segment grading) |
-| `media-loudnorm` | Step 5 (loudness normalization) |
+| `media-grade` | Step 5 (standalone grading; EDL renderer applies grade automatically) |
+| `media-loudnorm` | Step 5 (standalone normalization; EDL renderer normalizes automatically) |
 | `media-rough-cut` | Step 5 (alternative: card/image/clip assembly) |
 
 ## EDL JSON format
