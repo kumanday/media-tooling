@@ -88,9 +88,9 @@ self.play(Wiggle(mobject))               # shake side to side
 
 ```python
 self.play(FadeIn(mob), rate_func=smooth)          # default: ease in/out
-self.play(FadeIn(mob), rate_func=linear)           # constant speed (continuous spin only; see easing rules)
-self.play(FadeIn(mob), rate_func=rush_into)        # start slow, end fast
-self.play(FadeIn(mob), rate_func=rush_from)        # start fast, end slow
+self.play(Rotating(gear, rate_func=linear))       # constant speed (continuous spin; see easing rules)
+self.play(FadeIn(mob), rate_func=rush_into)       # start slow, end fast
+self.play(FadeIn(mob), rate_func=rush_from)       # start fast, end slow
 self.play(FadeIn(mob), rate_func=there_and_back)   # animate then reverse
 ```
 

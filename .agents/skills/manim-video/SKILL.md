@@ -31,7 +31,7 @@ This is educational cinema. Every frame teaches. Every animation reveals structu
 
 ## Prerequisites
 
-Requires: Python 3.10+, Manim Community Edition v0.20+ (`pip install "manim>=0.20"`), LaTeX (`texlive-full` on Linux, `mactex` on macOS), and ffmpeg. Reference docs tested against Manim CE v0.20.1.
+Requires: Python 3.12+ (matching `media-tooling` package requirement), Manim Community Edition v0.20+ (`pip install "manim>=0.20"`), LaTeX (`texlive-full` on Linux, `mactex` on macOS), and ffmpeg. Reference docs tested against Manim CE v0.20.1.
 
 Install the optional animations group:
 
@@ -49,7 +49,7 @@ pip install "media-tooling[animations]"
 | **Data story** | Data/metrics | Animated charts, comparisons, counters | `references/animations.md` |
 | **Architecture diagram** | System description | Components building up with connections | `references/mobjects.md` |
 | **Paper explainer** | Research paper | Key findings and methods animated | `references/scene-planning.md` |
-| **3D visualization** | 3D concept | Rotating surfaces, parametric curves, spatial geometry | `references/mobjects.md` |
+| **3D visualization** | 3D concept | Rotating surfaces, parametric curves, spatial geometry | Manim docs (ThreeDScene, Surface) |
 | **Custom** | Free-form request | User-directed animation pipeline | `references/production-quality.md` |
 
 ## Stack

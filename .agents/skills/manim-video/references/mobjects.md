@@ -230,7 +230,7 @@ self.play(bullets[1].animate.set_color(YELLOW))
 
 ```python
 # Dashed line (asymptotes, construction lines)
-dashed = DashedLine(LEFT * 3, RIGHT * 3, color=SUBTLE, dash_length=0.15)
+dashed = DashedLine(LEFT * 3, RIGHT * 3, color=GRAY, dash_length=0.15)
 
 # Angle marker between two lines
 line1 = Line(ORIGIN, RIGHT * 2)
