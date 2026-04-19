@@ -543,6 +543,18 @@ def _copy_to_output(
     return 0
 
 
+def _cleanup_cards(edit_dir: Path) -> None:
+    """Remove generated overlay card PNGs from the cards subdirectory."""
+    cards_dir = edit_dir / "cards"
+    if cards_dir.is_dir():
+        for card in cards_dir.iterdir():
+            card.unlink(missing_ok=True)
+        try:
+            cards_dir.rmdir()
+        except OSError:
+            shutil.rmtree(cards_dir, ignore_errors=True)
+
+
 def _probe_source_durations(
     edl: dict[str, Any],
     edit_dir: Path,
@@ -1211,9 +1223,12 @@ def build_final_composite(
     base_size: tuple[int, int] | None = None
     try:
         base_size = probe_video_size(base_path, ffprobe_bin=ffprobe_bin)
-    except (RuntimeError, FileNotFoundError):
-        # If probing fails, proceed without scale/format normalization
-        pass
+    except (RuntimeError, FileNotFoundError) as exc:
+        print(
+            f"warning: could not probe base video size ({exc}); "
+            "overlay scale normalization skipped",
+            file=sys.stderr,
+        )
 
     # PTS-shift every overlay (Hard Rule 4)
     # Scale overlays to base dimensions and normalize pixel format
@@ -1505,6 +1520,7 @@ def render_edl(
         try:
             resolved_overlays = resolve_overlay_sources(raw_overlays, edit_dir)
         except (OSError, ValueError) as exc:
+            _cleanup_cards(edit_dir)
             print(f"overlay resolution failed: {exc}", file=sys.stderr)
             return 1
 
@@ -1518,6 +1534,7 @@ def render_edl(
                 ffmpeg_bin=ffmpeg_bin, ffprobe_bin=ffprobe_bin,
             )
         except (ValueError, RuntimeError, FileNotFoundError) as exc:
+            _cleanup_cards(edit_dir)
             print(f"overlay compositing error: {exc}", file=sys.stderr)
             return 1
         current_path = composite_output
@@ -1580,14 +1597,7 @@ def render_edl(
         base_path.unlink(missing_ok=True)
 
     # Clean up generated overlay cards
-    cards_dir = edit_dir / "cards"
-    if cards_dir.is_dir():
-        for card in cards_dir.iterdir():
-            card.unlink(missing_ok=True)
-        try:
-            cards_dir.rmdir()
-        except OSError:
-            shutil.rmtree(cards_dir, ignore_errors=True)
+    _cleanup_cards(edit_dir)
 
     # Clean up extracted clips
     clips_subdir = (
