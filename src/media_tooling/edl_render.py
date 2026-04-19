@@ -1131,8 +1131,8 @@ def build_overlay_filter_parts(
         if _is_image_path(resolved):
             filters.append(f"fps={base_fps}")
         if base_size is not None:
-            w, _h = base_size
-            # Use -2 for height to guarantee even dimensions (yuva420p requires it)
+            w = base_size[0] & ~1  # round down to even for yuva420p
+            # -2 auto-calculates even height while preserving aspect ratio
             filters.append(f"scale={w}:-2")
         else:
             # No base_size probe — force even dimensions for yuva420p compatibility

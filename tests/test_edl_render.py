@@ -1992,6 +1992,17 @@ class BuildOverlayFilterPartsTests(unittest.TestCase):
         self.assertIn("trunc(iw/2)*2", parts[0])
         self.assertIn("format=yuva420p", parts[0])
 
+    def test_base_size_odd_width_rounded_to_even(self) -> None:
+        """Odd base_size width is rounded down to even for yuva420p."""
+        overlays = [
+            {"source": "overlay.png", "start": 5.0, "end": 10.0,
+             "_resolved_path": "/tmp/overlay.png"},
+        ]
+        parts = build_overlay_filter_parts(overlays, base_size=(1921, 1081))
+        self.assertIn("scale=1920:-2", parts[0])
+        self.assertNotIn("1921", parts[0])
+        self.assertIn("format=yuva420p", parts[0])
+
     def test_missing_resolved_path_raises(self) -> None:
         """build_overlay_filter_parts raises ValueError if overlay lacks
         _resolved_path (consistent with build_final_composite guard)."""
