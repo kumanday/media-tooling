@@ -1813,6 +1813,13 @@ class ValidateOverlayTests(unittest.TestCase):
         ov = {"source": "a.png", "start": 0.0, "end": 100.0}
         _validate_overlay(ov, 0)  # should not raise
 
+    def test_validate_overlay_no_stderr_side_effect(self) -> None:
+        """_validate_overlay should not print to stderr (pure validation)."""
+        ov = {"source": "a.png", "start": 0.0, "end": 100.0}
+        with patch("media_tooling.edl_render.sys.stderr") as mock_stderr:
+            _validate_overlay(ov, 0)
+            mock_stderr.write.assert_not_called()
+
     def test_overlay_card_zero_width_raises(self) -> None:
         """Card with width=0 raises EDLSchemaError (would crash PIL)."""
         ov = {"card": {"type": "text", "text": "hi", "width": 0}, "start": 0.0, "end": 5.0}
@@ -2310,6 +2317,41 @@ class BuildFinalCompositeTests(unittest.TestCase):
         self.assertIn("overlay=enable='between(t,", cmd_str)
         self.assertNotIn("subtitles=", cmd_str)
         self.assertIn("null[outv]", cmd_str)
+
+    @patch("media_tooling.edl_render.probe_duration", return_value=3.0)
+    @patch("media_tooling.edl_render.probe_frame_rate", return_value=30)
+    @patch("media_tooling.edl_render.probe_video_size", return_value=(1920, 1080))
+    @patch("media_tooling.edl_render.subprocess.run")
+    def test_overlays_with_subtitles_rechunk(
+        self, mock_run: MagicMock, mock_probe: MagicMock,
+        mock_fps: MagicMock, mock_duration: MagicMock,
+    ) -> None:
+        """build_final_composite rechunks subtitles before applying them,
+        matching the no-overlay burn_subtitles path."""
+        mock_run.return_value = MagicMock(returncode=0)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            edit_dir = Path(tmpdir)
+            base_path = edit_dir / "base.mp4"
+            base_path.write_bytes(b"\x00" * 100)
+            srt_path = edit_dir / "test.srt"
+            srt_path.write_text(
+                "1\n00:00:00,000 --> 00:00:05,000\nHello world test\n",
+                encoding="utf-8",
+            )
+            out_path = edit_dir / "output.mp4"
+            overlays = [
+                {"source": "overlay.png", "start": 5.0, "end": 10.0,
+                 "_resolved_path": str(edit_dir / "overlay.png")},
+            ]
+            build_final_composite(base_path, overlays, srt_path, out_path)
+        cmd = mock_run.call_args[0][0]
+        cmd_str = " ".join(cmd)
+        self.assertIn("subtitles=", cmd_str)
+        # The subtitles path should reference a temp rechunked file,
+        # not the original SRT — verifying rechunking was performed.
+        fc_idx = cmd.index("-filter_complex")
+        filter_complex = cmd[fc_idx + 1]
+        self.assertNotIn(str(srt_path.name), filter_complex)
 
     @patch("media_tooling.edl_render.probe_duration", return_value=60.0)
     @patch("media_tooling.edl_render.probe_frame_rate", return_value=30)
