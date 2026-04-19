@@ -400,34 +400,34 @@ class TestVerifyAudioPop(unittest.TestCase):
 
     @patch("media_tooling.verify.compute_envelope")
     def test_quiet_audio_skips_pop_detection(self, mock_env: MagicMock) -> None:
-        """Audio with raw_peak below min_absolute_level is too quiet for meaningful pop detection."""
+        """Audio with raw_peak below min_absolute_rms_level is too quiet for meaningful pop detection."""
         # Normalized envelope has a spike at 1.0 (would normally fail), but raw_peak is 0.01
         env = np.full(500, 0.3, dtype=np.float32)
         env[250] = 1.0  # Normalized spike (would fail without the gate)
-        mock_env.return_value = (env, 0.01)  # raw_peak=0.01 < MIN_ABSOLUTE_LEVEL=0.05
+        mock_env.return_value = (env, 0.01)  # raw_peak=0.01 < MIN_ABSOLUTE_RMS_LEVEL=0.05
         finding = verify_audio_pop(Path("video.mp4"), 10.0)
         # Gate should kick in: too quiet to detect pops meaningfully
         self.assertTrue(finding.passed)
         self.assertTrue(finding.non_blocking)
         self.assertIn("too quiet", finding.details)
         self.assertIn("raw_peak=0.0100", finding.details)
-        self.assertIn("min_level=0.050", finding.details)
+        self.assertIn("min_rms_level=0.050", finding.details)
 
     @patch("media_tooling.verify.compute_envelope")
     def test_quiet_audio_with_custom_min_level(self, mock_env: MagicMock) -> None:
-        """Custom min_absolute_level threshold overrides the default."""
+        """Custom min_absolute_rms_level threshold overrides the default."""
         env = np.full(500, 0.3, dtype=np.float32)
         env[250] = 1.0
-        # raw_peak=0.08 > default 0.05, but we set min_level=0.10
+        # raw_peak=0.08 > default 0.05, but we set min_rms_level=0.10
         mock_env.return_value = (env, 0.08)
-        finding = verify_audio_pop(Path("video.mp4"), 10.0, min_absolute_level=0.10)
+        finding = verify_audio_pop(Path("video.mp4"), 10.0, min_absolute_rms_level=0.10)
         self.assertTrue(finding.passed)
         self.assertTrue(finding.non_blocking)
         self.assertIn("too quiet", finding.details)
 
     @patch("media_tooling.verify.compute_envelope")
     def test_quiet_audio_just_above_gate_still_checked(self, mock_env: MagicMock) -> None:
-        """Audio just above the min_absolute_level gate proceeds to normal pop detection."""
+        """Audio just above the min_absolute_rms_level gate proceeds to normal pop detection."""
         env = np.full(500, 0.3, dtype=np.float32)
         env[250] = 0.95  # Spike above threshold
         # raw_peak=0.06 > 0.05 default, so gate doesn't skip

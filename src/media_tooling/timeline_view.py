@@ -234,11 +234,15 @@ def compute_envelope(
     ffmpeg_bin: str,
     samples: int = 2000,
 ) -> tuple[np.ndarray[tuple[int], np.dtype[np.float32]], float]:
-    """Extract the audio segment and return (normalised RMS envelope, raw peak).
+    """Extract the audio segment and return (normalised RMS envelope, RMS peak).
 
-    The envelope is normalised to [0, 1].  The raw peak is the maximum
+    The envelope is normalised to [0, 1].  The RMS peak is the maximum
     value of the un-normalised RMS envelope (before division by max),
     which callers can use to gate checks on quiet audio segments.
+
+    Note: the returned peak is an *RMS* peak, not a PCM sample peak.
+    For a full-scale sine wave the RMS peak is ~0.707, so a threshold
+    of 0.05 corresponds to ~7 % of full-scale RMS (~-33 dBFS for sine).
     """
     wav_path: Path | None = None
     try:

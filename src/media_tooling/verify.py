@@ -45,7 +45,7 @@ DEFAULT_MAX_PASSES = 3
 DURATION_TOLERANCE_S = 0.5  # tolerance for duration check
 VISUAL_DELTA_THRESHOLD = 0.25  # normalised pixel-delta threshold for discontinuity
 AUDIO_SPIKE_THRESHOLD = 0.80  # normalised amplitude threshold for audio pop
-MIN_ABSOLUTE_LEVEL = 0.05  # raw peak below this is too quiet for meaningful pop detection
+MIN_ABSOLUTE_RMS_LEVEL = 0.05  # RMS peak below this is too quiet for meaningful pop detection (~7% of full-scale RMS)
 GRADE_LUMINANCE_TOLERANCE = 0.15  # tolerance for grade consistency (normalised)
 GRADE_SAMPLE_MIDPOINTS = 3  # number of mid-points to sample for grade consistency
 N_FRAMES_PER_BOUNDARY = 4  # frames per boundary for visual check
@@ -315,16 +315,19 @@ def verify_audio_pop(
     ffmpeg_bin: str = "ffmpeg",
     window: float = CUT_BOUNDARY_WINDOW_S,
     threshold: float = AUDIO_SPIKE_THRESHOLD,
-    min_absolute_level: float = MIN_ABSOLUTE_LEVEL,
+    min_absolute_rms_level: float = MIN_ABSOLUTE_RMS_LEVEL,
 ) -> Finding:
     """Check for waveform spikes near a cut boundary indicating audio pops.
 
     Examines the normalised audio envelope ±window around the cut.
     A spike (value above *threshold*) near the cut suggests an audio pop.
 
-    If the raw peak of the un-normalised envelope is below *min_absolute_level*,
-    the audio is too quiet for meaningful pop detection and the check is
-    skipped (non-blocking pass).
+    If the RMS peak of the un-normalised envelope is below
+    *min_absolute_rms_level*, the audio is too quiet for meaningful pop
+    detection and the check is skipped (non-blocking pass).  The value is
+    compared against the RMS peak returned by ``compute_envelope``, which
+    for a full-scale sine wave is ~0.707 — so 0.05 corresponds to ~7% of
+    full-scale RMS, not 5% of PCM sample amplitude.
     """
     start = max(0.0, cut_time - window)
     end = cut_time + window
@@ -351,16 +354,16 @@ def verify_audio_pop(
             non_blocking=True,
         )
 
-    # Minimum-absolute-level gate: if the raw peak is too low, the
+    # Minimum-absolute-RMS-level gate: if the RMS peak is too low, the
     # normalised threshold is meaningless (a barely-audible segment
     # normalises to 1.0 just like a full-scale one).  Skip detection.
-    if raw_peak < min_absolute_level:
+    if raw_peak < min_absolute_rms_level:
         return Finding(
             check="audio_pop",
             passed=True,
             details=(
                 f"cut={cut_time:.2f}s raw_peak={raw_peak:.4f} "
-                f"< min_level={min_absolute_level:.3f}; "
+                f"< min_rms_level={min_absolute_rms_level:.3f}; "
                 f"too quiet for meaningful pop detection"
             ),
             severity="info",
