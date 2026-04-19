@@ -1650,6 +1650,8 @@ def render_edl(
             print(f"overlay compositing error: {exc}", file=sys.stderr)
             return 1
         current_path = composite_output
+        # Cards are only needed for compositing; clean up immediately
+        _cleanup_cards(edit_dir)
     elif subs_path is not None and subs_path.exists():
         # No overlays — apply subtitles directly (last in filter chain — Hard Rule 1)
         sub_output = output_path.with_stem(output_path.stem + ".subtitled")
@@ -1708,9 +1710,6 @@ def render_edl(
             current_path.unlink(missing_ok=True)
     if base_path.resolve() != output_path.resolve() and base_path.exists():
         base_path.unlink(missing_ok=True)
-
-    # Clean up generated overlay cards
-    _cleanup_cards(edit_dir)
 
     # Clean up extracted clips
     clips_subdir = (

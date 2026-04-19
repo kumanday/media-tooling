@@ -3080,6 +3080,64 @@ class E2EOverlayCompositingTests(unittest.TestCase):
             self.assertGreater(out_path.stat().st_size, 1000,
                                "output should have meaningful size")
 
+            # 5. Verify duration matches base
+            result = subprocess.run(
+                [shutil.which("ffprobe") or "ffprobe",
+                 "-v", "error", "-show_entries", "format=duration",
+                 "-of", "default=noprint_wrappers=1:nokey=1",
+                 str(out_path)],
+                capture_output=True, text=True,
+            )
+            self.assertEqual(result.returncode, 0)
+            duration = float(result.stdout.strip())
+            self.assertAlmostEqual(duration, 3.0, delta=0.5)
+
+    def test_overlay_with_natural_sentence_subtitles(self) -> None:
+        """Overlay + natural-sentence subtitles uses correct force_style."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            edit_dir = Path(tmpdir)
+
+            # 1. Create base video
+            base_path = edit_dir / "base.mp4"
+            _create_test_video(base_path, duration=3.0, size="320x240")
+
+            # 2. Create overlay image
+            from PIL import Image, ImageDraw
+            overlay_img = Image.new("RGBA", (320, 240), (0, 0, 0, 0))
+            draw = ImageDraw.Draw(overlay_img)
+            draw.text((80, 100), "OVERLAY", fill=(255, 255, 0, 255))
+            overlay_path = edit_dir / "overlay.png"
+            overlay_img.save(str(overlay_path), "PNG")
+
+            # 3. Create SRT
+            srt_path = edit_dir / "test.srt"
+            srt_path.write_text(
+                "1\n00:00:01,000 --> 00:00:02,000\nSubtitle text\n",
+                encoding="utf-8",
+            )
+
+            # 4. Build and run composite with natural-sentence style
+            out_path = edit_dir / "output.mp4"
+            overlays = [
+                {
+                    "source": "overlay.png",
+                    "start": 1.0,
+                    "end": 2.0,
+                    "position": {"x": 0, "y": 0},
+                    "z_order": 0,
+                    "_resolved_path": str(overlay_path),
+                }
+            ]
+            build_final_composite(
+                base_path, overlays, srt_path, out_path,
+                sub_style="natural-sentence",
+            )
+
+            # 5. Verify output
+            self.assertTrue(out_path.exists(), "output file should exist")
+            self.assertGreater(out_path.stat().st_size, 1000,
+                               "output should have meaningful size")
+
     def test_overlay_with_subtitles_composited(self) -> None:
         """Overlays are composited first, then subtitles burned last (Hard Rule 1)."""
         with tempfile.TemporaryDirectory() as tmpdir:
