@@ -173,6 +173,14 @@ def validate_edl(edl: dict[str, Any]) -> None:
                 raise EDLSchemaError(
                     f"subtitles 'path' must be a string, got {type(subtitles['path']).__name__}"
                 )
+            if "style" in subtitles and not isinstance(subtitles["style"], str):
+                raise EDLSchemaError(
+                    f"subtitles 'style' must be a string, got {type(subtitles['style']).__name__}"
+                )
+            if "force_style" in subtitles and not isinstance(subtitles["force_style"], str):
+                raise EDLSchemaError(
+                    f"subtitles 'force_style' must be a string, got {type(subtitles['force_style']).__name__}"
+                )
         else:
             raise EDLSchemaError(
                 f"subtitles must be a string path or dict, got {type(subtitles).__name__}"
