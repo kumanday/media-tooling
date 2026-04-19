@@ -157,9 +157,9 @@ def verify_duration(
     if expected is None:
         return Finding(
             check="duration",
-            passed=True,
-            details="EDL has no total_duration_s field; skipping duration check.",
-            severity="info",
+            passed=False,
+            details="EDL has no total_duration_s field; duration check not performed.",
+            severity="warning",
         )
 
     try:
@@ -391,9 +391,9 @@ def verify_grade_consistency(
     if total_duration < 4.0:
         return Finding(
             check="grade_consistency",
-            passed=True,
-            details="Video too short for grade consistency sampling.",
-            severity="info",
+            passed=False,
+            details="Video too short for grade consistency sampling; check not performed.",
+            severity="warning",
         )
 
     sample_times: list[float] = []

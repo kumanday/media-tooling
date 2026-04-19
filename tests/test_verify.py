@@ -119,7 +119,8 @@ class TestVerifyDuration(unittest.TestCase):
         edl = _minimal_edl()
         del edl["total_duration_s"]
         finding = verify_duration(Path("video.mp4"), edl)
-        self.assertTrue(finding.passed)
+        self.assertFalse(finding.passed)
+        self.assertEqual(finding.severity, "warning")
         self.assertIn("no total_duration_s", finding.details)
 
     @patch("media_tooling.verify.probe_duration", side_effect=RuntimeError("ffprobe failed"))
@@ -397,7 +398,8 @@ class TestVerifyGradeConsistency(unittest.TestCase):
 
     def test_short_video_skips(self) -> None:
         finding = verify_grade_consistency(Path("video.mp4"), 2.0)
-        self.assertTrue(finding.passed)
+        self.assertFalse(finding.passed)
+        self.assertEqual(finding.severity, "warning")
         self.assertIn("too short", finding.details)
 
     @patch("media_tooling.verify._sample_luminance", return_value=None)
