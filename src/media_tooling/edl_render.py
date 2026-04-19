@@ -1050,7 +1050,6 @@ def generate_overlay_card(
     draw = ImageDraw.Draw(img)
 
     # Cross-platform font fallback: try macOS first, then Linux, then Pillow default
-    _FONT_CANDIDATES = ("Helvetica.ttc", "DejaVuSans.ttf", "LiberationSans-Regular.ttf")
     font: ImageFont.FreeTypeFont | ImageFont.ImageFont | None = None
     for _fc in _FONT_CANDIDATES:
         try:
@@ -1086,6 +1085,7 @@ def generate_overlay_card(
 
 
 _IMAGE_EXTENSIONS = frozenset({".png", ".jpg", ".jpeg", ".bmp", ".webp", ".tiff", ".tif"})
+_FONT_CANDIDATES = ("Helvetica.ttc", "DejaVuSans.ttf", "LiberationSans-Regular.ttf")
 
 
 def _is_image_path(path: str) -> bool:
@@ -1616,6 +1616,7 @@ def render_edl(
             )
         except (ValueError, RuntimeError, FileNotFoundError) as exc:
             _cleanup_cards(edit_dir)
+            composite_output.unlink(missing_ok=True)
             print(f"overlay compositing error: {exc}", file=sys.stderr)
             return 1
         current_path = composite_output
@@ -1630,6 +1631,7 @@ def render_edl(
                 ffmpeg_bin=ffmpeg_bin,
             )
         except (ValueError, RuntimeError, FileNotFoundError) as exc:
+            sub_output.unlink(missing_ok=True)
             print(f"subtitle burning error: {exc}", file=sys.stderr)
             return 1
         current_path = sub_output
