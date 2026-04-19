@@ -1034,9 +1034,9 @@ def generate_overlay_card(
     Returns the path to the generated PNG file.
     """
     card_type = card_spec["type"]
-    width = card_spec.get("width", CARD_DEFAULT_WIDTH)
-    height = card_spec.get("height", CARD_DEFAULT_HEIGHT)
-    font_size = card_spec.get("font_size", CARD_DEFAULT_FONT_SIZE)
+    width = int(card_spec.get("width", CARD_DEFAULT_WIDTH))
+    height = int(card_spec.get("height", CARD_DEFAULT_HEIGHT))
+    font_size = int(card_spec.get("font_size", CARD_DEFAULT_FONT_SIZE))
     color = card_spec.get("color", CARD_DEFAULT_COLOR)
     bg_color = card_spec.get("bg_color", CARD_DEFAULT_BG_COLOR)
 

@@ -2149,6 +2149,20 @@ class GenerateOverlayCardTests(unittest.TestCase):
                 generate_overlay_card(spec, out_dir, 0)
             self.assertIn("unknown card type", str(ctx.exception))
 
+    def test_float_dimensions_cast_to_int(self) -> None:
+        """Float card dimensions are cast to int for PIL compatibility."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            out_dir = Path(tmpdir)
+            spec = {
+                "type": "text", "text": "Test",
+                "width": 800.0, "height": 600.5, "font_size": 36.0,
+            }
+            path = generate_overlay_card(spec, out_dir, 0)
+            self.assertTrue(path.exists())
+            from PIL import Image
+            img = Image.open(path)
+            self.assertEqual(img.size, (800, 600))
+
 
 # ── Resolve overlay sources tests ─────────────────────────────────────────────
 
