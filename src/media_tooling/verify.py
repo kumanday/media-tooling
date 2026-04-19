@@ -212,10 +212,11 @@ def _extract_single_frame(
     return dest
 
 
-def _compute_frame_delta(frame_a: Path, frame_b: Path) -> float:
+def _compute_frame_delta(frame_a: Path, frame_b: Path) -> float | None:
     """Compute a normalised mean-absolute-difference between two frames.
 
     Returns a value in [0, 1] where 0 = identical and 1 = maximum difference.
+    Returns ``None`` if frames cannot be compared (corrupt, missing, etc.).
     """
     try:
         with Image.open(frame_a) as img_a, Image.open(frame_b) as img_b:
@@ -229,7 +230,7 @@ def _compute_frame_delta(frame_a: Path, frame_b: Path) -> float:
             delta = float(np.mean(np.abs(arr_a - arr_b)))
             return delta
     except Exception:
-        return 0.0
+        return None
 
 
 def verify_visual_discontinuity(
@@ -245,7 +246,7 @@ def verify_visual_discontinuity(
     them.  A large delta suggests a flash, jump, or discontinuity.
     """
     before_t = max(0.0, cut_time - window)
-    after_t = cut_time + window * 0.1  # just after the cut
+    after_t = cut_time + 0.5  # 0.5s after the cut to cross keyframe boundaries
 
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp = Path(tmpdir)
@@ -265,6 +266,15 @@ def verify_visual_discontinuity(
             )
 
         delta = _compute_frame_delta(frame_before, frame_after)
+        if delta is None:
+            return Finding(
+                check="visual_discontinuity",
+                passed=False,
+                details="Frame comparison failed; check not performed.",
+                severity="warning",
+                cut_time=cut_time,
+            )
+
         passed = delta < threshold
         return Finding(
             check="visual_discontinuity",
@@ -425,7 +435,7 @@ def verify_grade_consistency(
             f"worst_pair=({worst_pair[0]:.1f}s, {worst_pair[1]:.1f}s) "
             f"tolerance={tolerance:.4f}"
         ),
-        severity="info" if passed else "warning",
+        severity="info" if passed else "fail",
     )
 
 
@@ -572,12 +582,18 @@ def run_verification(
                 if rf.check == old_f.check:
                     if old_f.cut_time is not None and rf.cut_time is not None:
                         if math.isclose(old_f.cut_time, rf.cut_time, abs_tol=0.01):
-                            # Replace old finding with re-check result
                             old_f.passed = rf.passed
                             old_f.details = f"[pass {pass_num + 1}] {rf.details}"
                             old_f.severity = rf.severity
                             recheck_findings.pop(ri)
                             break
+                    elif old_f.cut_time is None and rf.cut_time is None:
+                        # Match on check name alone for checks without cut_time
+                        old_f.passed = rf.passed
+                        old_f.details = f"[pass {pass_num + 1}] {rf.details}"
+                        old_f.severity = rf.severity
+                        recheck_findings.pop(ri)
+                        break
 
         # Recalculate pass/fail counts
         report.pass_count = sum(1 for f in report.findings if f.passed)

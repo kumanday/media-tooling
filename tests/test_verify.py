@@ -196,6 +196,7 @@ class TestComputeFrameDelta(unittest.TestCase):
             img.save(str(path_a), "JPEG")
             img.save(str(path_b), "JPEG")
             delta = _compute_frame_delta(path_a, path_b)
+            assert delta is not None
             self.assertAlmostEqual(delta, 0.0, places=2)
 
     def test_black_vs_white_returns_high(self) -> None:
@@ -210,6 +211,7 @@ class TestComputeFrameDelta(unittest.TestCase):
             white.save(str(path_b), "JPEG")
             delta = _compute_frame_delta(path_a, path_b)
             # JPEG compression may shift values; delta should be close to 1.0
+            assert delta is not None
             self.assertGreater(delta, 0.8)
 
     def test_similar_frames_return_low(self) -> None:
@@ -223,6 +225,7 @@ class TestComputeFrameDelta(unittest.TestCase):
             img_a.save(str(path_a), "PNG")
             img_b.save(str(path_b), "PNG")
             delta = _compute_frame_delta(path_a, path_b)
+            assert delta is not None
             self.assertLess(delta, 0.05)
 
     def test_different_sizes_crop_to_min(self) -> None:
@@ -237,7 +240,19 @@ class TestComputeFrameDelta(unittest.TestCase):
             img_b.save(str(path_b), "PNG")
             delta = _compute_frame_delta(path_a, path_b)
             # Should still detect the difference (cropped area is black vs white)
+            assert delta is not None
             self.assertGreater(delta, 0.5)
+
+    def test_corrupt_file_returns_none(self) -> None:
+        """Corrupt/missing files should return None, not 0.0."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            path_a = tmp / "a.jpg"
+            path_b = tmp / "nonexistent.jpg"
+            # Create one valid file
+            Image.new("RGB", (64, 64), (0, 0, 0)).save(str(path_a), "JPEG")
+            delta = _compute_frame_delta(path_a, path_b)
+            self.assertIsNone(delta)
 
 
 # ── verify_visual_discontinuity ───────────────────────────────────────────────
@@ -266,6 +281,15 @@ class TestVerifyVisualDiscontinuity(unittest.TestCase):
         self.assertFalse(finding.passed)
         self.assertEqual(finding.severity, "warning")
         self.assertIn("not performed", finding.details)
+
+    @patch("media_tooling.verify._extract_single_frame")
+    @patch("media_tooling.verify._compute_frame_delta", return_value=None)
+    def test_frame_comparison_failure_returns_warning(self, mock_delta: MagicMock, mock_extract: MagicMock) -> None:
+        mock_extract.return_value = Path("/tmp/frame.jpg")
+        finding = verify_visual_discontinuity(Path("video.mp4"), 10.0)
+        self.assertFalse(finding.passed)
+        self.assertEqual(finding.severity, "warning")
+        self.assertIn("Frame comparison failed", finding.details)
 
 
 # ── verify_audio_pop ─────────────────────────────────────────────────────────
@@ -440,6 +464,44 @@ class TestRunVerification(unittest.TestCase):
         mock_audio.return_value = Finding(
             check="audio_pop", passed=True, details="ok", cut_time=10.0,
         )
+        report = run_verification(
+            Path("video.mp4"),
+            _minimal_edl(),
+            max_passes=3,
+            generate_timelines=False,
+        )
+        self.assertTrue(report.passed)
+
+    @patch("media_tooling.verify.probe_duration")
+    @patch("media_tooling.verify.verify_audio_pop")
+    @patch("media_tooling.verify.verify_visual_discontinuity")
+    @patch("media_tooling.verify.verify_duration")
+    @patch("media_tooling.verify.verify_grade_consistency")
+    def test_retry_recovers_duration_failure(
+        self,
+        mock_grade: MagicMock,
+        mock_duration: MagicMock,
+        mock_visual: MagicMock,
+        mock_audio: MagicMock,
+        mock_probe: MagicMock,
+    ) -> None:
+        """Duration check (no cut_time) should be retried and updated."""
+        mock_probe.return_value = 30.0
+        mock_visual.return_value = Finding(
+            check="visual_discontinuity", passed=True, details="ok",
+            severity="info", cut_time=10.0,
+        )
+        mock_audio.return_value = Finding(
+            check="audio_pop", passed=True, details="ok", cut_time=10.0,
+        )
+        mock_grade.return_value = Finding(
+            check="grade_consistency", passed=True, details="ok",
+        )
+        # Duration fails first, passes on retry
+        mock_duration.side_effect = [
+            Finding(check="duration", passed=False, details="fail", severity="fail"),
+            Finding(check="duration", passed=True, details="ok", severity="info"),
+        ]
         report = run_verification(
             Path("video.mp4"),
             _minimal_edl(),
