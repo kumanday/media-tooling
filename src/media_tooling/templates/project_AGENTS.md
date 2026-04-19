@@ -11,6 +11,12 @@ Use installed toolkit commands from this project directory:
 - silent or visual-first video: `media-contact-sheet` or `media-batch-contact-sheet`
 - rough-cut assembly: `media-rough-cut`
 - burn subtitles: `media-burn-subtitles`
+- pack transcript for reasoning: `media-pack-transcript`
+- timeline visual drill-down: `media-timeline-view`
+- EDL-driven render: `media-edl-render`
+- color grading: `media-grade`
+- loudness normalization: `media-loudnorm`
+- output verification: `media-verify`
 
 Operational defaults:
 - use sequential processing to reduce resource contention. Have patience for long media jobs

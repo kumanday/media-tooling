@@ -110,6 +110,10 @@ class ProjectInitTests(unittest.TestCase):
             "/tmp/toolkit-skills/media-rough-cut-assembly/SKILL.md",
             block,
         )
+        self.assertIn(
+            "/tmp/toolkit-skills/media-render-pipeline/SKILL.md",
+            block,
+        )
 
     def test_project_agents_template_contains_required_placeholder(self) -> None:
         template = load_project_agents_template()
@@ -188,6 +192,20 @@ class ProjectInitTests(unittest.TestCase):
 
         self.assertIn("Anti-patterns", template)
         self.assertIn("Hierarchical pre-computed codec formats", template)
+
+    def test_project_agents_template_lists_new_cli_commands(self) -> None:
+        template = load_project_agents_template()
+
+        for command in (
+            "media-pack-transcript",
+            "media-timeline-view",
+            "media-burn-subtitles",
+            "media-grade",
+            "media-loudnorm",
+            "media-edl-render",
+            "media-verify",
+        ):
+            self.assertIn(command, template)
 
 
 if __name__ == "__main__":

@@ -30,6 +30,7 @@ SKILL_NAMES = (
     "media-corpus-ingest",
     "media-subtitle-pipeline",
     "media-rough-cut-assembly",
+    "media-render-pipeline",
 )
 MANAGED_BLOCK_START = "<!-- media-tooling:init:start -->"
 MANAGED_BLOCK_END = "<!-- media-tooling:init:end -->"
