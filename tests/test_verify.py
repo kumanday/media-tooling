@@ -122,6 +122,7 @@ class TestVerifyDuration(unittest.TestCase):
         finding = verify_duration(Path("video.mp4"), edl)
         self.assertFalse(finding.passed)
         self.assertEqual(finding.severity, "warning")
+        self.assertTrue(finding.non_blocking)
         self.assertIn("no total_duration_s", finding.details)
 
     @patch("media_tooling.verify.probe_duration", side_effect=RuntimeError("ffprobe failed"))
@@ -298,6 +299,7 @@ class TestVerifyVisualDiscontinuity(unittest.TestCase):
         finding = verify_visual_discontinuity(Path("video.mp4"), 10.0)
         self.assertFalse(finding.passed)
         self.assertEqual(finding.severity, "warning")
+        self.assertTrue(finding.non_blocking)
         self.assertIn("not performed", finding.details)
 
     @patch("media_tooling.verify._extract_single_frame")
@@ -307,6 +309,7 @@ class TestVerifyVisualDiscontinuity(unittest.TestCase):
         finding = verify_visual_discontinuity(Path("video.mp4"), 10.0)
         self.assertFalse(finding.passed)
         self.assertEqual(finding.severity, "warning")
+        self.assertTrue(finding.non_blocking)
         self.assertIn("Frame comparison failed", finding.details)
 
 
@@ -383,6 +386,7 @@ class TestVerifyAudioPop(unittest.TestCase):
         finding = verify_audio_pop(Path("video.mp4"), 10.0)
         self.assertFalse(finding.passed)
         self.assertEqual(finding.severity, "warning")
+        self.assertTrue(finding.non_blocking)
         self.assertIn("not performed", finding.details)
 
     @patch("media_tooling.verify.compute_envelope")
@@ -391,6 +395,7 @@ class TestVerifyAudioPop(unittest.TestCase):
         finding = verify_audio_pop(Path("video.mp4"), 10.0)
         self.assertFalse(finding.passed)
         self.assertEqual(finding.severity, "warning")
+        self.assertTrue(finding.non_blocking)
         self.assertIn("not performed", finding.details)
 
 
@@ -417,6 +422,7 @@ class TestVerifyGradeConsistency(unittest.TestCase):
         finding = verify_grade_consistency(Path("video.mp4"), 2.0)
         self.assertFalse(finding.passed)
         self.assertEqual(finding.severity, "warning")
+        self.assertTrue(finding.non_blocking)
         self.assertIn("too short", finding.details)
 
     @patch("media_tooling.verify._sample_luminance", return_value=None)
@@ -425,6 +431,7 @@ class TestVerifyGradeConsistency(unittest.TestCase):
         self.assertFalse(finding.passed)
         self.assertIn("Insufficient", finding.details)
         self.assertEqual(finding.severity, "warning")
+        self.assertTrue(finding.non_blocking)
 
 
 # ── run_verification (integration) ───────────────────────────────────────────
@@ -494,6 +501,7 @@ class TestRunVerification(unittest.TestCase):
         self.assertEqual(len(grade_findings), 1)
         self.assertFalse(grade_findings[0].passed)
         self.assertEqual(grade_findings[0].severity, "warning")
+        self.assertTrue(grade_findings[0].non_blocking)
         self.assertIn("duration unavailable", grade_findings[0].details)
 
     @patch("media_tooling.verify.probe_duration", return_value=30.0)
@@ -549,6 +557,39 @@ class TestRunVerification(unittest.TestCase):
                             if not f.passed and f.severity == "warning"]
         for f in warning_findings:
             self.assertNotIn("unresolved after max passes", f.details)
+
+    @patch("media_tooling.verify.probe_duration", return_value=30.0)
+    @patch("media_tooling.verify.compute_envelope")
+    @patch("media_tooling.verify._extract_single_frame")
+    @patch("media_tooling.verify._compute_frame_delta", return_value=0.05)
+    @patch("media_tooling.verify._sample_luminance", return_value=0.5)
+    def test_non_blocking_warnings_not_retried(
+        self,
+        mock_lum: MagicMock,
+        mock_delta: MagicMock,
+        mock_extract: MagicMock,
+        mock_env: MagicMock,
+        mock_probe: MagicMock,
+    ) -> None:
+        """Non-blocking warnings should not consume retry passes."""
+        mock_extract.return_value = Path("/tmp/frame.jpg")
+        # Make audio pop check return a non-blocking warning (structural issue)
+        mock_env.return_value = np.zeros(500, dtype=np.float32)  # silent → warning
+        report = run_verification(
+            Path("video.mp4"),
+            _minimal_edl(),
+            max_passes=2,
+            generate_timelines=False,
+        )
+        # Audio pop warnings should not have retry pass annotations
+        audio_warnings = [f for f in report.findings
+                         if f.check == "audio_pop" and not f.passed]
+        for f in audio_warnings:
+            self.assertNotIn("[pass", f.details)
+        # Overall report should still pass (warnings are non-blocking)
+        self.assertTrue(report.passed)
+        self.assertEqual(report.fail_count, 0)
+        self.assertGreater(report.warning_count, 0)
 
     @patch("media_tooling.verify.generate_boundary_timelines", return_value=({}, []))
     @patch("media_tooling.verify.probe_duration", return_value=30.0)
