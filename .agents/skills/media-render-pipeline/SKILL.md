@@ -154,6 +154,9 @@ Produce the edit decision list and build the video.
    context would change the editing decision.
 3. **Build animations in parallel** (if applicable) — spawn sub-agents
    simultaneously, not sequentially (Hard Rule 10, Anti-pattern 10).
+   **Note:** `media-edl-render` does not yet composite overlays. Animations
+   must be composited manually via ffmpeg overlay filter after rendering, or
+   omitted until renderer support is added.
 4. **Specify grade per-segment in the EDL** — add `grade` on ranges or
    top-level so the renderer applies it during extraction, never post-concat
    (Anti-pattern 1, Anti-pattern 6). No manual grading step is needed;
@@ -190,8 +193,10 @@ Before presenting the output to the user, verify your own work.
 2. **Check each boundary image for:**
    - Visual discontinuity / flash / jump at the cut
    - Waveform spike at the boundary (audio pop that slipped past the 30ms fade)
-   - Subtitle hidden behind an overlay (Hard Rule 1 violation)
-   - Overlay misaligned or showing wrong frames (Hard Rule 4 violation)
+   - Subtitle hidden behind an overlay (Hard Rule 1 violation; only applicable
+     if overlays were manually composited post-render)
+   - Overlay misaligned or showing wrong frames (Hard Rule 4; only applicable
+     if overlays were manually composited post-render)
 3. **Sample additional points:** first 2s, last 2s, and 2–3 mid-points — check
    grade consistency, subtitle readability, and overall coherence.
 4. **Verify duration** matches the EDL expectation:
@@ -273,7 +278,7 @@ not bundled when the skill is deployed standalone).
 | 1 | Subtitles applied **last** in filter chain | `burn_subtitles.py` |
 | 2 | Per-segment extract + lossless concat (never single-pass filtergraph) | `rough_cut.py` |
 | 3 | 30ms audio fades at every segment boundary | `edl_render.py` |
-| 4 | Overlay PTS shift (`setpts=PTS-STARTPTS+T/TB`) | `edl_render.py` |
+| 4 | Overlay PTS shift (`setpts=PTS-STARTPTS+T/TB`) | Not yet enforced |
 | 5 | Master SRT uses output-timeline offsets | `edl_render.py` |
 | 6 | Never cut inside a word | `edl_render.py` |
 | 7 | Pad cut edges (30–200ms working window) | `edl_render.py` |
@@ -384,12 +389,18 @@ Step 8: Iterate on feedback and persist session memory.
 - `grade`: top-level default grade preset or raw ffmpeg filter. Overridden by
   per-range `grade`.
 - `overlays`: rendered animation clips with placement in the output timeline.
-  Paths are resolved relative to `$PROJECT_DIR`.
+  Paths are resolved relative to `$PROJECT_DIR`. **Note:** overlay compositing
+  is not yet implemented in `media-edl-render`; animations built in Step 5.3
+  must be composited manually via ffmpeg overlay filter in a post-render step,
+  or omitted until renderer support is added. The `overlays` field in the EDL
+  is accepted but silently ignored by the current renderer.
 - `subtitles`: string (path) or dict with optional keys `style`, `path`,
   `force_style`. `style` is the most common; `path` and `force_style` are
   only needed when overriding defaults.
 - `version`: required schema version, currently `1`.
-- `total_duration_s`: expected total duration for verification.
+- `total_duration_s`: informational only — expected total duration for the
+  agent's reference. The renderer does not validate this field; verify actual
+  duration via `ffprobe` (Step 6.4).
 
 ## Animation guidance (when requested)
 
