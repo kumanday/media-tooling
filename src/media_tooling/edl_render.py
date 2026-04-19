@@ -930,6 +930,22 @@ def _validate_overlay(ov: dict[str, Any], index: int) -> None:
                 f"overlay[{index}] counter card must have "
                 "'counter_start' and 'counter_end' fields"
             )
+        # Validate visual dimensions
+        for dim_key in ("width", "height"):
+            val = card.get(dim_key)
+            if val is not None:
+                if not isinstance(val, (int, float)) or val <= 0:
+                    raise EDLSchemaError(
+                        f"overlay[{index}] card '{dim_key}' must be a positive "
+                        f"number, got {val!r}"
+                    )
+        font_size_val = card.get("font_size")
+        if font_size_val is not None:
+            if not isinstance(font_size_val, (int, float)) or font_size_val <= 0:
+                raise EDLSchemaError(
+                    f"overlay[{index}] card 'font_size' must be a positive "
+                    f"number, got {font_size_val!r}"
+                )
 
     for key in ("start", "end"):
         if key not in ov:
@@ -1081,11 +1097,12 @@ def build_overlay_filter_parts(
     ffmpeg would treat the image as a single-frame video and the
     ``enable='between(t,...)'`` window would have no frames to show.
 
-    If *base_size* ``(width, height)`` is provided, each overlay is
-    scaled to match the base video resolution and its pixel format is
-    normalized to ``yuva420p`` (with alpha for overlay compositing).
-    This prevents visible artifacts when overlay and base resolutions
-    differ.
+    Every overlay receives ``format=yuva420p`` to preserve the alpha
+    channel required for compositing, regardless of whether scaling is
+    applied.  If *base_size* ``(width, height)`` is additionally
+    provided, each overlay is also scaled to match the base video
+    resolution.  This prevents visible artifacts when overlay and base
+    resolutions differ.
 
     Each overlay must have ``_resolved_path`` set (via
     ``resolve_overlay_sources``).  If it is missing, ``ValueError`` is
@@ -1109,7 +1126,7 @@ def build_overlay_filter_parts(
         if base_size is not None:
             w, h = base_size
             filters.append(f"scale={w}:{h}")
-            filters.append("format=yuva420p")
+        filters.append("format=yuva420p")
         filters.append(f"setpts=PTS-STARTPTS+{t:.3f}/TB")
         parts.append(f"[{idx}:v]{','.join(filters)}[a{idx}]")
     return parts
@@ -1246,7 +1263,7 @@ def build_final_composite(
         )
 
     # PTS-shift every overlay (Hard Rule 4)
-    # Scale overlays to base dimensions and normalize pixel format
+    # Normalize pixel format (alpha-preserving) and optionally scale to base dimensions
     filter_parts.extend(
         build_overlay_filter_parts(overlays, base_fps=base_fps, base_size=base_size)
     )

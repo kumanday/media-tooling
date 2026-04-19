@@ -1812,6 +1812,40 @@ class ValidateOverlayTests(unittest.TestCase):
         ov = {"source": "a.png", "start": 0.0, "end": 100.0}
         _validate_overlay(ov, 0)  # should not raise
 
+    def test_overlay_card_zero_width_raises(self) -> None:
+        """Card with width=0 raises EDLSchemaError (would crash PIL)."""
+        ov = {"card": {"type": "text", "text": "hi", "width": 0}, "start": 0.0, "end": 5.0}
+        with self.assertRaises(EDLSchemaError) as ctx:
+            _validate_overlay(ov, 0)
+        self.assertIn("width", str(ctx.exception))
+        self.assertIn("positive", str(ctx.exception))
+
+    def test_overlay_card_negative_height_raises(self) -> None:
+        """Card with negative height raises EDLSchemaError."""
+        ov = {"card": {"type": "text", "text": "hi", "height": -100}, "start": 0.0, "end": 5.0}
+        with self.assertRaises(EDLSchemaError) as ctx:
+            _validate_overlay(ov, 0)
+        self.assertIn("height", str(ctx.exception))
+        self.assertIn("positive", str(ctx.exception))
+
+    def test_overlay_card_zero_font_size_raises(self) -> None:
+        """Card with font_size=0 raises EDLSchemaError."""
+        ov = {"card": {"type": "text", "text": "hi", "font_size": 0}, "start": 0.0, "end": 5.0}
+        with self.assertRaises(EDLSchemaError) as ctx:
+            _validate_overlay(ov, 0)
+        self.assertIn("font_size", str(ctx.exception))
+        self.assertIn("positive", str(ctx.exception))
+
+    def test_overlay_card_valid_dimensions_passes(self) -> None:
+        """Card with valid width/height/font_size passes validation."""
+        ov = {"card": {"type": "text", "text": "hi", "width": 640, "height": 480, "font_size": 32}, "start": 0.0, "end": 5.0}
+        _validate_overlay(ov, 0)  # should not raise
+
+    def test_overlay_card_omitted_dimensions_passes(self) -> None:
+        """Card without explicit width/height/font_size uses defaults and passes."""
+        ov = {"card": {"type": "text", "text": "hi"}, "start": 0.0, "end": 5.0}
+        _validate_overlay(ov, 0)  # should not raise
+
 
 class OverlayEDLValidationTests(unittest.TestCase):
     """Tests for overlay validation within validate_edl()."""
@@ -1885,7 +1919,7 @@ class BuildOverlayFilterPartsTests(unittest.TestCase):
         self.assertIn("setpts=PTS-STARTPTS+5.000/TB", parts[0])
 
     def test_video_overlay_no_fps_filter(self) -> None:
-        """Video overlays should NOT get fps filter."""
+        """Video overlays should NOT get fps filter but DO get format=yuva420p."""
         overlays = [
             {"source": "overlay.mp4", "start": 5.0, "end": 10.0,
              "_resolved_path": "/tmp/overlay.mp4"},
@@ -1894,6 +1928,7 @@ class BuildOverlayFilterPartsTests(unittest.TestCase):
         self.assertEqual(len(parts), 1)
         self.assertNotIn("fps=", parts[0])
         self.assertIn("setpts=PTS-STARTPTS+5.000/TB", parts[0])
+        self.assertIn("format=yuva420p", parts[0])
 
     def test_custom_fps_for_image_overlay(self) -> None:
         overlays = [
@@ -1938,15 +1973,16 @@ class BuildOverlayFilterPartsTests(unittest.TestCase):
         self.assertIn("format=yuva420p", parts[0])
         self.assertNotIn("fps=", parts[0])  # video doesn't need fps
 
-    def test_no_base_size_no_scale(self) -> None:
-        """Without base_size, no scale or format filters are added."""
+    def test_no_base_size_no_scale_but_format_preserved(self) -> None:
+        """Without base_size, no scale filter is added but format=yuva420p
+        is still applied for alpha preservation."""
         overlays = [
             {"source": "overlay.png", "start": 5.0, "end": 10.0,
              "_resolved_path": "/tmp/overlay.png"},
         ]
         parts = build_overlay_filter_parts(overlays, base_size=None)
         self.assertNotIn("scale=", parts[0])
-        self.assertNotIn("format=", parts[0])
+        self.assertIn("format=yuva420p", parts[0])
 
     def test_missing_resolved_path_raises(self) -> None:
         """build_overlay_filter_parts raises ValueError if overlay lacks
@@ -2346,9 +2382,9 @@ class BuildFinalCompositeTests(unittest.TestCase):
     @patch("media_tooling.edl_render.probe_frame_rate", return_value=30)
     @patch("media_tooling.edl_render.probe_video_size", side_effect=RuntimeError("probe failed"))
     @patch("media_tooling.edl_render.subprocess.run")
-    def test_probe_failure_proceeds_without_scale(self, mock_run: MagicMock, mock_probe: MagicMock, mock_fps: MagicMock) -> None:
+    def test_probe_failure_proceeds_without_scale_but_with_format(self, mock_run: MagicMock, mock_probe: MagicMock, mock_fps: MagicMock) -> None:
         """If probing base video dimensions fails, compositing proceeds
-        without scale/format normalization."""
+        without scale but still applies format=yuva420p for alpha."""
         mock_run.return_value = MagicMock(returncode=0)
         with tempfile.TemporaryDirectory() as tmpdir:
             edit_dir = Path(tmpdir)
@@ -2365,7 +2401,7 @@ class BuildFinalCompositeTests(unittest.TestCase):
         cmd = mock_run.call_args[0][0]
         cmd_str = " ".join(cmd)
         self.assertNotIn("scale=", cmd_str)
-        self.assertNotIn("format=yuva420p", cmd_str)
+        self.assertIn("format=yuva420p", cmd_str)
 
     @patch("media_tooling.edl_render.probe_frame_rate", return_value=30)
     @patch("media_tooling.edl_render.probe_video_size", return_value=(1920, 1080))
