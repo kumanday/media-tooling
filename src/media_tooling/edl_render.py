@@ -1273,6 +1273,23 @@ def build_final_composite(
             file=sys.stderr,
         )
 
+    # Probe base video duration for output length control.
+    # Using -t <base_duration> instead of -shortest prevents the output
+    # from being truncated when a non-looped video overlay is shorter than
+    # the base video.  -shortest stops at the shortest *input* stream end,
+    # which would be the overlay (not the base) for video overlays.
+    # Image overlays use -loop 1 (infinite frames), so -shortest happens to
+    # work for those, but -t is universally correct.
+    base_duration: float | None = None
+    try:
+        base_duration = probe_duration(base_path, ffprobe_bin=ffprobe_bin)
+    except (RuntimeError, FileNotFoundError, ValueError) as exc:
+        print(
+            f"warning: could not probe base video duration ({exc}); "
+            "falling back to -shortest flag",
+            file=sys.stderr,
+        )
+
     # PTS-shift every overlay (Hard Rule 4)
     # Normalize pixel format (alpha-preserving) and optionally scale to base dimensions
     filter_parts.extend(
@@ -1326,16 +1343,29 @@ def build_final_composite(
 
     filter_complex = ";".join(filter_parts)
 
+    # Build ffmpeg command arguments
     cmd: list[str] = [
         ffmpeg_bin, "-y",
         *inputs,
         "-filter_complex", filter_complex,
         "-map", out_label,
         "-map", "0:a?",
-        # -shortest: stop encoding when the shortest input (base video)
-        # ends, preventing -loop 1 image inputs from producing output
-        # far longer than the base video.
-        "-shortest",
+    ]
+
+    # Use explicit -t <base_duration> instead of -shortest.
+    # -shortest stops at the shortest *input stream*, which truncates
+    # output when a non-looped video overlay is shorter than the base.
+    # -t ensures output always matches the base video duration, and also
+    # prevents -loop 1 image overlays from producing infinite output.
+    # Fallback: if duration probe failed, use -shortest as a safety net
+    # (only safe when all overlays are -loop 1 images, which is the common
+    # case for PIL-generated cards).
+    if base_duration is not None:
+        cmd += ["-t", f"{base_duration:.3f}"]
+    else:
+        cmd += ["-shortest"]
+
+    cmd += [
         "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
         "-pix_fmt", "yuv420p",
         "-c:a", "copy",
