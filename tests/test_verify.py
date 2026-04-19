@@ -858,6 +858,76 @@ class TestRunVerification(unittest.TestCase):
         )
         self.assertTrue(report.passed)
 
+    @patch("media_tooling.verify.probe_duration")
+    @patch("media_tooling.verify.verify_audio_pop")
+    @patch("media_tooling.verify.verify_visual_discontinuity")
+    @patch("media_tooling.verify.verify_duration")
+    @patch("media_tooling.verify.verify_grade_consistency")
+    def test_retry_updates_non_blocking_flag(
+        self,
+        mock_grade: MagicMock,
+        mock_duration: MagicMock,
+        mock_visual: MagicMock,
+        mock_audio: MagicMock,
+        mock_probe: MagicMock,
+    ) -> None:
+        """A check that transitions from blocking fail to non-blocking warning
+        on retry must have its non_blocking flag updated so fail_count is correct."""
+        mock_probe.return_value = 30.0
+        # 2 cut boundaries (10.0, 20.0); cut 10.0 fails first, then becomes
+        # non-blocking warning on retry; cut 20.0 passes throughout.
+        mock_visual.side_effect = [
+            # First pass: cut_time=10.0 fails (blocking)
+            Finding(
+                check="visual_discontinuity",
+                passed=False,
+                details="jump detected",
+                severity="fail",
+                cut_time=10.0,
+                non_blocking=False,
+            ),
+            # First pass: cut_time=20.0 passes
+            Finding(
+                check="visual_discontinuity",
+                passed=True,
+                details="ok",
+                severity="info",
+                cut_time=20.0,
+            ),
+            # Retry pass 1: cut_time=10.0 now becomes non-blocking warning
+            Finding(
+                check="visual_discontinuity",
+                passed=False,
+                details="ffmpeg failed to extract frames",
+                severity="warning",
+                cut_time=10.0,
+                non_blocking=True,
+            ),
+        ]
+        mock_audio.side_effect = [
+            Finding(check="audio_pop", passed=True, details="ok", cut_time=10.0),
+            Finding(check="audio_pop", passed=True, details="ok", cut_time=20.0),
+        ]
+        mock_duration.return_value = Finding(
+            check="duration", passed=True, details="ok", severity="info",
+        )
+        mock_grade.return_value = Finding(
+            check="grade_consistency", passed=True, details="ok",
+        )
+        report = run_verification(
+            Path("video.mp4"),
+            _minimal_edl(),
+            max_passes=3,
+            generate_timelines=False,
+        )
+        # The visual_discontinuity finding should now be non_blocking=True,
+        # so it's counted as a warning, not a blocking failure.
+        self.assertEqual(report.fail_count, 0)
+        self.assertEqual(report.warning_count, 1)
+        self.assertTrue(report.passed)
+        vis_finding = [f for f in report.findings if f.check == "visual_discontinuity"][0]
+        self.assertTrue(vis_finding.non_blocking)
+
 
 # ── parse_args ────────────────────────────────────────────────────────────────
 

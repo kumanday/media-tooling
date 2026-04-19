@@ -616,6 +616,7 @@ def run_verification(
                             old_f.passed = rf.passed
                             old_f.details = f"[pass {pass_num + 1}] {rf.details}"
                             old_f.severity = rf.severity
+                            old_f.non_blocking = rf.non_blocking
                             recheck_findings.pop(ri)
                             break
                     elif old_f.cut_time is None and rf.cut_time is None:
@@ -623,6 +624,7 @@ def run_verification(
                         old_f.passed = rf.passed
                         old_f.details = f"[pass {pass_num + 1}] {rf.details}"
                         old_f.severity = rf.severity
+                        old_f.non_blocking = rf.non_blocking
                         recheck_findings.pop(ri)
                         break
 
