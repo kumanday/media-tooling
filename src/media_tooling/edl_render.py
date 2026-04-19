@@ -24,6 +24,7 @@ import argparse
 import json
 import math
 import re
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -78,6 +79,11 @@ def validate_edl(edl: dict[str, Any]) -> None:
         source_names = set(sources.keys())
     else:
         # List sources: match by basename but reject duplicates
+        for i, s in enumerate(sources):
+            if not isinstance(s, str):
+                raise EDLSchemaError(
+                    f"sources[{i}] must be a string, got {type(s).__name__}"
+                )
         basenames = [Path(s).name for s in sources]
         seen: dict[str, int] = {}
         for name in basenames:
@@ -1029,7 +1035,10 @@ def render_edl(
     if clips_dir.is_dir():
         for clip in clips_dir.iterdir():
             clip.unlink(missing_ok=True)
-        clips_dir.rmdir()
+        try:
+            clips_dir.rmdir()
+        except OSError:
+            shutil.rmtree(clips_dir, ignore_errors=True)
 
     if output_path.exists():
         size_mb = output_path.stat().st_size / (1024 * 1024)
