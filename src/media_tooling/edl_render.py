@@ -28,6 +28,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -1016,12 +1017,7 @@ def _validate_overlay(ov: dict[str, Any], index: int) -> None:
                 f"overlay[{index}] beat-synced duration ({duration:.1f}s) "
                 f"must be {OVERLAY_BEAT_MIN}-{OVERLAY_BEAT_MAX}s"
             )
-    elif duration_type is None:
-        print(
-            f"note: overlay[{index}] has no duration_type — "
-            "duration bounds not enforced",
-            file=sys.stderr,
-        )
+    # duration_type is None: duration bounds not enforced — silently skip
 
 
 # ── PIL overlay card generation ──────────────────────────────────────────────
@@ -1311,13 +1307,44 @@ def build_final_composite(
     current = f"[v{last_idx}]" if last_idx is not None else "[0:v]"
 
     # Subtitles LAST — Hard Rule 1
+    rechunked_srt_path: Path | None = None
     if has_subs:
         if subtitles_path is None:
             raise RuntimeError(
                 "subtitles_path unexpectedly None despite has_subs=True"
             )
+        # Rechunk subtitles to match the no-overlay path's formatting
+        # (burn_subtitles_last → burn_subtitles rechunks; we must too)
+        from media_tooling.burn_subtitles import (
+            BOLD_OVERLAY_FORCE_STYLE,
+            NATURAL_SENTENCE_FORCE_STYLE,
+            rechunk_bold_overlay,
+            rechunk_natural_sentence,
+        )
+        from media_tooling.subtitle import build_srt
+        from media_tooling.subtitle_translate import parse_srt_file
+
+        cues = parse_srt_file(subtitles_path)
+        force_style = sub_style_args  # may be overridden by rechunking below
+        if cues:
+            if sub_style == "bold-overlay":
+                rechunked = rechunk_bold_overlay(cues)
+                force_style = sub_style_args or BOLD_OVERLAY_FORCE_STYLE
+            elif sub_style == "natural-sentence":
+                rechunked = rechunk_natural_sentence(cues)
+                force_style = sub_style_args or NATURAL_SENTENCE_FORCE_STYLE
+            else:
+                raise ValueError(f"Unknown subtitle style: {sub_style}")
+            rechunked_srt = build_srt(rechunked)
+            with tempfile.NamedTemporaryFile(
+                mode="w", suffix=".srt", delete=False, encoding="utf-8",
+            ) as tmp_srt:
+                tmp_srt.write(rechunked_srt)
+                rechunked_srt_path = Path(tmp_srt.name)
+
+        subs_source = rechunked_srt_path or subtitles_path
         subs_escaped = (
-            str(subtitles_path.resolve())
+            str(subs_source.resolve())
             .replace("\\", "\\\\")
             .replace(":", "\\:")
             .replace(",", "\\,")
@@ -1327,14 +1354,8 @@ def build_final_composite(
             .replace("%", "\\%")
             .replace(";", "\\;")
         )
-        force_style = sub_style_args
         if not force_style:
-            if sub_style == "bold-overlay":
-                from media_tooling.burn_subtitles import BOLD_OVERLAY_FORCE_STYLE
-                force_style = BOLD_OVERLAY_FORCE_STYLE
-            else:
-                from media_tooling.burn_subtitles import NATURAL_SENTENCE_FORCE_STYLE
-                force_style = NATURAL_SENTENCE_FORCE_STYLE
+            force_style = BOLD_OVERLAY_FORCE_STYLE
         force_style_escaped = force_style.replace("'", "\\'")
         filter_parts.append(
             f"{current}subtitles='{subs_escaped}'"
@@ -1389,6 +1410,9 @@ def build_final_composite(
     except subprocess.CalledProcessError as exc:
         detail = (exc.stderr or b"").decode(errors="replace")[:500]
         raise RuntimeError(f"ffmpeg compositing failed: {detail}") from exc
+    finally:
+        if rechunked_srt_path is not None:
+            rechunked_srt_path.unlink(missing_ok=True)
 
 
 def resolve_overlay_sources(
