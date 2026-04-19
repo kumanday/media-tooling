@@ -136,15 +136,20 @@ Minimum `font_size=18` for readability.
 
 ### Easing Rules
 
-**Cubic easing only. Never linear.** Linear easing produces mechanical, robotic motion that breaks visual immersion.
+**Cubic easing only for entry/exit/draw animations. Never linear.** Linear easing produces mechanical, robotic motion that breaks visual immersion.
+
+**Exception:** Continuous-motion animations (e.g., `Rotating`) use `rate_func=linear` correctly — a spinning gear should not ease in/out.
 
 ```python
-# RIGHT: cubic easing
+# RIGHT: cubic easing for entry/exit/draw
 self.play(FadeIn(mob), rate_func=smooth)          # ease in/out (default)
 self.play(Create(mob), rate_func=rush_from)        # ease out cubic
 self.play(FadeOut(mob), rate_func=rush_into)      # ease in cubic
 
-# WRONG: linear easing (Anti-pattern 7 from media-render-pipeline)
+# RIGHT: linear for continuous motion only
+self.play(Rotating(gear, angle=TAU, run_time=4, rate_func=linear))
+
+# WRONG: linear easing on entry/exit (Anti-pattern 7 from media-render-pipeline)
 self.play(FadeIn(mob), rate_func=linear)  # NEVER DO THIS
 ```
 
@@ -237,8 +242,17 @@ self.play(ReplacementTransform(note1, note2))  # not Write(note2) on top
 
 ### Never Animate Non-Added Mobjects
 ```python
-self.play(Create(circle))  # must add first
-self.play(circle.animate.set_color(RED))  # then animate
+# WRONG: .animate on a mobject not yet on screen
+circle = Circle()
+self.play(circle.animate.set_color(RED))  # invisible — circle not added!
+
+# RIGHT: add first, then animate
+self.add(circle)
+self.play(circle.animate.set_color(RED))
+
+# Also RIGHT: creation animations add automatically
+self.play(Create(circle))  # Create/FadeIn/Write add the mobject
+self.play(circle.animate.set_color(RED))  # now animate works
 ```
 
 ## Performance Targets

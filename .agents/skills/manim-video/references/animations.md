@@ -70,7 +70,7 @@ self.play(MoveAlongPath(dot, path), run_time=2)
 self.play(Rotate(square, angle=PI / 2, about_point=ORIGIN), run_time=1.5)
 
 # Rotating (continuous rotation, updater-style — good for spinning objects)
-self.play(Rotating(gear, angle=TAU, run_time=4, rate_func=linear))
+self.play(Rotating(gear, angle=TAU, run_time=4, rate_func=linear))  # continuous spin: linear is correct
 ```
 
 `MoveAlongPath` takes any `VMobject` as the path — use `Arc`, `CubicBezier`, `Line`, or a custom `VMobject`. Position is computed via `path.point_from_proportion()`.
@@ -88,11 +88,13 @@ self.play(Wiggle(mobject))               # shake side to side
 
 ```python
 self.play(FadeIn(mob), rate_func=smooth)          # default: ease in/out
-self.play(FadeIn(mob), rate_func=linear)           # constant speed
+self.play(FadeIn(mob), rate_func=linear)           # constant speed (continuous spin only; see easing rules)
 self.play(FadeIn(mob), rate_func=rush_into)        # start slow, end fast
 self.play(FadeIn(mob), rate_func=rush_from)        # start fast, end slow
 self.play(FadeIn(mob), rate_func=there_and_back)   # animate then reverse
 ```
+
+**Note:** Per SKILL.md easing rules, `linear` is only acceptable for continuous-motion animations (e.g., `Rotating`). All entry/exit/draw animations must use cubic easing (`smooth`, `rush_into`, `rush_from`).
 
 ## Composition
 
@@ -219,7 +221,7 @@ self.play(ApplyMatrix(matrix, number_plane), run_time=2)
 self.play(ApplyMatrix([[0, -1], [1, 0]], square))  # 90-degree rotation
 ```
 
-Pairs with `LinearTransformationScene` — see `camera-and-3d.md`.
+Pairs with `LinearTransformationScene`.
 
 ## squish_rate_func — Time-Window Staggering
 
