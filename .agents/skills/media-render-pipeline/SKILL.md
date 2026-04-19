@@ -74,11 +74,17 @@ Gather and catalogue all source media.
    - Use `--skip-existing` to avoid re-transcribing cached sources (Hard Rule 9).
 4. For silent media, delegate to the `media-corpus-ingest` skill for contact
    sheets.
-5. After transcription, pack all transcripts into `takes_packed.md`:
+5. After transcription, pack each transcript individually:
    ```bash
-   media-pack-transcript "$PROJECT_DIR/transcripts/<name>.json" \
-     -o "$PROJECT_DIR/transcripts/takes_packed.md"
+   # Pack each JSON transcript into its own .md beside the source:
+   for json_file in "$PROJECT_DIR/transcripts"/*.json; do
+     media-pack-transcript "$json_file"
+   done
    ```
+   When `-o` is omitted, `media-pack-transcript` writes `takes_packed.md`
+   beside the input file. For a single source, this is the primary
+   reading view. For multiple sources, each gets its own packed file;
+   concatenate them if a single combined view is needed.
 6. Optionally sample one or two `media-timeline-view` composites for a visual
    first impression. Do **not** scan the entire source — use timeline view only
    at decision points.
@@ -360,7 +366,10 @@ Step 8: Iterate on feedback and persist session memory.
 }
 ```
 
-- `sources`: dict mapping short names to absolute paths (or a list of paths).
+- `sources`: **dict** mapping short names to absolute paths (preferred), or a
+  **list** of absolute paths (matched by basename; duplicates rejected). Use a
+  dict when short names are needed for range references, or when multiple
+  sources share the same basename.
 - `ranges`: ordered list of segments to include. Each requires `source`,
   `start`, `end`. Optional: `beat`, `quote`, `reason`, `grade`.
 - `grade`: top-level default grade preset or raw ffmpeg filter. Overridden by
