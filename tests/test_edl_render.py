@@ -328,6 +328,27 @@ class ValidateEDLTests(unittest.TestCase):
             validate_edl(edl)
         self.assertIn("unknown keys", str(ctx.exception))
 
+    def test_subtitles_dict_path_non_string_raises(self) -> None:
+        edl = _minimal_edl()
+        edl["subtitles"] = {"path": 42}
+        with self.assertRaises(EDLSchemaError) as ctx:
+            validate_edl(edl)
+        self.assertIn("subtitles 'path' must be a string", str(ctx.exception))
+
+    def test_subtitles_dict_style_non_string_raises(self) -> None:
+        edl = _minimal_edl()
+        edl["subtitles"] = {"style": 42}
+        with self.assertRaises(EDLSchemaError) as ctx:
+            validate_edl(edl)
+        self.assertIn("subtitles 'style' must be a string", str(ctx.exception))
+
+    def test_subtitles_dict_force_style_non_string_raises(self) -> None:
+        edl = _minimal_edl()
+        edl["subtitles"] = {"force_style": [1, 2]}
+        with self.assertRaises(EDLSchemaError) as ctx:
+            validate_edl(edl)
+        self.assertIn("subtitles 'force_style' must be a string", str(ctx.exception))
+
 
 # ── Grade resolution tests ──────────────────────────────────────────────────
 
