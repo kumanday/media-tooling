@@ -1328,6 +1328,10 @@ def build_final_composite(
         # Rechunk subtitles to match the no-overlay path's formatting
         # (burn_subtitles_last → burn_subtitles rechunks; we must too)
         cues = parse_srt_file(subtitles_path)
+        if not cues:
+            raise ValueError(
+                f"No subtitle cues found in {subtitles_path}"
+            )
         # Resolve force_style based on sub_style, consistent with burn_subtitles
         if sub_style == "bold-overlay":
             force_style = sub_style_args or BOLD_OVERLAY_FORCE_STYLE
@@ -1335,19 +1339,18 @@ def build_final_composite(
             force_style = sub_style_args or NATURAL_SENTENCE_FORCE_STYLE
         else:
             raise ValueError(f"Unknown subtitle style: {sub_style}")
-        if cues:
-            if sub_style == "bold-overlay":
-                rechunked = rechunk_bold_overlay(cues)
-            else:
-                rechunked = rechunk_natural_sentence(cues)
-            rechunked_srt = build_srt(rechunked)
-            with tempfile.NamedTemporaryFile(
-                mode="w", suffix=".srt", delete=False, encoding="utf-8",
-            ) as tmp_srt:
-                tmp_srt.write(rechunked_srt)
-                rechunked_srt_path = Path(tmp_srt.name)
+        if sub_style == "bold-overlay":
+            rechunked = rechunk_bold_overlay(cues)
+        else:
+            rechunked = rechunk_natural_sentence(cues)
+        rechunked_srt = build_srt(rechunked)
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".srt", delete=False, encoding="utf-8",
+        ) as tmp_srt:
+            tmp_srt.write(rechunked_srt)
+            rechunked_srt_path = Path(tmp_srt.name)
 
-        subs_source = rechunked_srt_path or subtitles_path
+        subs_source = rechunked_srt_path
         subs_escaped = (
             str(subs_source.resolve())
             .replace("\\", "\\\\")
