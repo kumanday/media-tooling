@@ -225,6 +225,17 @@ Inspects rendered video output at every cut boundary, checking for production er
 media-verify final.mp4 --edl edl.json
 ```
 
+> **Note:** The flags below are part of the intended design and may change when `media-verify` is implemented (task 010).
+
+**Flags:**
+
+| Flag | Description |
+|------|-------------|
+| `--edl` | Path to the EDL JSON spec used for rendering (required). |
+| `--max-passes` | Maximum re-evaluation attempts. Default: `3`. |
+| `--ffmpeg-bin` | Path to ffmpeg binary. Default: `ffmpeg`. |
+| `--ffprobe-bin` | Path to ffprobe binary. Default: `ffprobe`. |
+
 **Checks performed:**
 
 - Visual discontinuity/flash/jump at cut boundaries
@@ -237,10 +248,9 @@ media-verify final.mp4 --edl edl.json
 
 - Generates `media-timeline-view` PNGs at every cut boundary (±1.5s window)
 - Reports structured findings: pass/fail per check with details
-- `--max-passes 3` limits re-evaluation attempts (default: 3)
 - After max passes, flags remaining issues for manual review
 
-Use `media-verify` after every `media-edl-render` run. If verification fails, adjust the EDL spec and re-render rather than presenting broken output.
+Run `media-verify` after `media-edl-render` when available. If verification fails, adjust the EDL spec and re-render rather than presenting broken output.
 
 **Typical verify-and-iterate loop:**
 
