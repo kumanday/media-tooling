@@ -376,8 +376,8 @@ Step 8: Iterate on feedback and persist session memory.
   the same basename. A **list** of absolute paths is accepted as a shorthand
   when all basenames are unique (matched by basename; duplicates rejected),
   but dict is preferred for clarity. When using list form, `ranges[].source`
-  references the basename without extension (e.g., `"/path/C0103.MP4"` →
-  `"C0103"`).
+  references the full basename including extension (e.g.,
+  `"/path/C0103.MP4"` → `"C0103.MP4"`).
 - `ranges`: ordered list of segments to include. Each requires `source`,
   `start`, `end`. Optional: `beat`, `quote`, `reason`, `grade`.
 - `grade`: top-level default grade preset or raw ffmpeg filter. Overridden by
