@@ -2460,6 +2460,32 @@ class BuildFinalCompositeTests(unittest.TestCase):
         self.assertIn("warning:", buf.getvalue())
         self.assertIn("could not probe base video size", buf.getvalue())
 
+    @patch("media_tooling.edl_render.subprocess.run")
+    @patch("media_tooling.edl_render.probe_video_size", side_effect=RuntimeError("Invalid video dimensions (0x0)"))
+    def test_zero_dimensions_produces_warning(self, mock_probe: MagicMock, mock_run: MagicMock) -> None:
+        """build_final_composite prints warning when probe_video_size
+        raises RuntimeError for zero dimensions, instead of crashing."""
+        mock_run.return_value = MagicMock(returncode=0)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            edit_dir = Path(tmpdir)
+            base_path = edit_dir / "base.mp4"
+            base_path.write_bytes(b"\x00" * 100)
+            out_path = edit_dir / "output.mp4"
+            overlays = [
+                {"source": "overlay.png", "start": 5.0, "end": 10.0,
+                 "_resolved_path": str(edit_dir / "overlay.png")},
+            ]
+            import io
+            import sys as _sys
+            old_stderr = _sys.stderr
+            _sys.stderr = buf = io.StringIO()
+            try:
+                build_final_composite(base_path, overlays, None, out_path)
+            finally:
+                _sys.stderr = old_stderr
+        self.assertIn("warning:", buf.getvalue())
+        self.assertIn("could not probe base video size", buf.getvalue())
+
 
 class CleanupCardsTests(unittest.TestCase):
     def test_cleanup_cards_removes_cards_dir(self) -> None:

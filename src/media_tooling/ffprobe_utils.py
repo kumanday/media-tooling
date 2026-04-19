@@ -52,4 +52,10 @@ def probe_video_size(input_path: Path, ffprobe_bin: str = "ffprobe") -> tuple[in
     h = streams[0].get("height")
     if w is None or h is None:
         raise RuntimeError(f"Could not determine video size for {input_path}")
-    return int(w), int(h)
+    w, h = int(w), int(h)
+    if w <= 0 or h <= 0:
+        raise RuntimeError(
+            f"Invalid video dimensions ({w}x{h}) for {input_path}; "
+            "width and height must be positive"
+        )
+    return w, h

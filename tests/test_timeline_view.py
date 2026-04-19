@@ -9,7 +9,7 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 from PIL import Image, ImageDraw
 
-from media_tooling.ffprobe_utils import probe_duration
+from media_tooling.ffprobe_utils import probe_duration, probe_video_size
 from media_tooling.timeline_view import (
     FRAME_GAP,
     _cap_n_frames,
@@ -303,6 +303,52 @@ class TestProbeDuration(unittest.TestCase):
         )
         with self.assertRaises(RuntimeError):
             probe_duration(Path("test.mp4"), "ffprobe")
+
+
+class TestProbeVideoSize(unittest.TestCase):
+    @patch("media_tooling.ffprobe_utils.subprocess.run")
+    def test_extracts_dimensions(self, mock_run: MagicMock) -> None:
+        mock_run.return_value = MagicMock(
+            returncode=0,
+            stdout='{"streams": [{"width": 1920, "height": 1080}]}',
+        )
+        w, h = probe_video_size(Path("test.mp4"), "ffprobe")
+        self.assertEqual((w, h), (1920, 1080))
+
+    @patch("media_tooling.ffprobe_utils.subprocess.run")
+    def test_raises_on_ffprobe_failure(self, mock_run: MagicMock) -> None:
+        mock_run.return_value = MagicMock(returncode=1, stderr="error")
+        with self.assertRaises(RuntimeError):
+            probe_video_size(Path("missing.mp4"), "ffprobe")
+
+    @patch("media_tooling.ffprobe_utils.subprocess.run")
+    def test_raises_when_no_streams(self, mock_run: MagicMock) -> None:
+        mock_run.return_value = MagicMock(
+            returncode=0,
+            stdout='{"streams": []}',
+        )
+        with self.assertRaises(RuntimeError):
+            probe_video_size(Path("test.mp4"), "ffprobe")
+
+    @patch("media_tooling.ffprobe_utils.subprocess.run")
+    def test_raises_on_zero_width(self, mock_run: MagicMock) -> None:
+        mock_run.return_value = MagicMock(
+            returncode=0,
+            stdout='{"streams": [{"width": 0, "height": 1080}]}',
+        )
+        with self.assertRaises(RuntimeError) as ctx:
+            probe_video_size(Path("corrupt.mp4"), "ffprobe")
+        self.assertIn("Invalid video dimensions", str(ctx.exception))
+
+    @patch("media_tooling.ffprobe_utils.subprocess.run")
+    def test_raises_on_zero_height(self, mock_run: MagicMock) -> None:
+        mock_run.return_value = MagicMock(
+            returncode=0,
+            stdout='{"streams": [{"width": 1920, "height": 0}]}',
+        )
+        with self.assertRaises(RuntimeError) as ctx:
+            probe_video_size(Path("corrupt.mp4"), "ffprobe")
+        self.assertIn("Invalid video dimensions", str(ctx.exception))
 
 
 # ---------------------------------------------------------------------------
