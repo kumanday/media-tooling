@@ -106,6 +106,10 @@ def validate_edl(edl: dict[str, Any]) -> None:
         raise EDLSchemaError("'ranges' must be a non-empty list")
 
     for i, r in enumerate(ranges):
+        if not isinstance(r, dict):
+            raise EDLSchemaError(
+                f"range[{i}] must be a dict, got {type(r).__name__}"
+            )
         for key in ("source", "start", "end"):
             if key not in r:
                 raise EDLSchemaError(f"range[{i}] missing required key '{key}'")
