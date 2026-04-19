@@ -27,14 +27,14 @@ The EDL (Edit Decision List) renderer is the recommended path for any assembly t
 ### Workflow
 
 ```
-storyboard → EDL spec → media-edl-render → media-verify → iterate
+storyboard → EDL spec → media-edl-render → [media-verify] → iterate
 ```
 
 1. Read the storyboard, transcript, and clip notes.
 2. Identify word-boundary cut points from transcripts (use `media-pack-transcript` to prepare packed transcripts for LLM-based selection).
 3. Write a project-local EDL JSON spec defining source files, time ranges, and per-segment options.
 4. Run `media-edl-render` against the EDL spec.
-5. Run `media-verify` on the rendered output for self-evaluation at cut boundaries.
+5. Run `media-verify` on the rendered output for self-evaluation at cut boundaries *(planned — not yet implemented; use manual review until available)*.
 6. Iterate: adjust cut points, grade settings, or segment order in the EDL, then re-render and re-verify.
 
 ## EDL JSON format
@@ -134,7 +134,7 @@ media-edl-render edl.json -o final.mp4
 
 `--preview` and `--draft` are mutually exclusive. `--build-subtitles` and `--no-subtitles` are mutually exclusive.
 
-**Pipeline stages (obeys Hard Rules 1–7):**
+**Pipeline stages (obeys Hard Rules 1, 2, 3, 5, 6, 7):**
 
 1. Validate EDL JSON schema.
 2. Per-segment extract with word-boundary padding (30–200 ms), per-segment color grade, and 30 ms audio fades at both edges.
@@ -142,6 +142,8 @@ media-edl-render edl.json -o final.mp4
 4. Build master SRT with output-timeline offsets (if `--build-subtitles`).
 5. Burn subtitles LAST in filter chain (Hard Rule 1).
 6. Two-pass loudness normalization (−14 LUFS / −1 dBTP / LRA 11).
+
+> **Note:** Hard Rule 4 (overlay PTS shift) is not yet exercised by the EDL renderer since overlay compositing is not in the current pipeline scope.
 
 ### `media-grade` — Apply color grade
 
@@ -213,7 +215,9 @@ The EDL renderer runs loudnorm automatically as the final pipeline stage. Use `m
 | `--ffmpeg-bin` | Path to ffmpeg binary. Default: `ffmpeg`. |
 | `--ffprobe-bin` | Path to ffprobe binary. Default: `ffprobe`. |
 
-### `media-verify` — Self-evaluation at cut boundaries
+### `media-verify` — Self-evaluation at cut boundaries *(planned)*
+
+> **Status:** `media-verify` is a planned command (task 010). It does not yet have a CLI entry point or implementation. The checks and interface described below reflect the intended design. Until it is implemented, skip the verify step and rely on manual review of rendered output.
 
 Inspects rendered video output at every cut boundary, checking for production errors before presenting the result. Catches visual discontinuities, audio pops, hidden subtitles, overlay misalignment, and duration mismatches.
 
@@ -333,6 +337,6 @@ See `docs/hard-rules.md` for the full list of 12 hard rules and 13 anti-patterns
 - Keep placeholder copy short enough to be readable on-screen.
 - Include explicit timing metadata on cards whenever a storyboard already defines chapter windows.
 - Prefer a reusable EDL JSON spec over a one-off shell script.
-- Always run `media-verify` after rendering before considering the cut final.
+- Run `media-verify` after rendering when available (currently planned, not yet implemented); otherwise rely on manual review.
 - Never skip loudness normalization for social-media distribution targets.
 - Use `--draft` mode first to verify cut points, then `--preview` for QC, then full render for final output.
