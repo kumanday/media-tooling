@@ -1116,7 +1116,7 @@ def build_overlay_filter_parts(
     raised — consistent with ``build_final_composite``.
 
     Returns a list of filter strings like
-    ``[1:v]fps=30,scale=1920:1080,format=yuva420p,setpts=PTS-STARTPTS+5.000/TB[a1]``.
+    ``[1:v]fps=30,scale=1920:-2,format=yuva420p,setpts=PTS-STARTPTS+5.000/TB[a1]``.
     """
     parts: list[str] = []
     for idx, ov in enumerate(overlays, start=1):
