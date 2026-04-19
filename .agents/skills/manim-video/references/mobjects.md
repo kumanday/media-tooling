@@ -318,6 +318,9 @@ This is how 3Blue1Brown keeps text readable over complex backgrounds without usi
 Apply complex functions to entire mobjects — transforms the plane:
 
 ```python
+import math
+from manim import *
+
 c_grid = ComplexPlane()
 moving_grid = c_grid.copy()
 moving_grid.prepare_for_nonlinear_transform()  # adds more sample points for smooth deformation
