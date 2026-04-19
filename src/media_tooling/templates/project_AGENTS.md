@@ -10,7 +10,8 @@ Use installed toolkit commands from this project directory:
 - spoken media: `media-subtitle` or `media-batch-subtitle`
 - silent or visual-first video: `media-contact-sheet` or `media-batch-contact-sheet`
 - rough-cut assembly: `media-rough-cut`
-- burn subtitles: `media-burn-subtitles`
+- burn subtitles: `media-burn-subtitles` or `media-batch-burn-subtitles`
+- translate subtitles: `media-translate-subtitles`
 - pack transcript for reasoning: `media-pack-transcript`
 - timeline visual drill-down: `media-timeline-view`
 - EDL-driven render: `media-edl-render`

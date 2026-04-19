@@ -193,16 +193,23 @@ class ProjectInitTests(unittest.TestCase):
         self.assertIn("Anti-patterns", template)
         self.assertIn("Hierarchical pre-computed codec formats", template)
 
-    def test_project_agents_template_lists_new_cli_commands(self) -> None:
+    def test_project_agents_template_lists_all_cli_commands(self) -> None:
         template = load_project_agents_template()
 
         for command in (
+            "media-subtitle",
+            "media-batch-subtitle",
+            "media-contact-sheet",
+            "media-batch-contact-sheet",
+            "media-rough-cut",
+            "media-burn-subtitles",
+            "media-batch-burn-subtitles",
+            "media-translate-subtitles",
             "media-pack-transcript",
             "media-timeline-view",
-            "media-burn-subtitles",
+            "media-edl-render",
             "media-grade",
             "media-loudnorm",
-            "media-edl-render",
             "media-verify",
         ):
             self.assertIn(command, template)
