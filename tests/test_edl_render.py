@@ -1721,6 +1721,17 @@ class ValidateOverlayTests(unittest.TestCase):
             _validate_overlay({"source": "a.png", "start": 10.0, "end": 5.0}, 0)
         self.assertIn("must be greater than", str(ctx.exception))
 
+    def test_overlay_negative_start_raises(self) -> None:
+        """Negative start produces broken PTS expression; must be rejected."""
+        with self.assertRaises(EDLSchemaError) as ctx:
+            _validate_overlay({"source": "a.png", "start": -1.0, "end": 5.0}, 0)
+        self.assertIn("must be non-negative", str(ctx.exception))
+
+    def test_overlay_start_zero_passes(self) -> None:
+        """start=0 is valid and should not raise."""
+        ov = {"source": "a.png", "start": 0.0, "end": 5.0}
+        _validate_overlay(ov, 0)
+
     def test_overlay_non_numeric_start_raises(self) -> None:
         with self.assertRaises(EDLSchemaError) as ctx:
             _validate_overlay({"source": "a.png", "start": "abc", "end": 10.0}, 0)
@@ -2333,6 +2344,26 @@ class BuildFinalCompositeTests(unittest.TestCase):
         cmd_str = " ".join(cmd)
         self.assertNotIn("scale=", cmd_str)
         self.assertNotIn("format=yuva420p", cmd_str)
+
+    @patch("media_tooling.edl_render.probe_video_size", return_value=(1920, 1080))
+    @patch("media_tooling.edl_render.subprocess.run")
+    def test_ffprobe_bin_forwarded_to_probe(self, mock_run: MagicMock, mock_probe: MagicMock) -> None:
+        """build_final_composite passes ffprobe_bin to probe_video_size."""
+        mock_run.return_value = MagicMock(returncode=0)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            edit_dir = Path(tmpdir)
+            base_path = edit_dir / "base.mp4"
+            base_path.write_bytes(b"\x00" * 100)
+            out_path = edit_dir / "output.mp4"
+            overlays = [
+                {"source": "overlay.png", "start": 5.0, "end": 10.0,
+                 "_resolved_path": str(edit_dir / "overlay.png")},
+            ]
+            build_final_composite(
+                base_path, overlays, None, out_path, edit_dir,
+                ffprobe_bin="/custom/ffprobe",
+            )
+        mock_probe.assert_called_once_with(base_path, ffprobe_bin="/custom/ffprobe")
 
     @patch("media_tooling.edl_render.burn_subtitles_last")
     def test_no_overlays_with_subtitles_delegates(

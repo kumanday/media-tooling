@@ -929,7 +929,13 @@ def _validate_overlay(ov: dict[str, Any], index: int) -> None:
                 f"overlay[{index}] {key} must be finite, got {val!r}"
             )
 
-    if float(ov["end"]) <= float(ov["start"]):
+    start_val = float(ov["start"])
+    if start_val < 0:
+        raise EDLSchemaError(
+            f"overlay[{index}] start ({start_val}) must be non-negative"
+        )
+
+    if float(ov["end"]) <= start_val:
         raise EDLSchemaError(
             f"overlay[{index}] end ({ov['end']}) must be greater than "
             f"start ({ov['start']})"
@@ -1136,6 +1142,7 @@ def build_final_composite(
     sub_style: str = "bold-overlay",
     sub_style_args: str | None = None,
     ffmpeg_bin: str = "ffmpeg",
+    ffprobe_bin: str = "ffprobe",
 ) -> None:
     """Final pass: base → overlays (PTS-shifted) → subtitles LAST → out.
 
@@ -1182,7 +1189,7 @@ def build_final_composite(
     # Probe base video dimensions for overlay scale normalization
     base_size: tuple[int, int] | None = None
     try:
-        base_size = probe_video_size(base_path)
+        base_size = probe_video_size(base_path, ffprobe_bin=ffprobe_bin)
     except (RuntimeError, FileNotFoundError):
         # If probing fails, proceed without scale/format normalization
         pass
@@ -1488,7 +1495,7 @@ def render_edl(
                 base_path, resolved_overlays, subs_path, composite_output,
                 edit_dir,
                 sub_style=sub_style, sub_style_args=sub_style_args,
-                ffmpeg_bin=ffmpeg_bin,
+                ffmpeg_bin=ffmpeg_bin, ffprobe_bin=ffprobe_bin,
             )
         except (ValueError, RuntimeError, FileNotFoundError) as exc:
             print(f"overlay compositing error: {exc}", file=sys.stderr)
