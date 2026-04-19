@@ -318,7 +318,6 @@ This is how 3Blue1Brown keeps text readable over complex backgrounds without usi
 Apply complex functions to entire mobjects — transforms the plane:
 
 ```python
-import math
 from manim import *
 
 c_grid = ComplexPlane()
@@ -330,9 +329,9 @@ self.play(
     run_time=5,
 )
 
-# Also works with R3->R3 functions:
+# Also works with R3->R3 functions (np.sin from numpy, auto-imported by manim):
 self.play(grid.animate.apply_function(
-    lambda p: [p[0] + 0.5 * math.sin(p[1]), p[1] + 0.5 * math.sin(p[0]), p[2]]
+    lambda p: [p[0] + 0.5 * np.sin(p[1]), p[1] + 0.5 * np.sin(p[0]), p[2]]
 ), run_time=5)
 ```
 

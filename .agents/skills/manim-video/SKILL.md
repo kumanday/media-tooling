@@ -290,9 +290,11 @@ If the user asks for creative, experimental, or unconventional explanatory appro
 Take a standard mathematical/technical visualization and transform it:
 - **Substitute**: replace the standard visual metaphor (number line → winding path, matrix → city grid)
 - **Combine**: merge two explanation approaches (algebraic + geometric simultaneously)
-- **Reverse**: derive backward — start from the result and deconstruct to axioms
+- **Adapt**: borrow a technique from a different domain (physics metaphor for economics, music notation for signal processing)
 - **Modify**: exaggerate a parameter to show why it matters (10x the learning rate, 1000x the sample size)
+- **Put to other use**: repurpose a visual for a new audience (expert diagram → beginner walkthrough)
 - **Eliminate**: remove all notation — explain purely through animation and spatial relationships
+- **Reverse**: derive backward — start from the result and deconstruct to axioms
 
 ### Assumption Reversal
 1. List what's "standard" about how this topic is visualized (left-to-right, 2D, discrete steps, formal notation)
