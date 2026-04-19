@@ -258,9 +258,9 @@ def verify_visual_discontinuity(
         if fa is None or fb is None:
             return Finding(
                 check="visual_discontinuity",
-                passed=True,
-                details="Could not extract frames at cut boundary; skipping.",
-                severity="info",
+                passed=False,
+                details="Could not extract frames at cut boundary; check not performed.",
+                severity="warning",
                 cut_time=cut_time,
             )
 
@@ -303,18 +303,18 @@ def verify_audio_pop(
     except Exception as exc:
         return Finding(
             check="audio_pop",
-            passed=True,
-            details=f"Could not compute envelope: {exc}; skipping.",
-            severity="info",
+            passed=False,
+            details=f"Could not compute envelope: {exc}; check not performed.",
+            severity="warning",
             cut_time=cut_time,
         )
 
     if envelope.size == 0 or envelope.max() == 0:
         return Finding(
             check="audio_pop",
-            passed=True,
-            details="No audio data near cut boundary.",
-            severity="info",
+            passed=False,
+            details="No audio data near cut boundary; check not performed.",
+            severity="warning",
             cut_time=cut_time,
         )
 
@@ -439,7 +439,6 @@ def generate_boundary_timelines(
     cut_boundaries: list[float],
     output_dir: Path,
     ffmpeg_bin: str = "ffmpeg",
-    ffprobe_bin: str = "ffprobe",
     window: float = CUT_BOUNDARY_WINDOW_S,
 ) -> list[str]:
     """Generate timeline_view PNGs at every cut boundary.
@@ -486,6 +485,10 @@ def run_verification(
     generate_timelines: bool = True,
 ) -> VerifyReport:
     """Run all verification checks on *video_path* against *edl*.
+
+    Re-runs checks up to *max_passes* times.  After each pass, only
+    the failing checks are re-evaluated.  Once *max_passes* is
+    exhausted, any remaining failures are flagged as unresolved.
 
     Returns a :class:`VerifyReport` with structured findings.
     """
@@ -537,12 +540,62 @@ def run_verification(
         finding = verify_grade_consistency(video_path, total_duration, ffmpeg_bin)
         report.add(finding)
 
-    # 6. Timeline PNGs
+    # 6. Retry loop: re-evaluate failed checks up to max_passes
+    for pass_num in range(1, max_passes):
+        failed_checks = [f for f in report.findings if not f.passed]
+        if not failed_checks:
+            break  # all checks passing
+
+        # Re-run only the checkable failures (not info-only findings like cut_boundaries)
+        recheck_findings: list[Finding] = []
+        for f in failed_checks:
+            if f.check == "visual_discontinuity" and f.cut_time is not None:
+                recheck_findings.append(
+                    verify_visual_discontinuity(video_path, f.cut_time, ffmpeg_bin)
+                )
+            elif f.check == "audio_pop" and f.cut_time is not None:
+                recheck_findings.append(
+                    verify_audio_pop(video_path, f.cut_time, ffmpeg_bin)
+                )
+            elif f.check == "duration":
+                recheck_findings.append(
+                    verify_duration(video_path, edl, ffprobe_bin)
+                )
+            elif f.check == "grade_consistency" and total_duration > 0:
+                recheck_findings.append(
+                    verify_grade_consistency(video_path, total_duration, ffmpeg_bin)
+                )
+
+        # Update report: replace failed findings with re-check results
+        for old_f in failed_checks:
+            for ri, rf in enumerate(recheck_findings):
+                if rf.check == old_f.check:
+                    if old_f.cut_time is not None and rf.cut_time is not None:
+                        if math.isclose(old_f.cut_time, rf.cut_time, abs_tol=0.01):
+                            # Replace old finding with re-check result
+                            old_f.passed = rf.passed
+                            old_f.details = f"[pass {pass_num + 1}] {rf.details}"
+                            old_f.severity = rf.severity
+                            recheck_findings.pop(ri)
+                            break
+
+        # Recalculate pass/fail counts
+        report.pass_count = sum(1 for f in report.findings if f.passed)
+        report.fail_count = sum(1 for f in report.findings if not f.passed)
+        report.passed = report.fail_count == 0
+
+    # Flag remaining failures after max_passes exhausted
+    if report.fail_count > 0:
+        for f in report.findings:
+            if not f.passed and "unresolved" not in f.details:
+                f.details += " [unresolved after max passes]"
+
+    # 7. Timeline PNGs
     if generate_timelines and cut_boundaries:
         timeline_dir = output_dir or video_path.parent / "verify_timelines"
         timeline_dir.mkdir(parents=True, exist_ok=True)
         png_paths = generate_boundary_timelines(
-            video_path, cut_boundaries, timeline_dir, ffmpeg_bin, ffprobe_bin,
+            video_path, cut_boundaries, timeline_dir, ffmpeg_bin,
         )
         if png_paths:
             report.add(Finding(
@@ -554,7 +607,7 @@ def run_verification(
             # Attach PNG paths to the corresponding visual discontinuity findings
             for finding in report.findings:
                 if finding.check == "visual_discontinuity" and finding.cut_time is not None:
-                    idx = None
+                    idx: int | None = None
                     for bi, bt in enumerate(cut_boundaries):
                         if math.isclose(bt, finding.cut_time, abs_tol=0.01):
                             idx = bi

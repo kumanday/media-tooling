@@ -5,11 +5,16 @@ import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import numpy as np
+from PIL import Image
+
 from media_tooling.verify import (
     Finding,
     VerifyReport,
+    _compute_frame_delta,
     extract_cut_boundaries,
     parse_args,
+    run_verification,
     verify_audio_pop,
     verify_duration,
     verify_grade_consistency,
@@ -176,6 +181,65 @@ class TestFindingAndReport(unittest.TestCase):
         self.assertTrue(d["passed"])
 
 
+# ── _compute_frame_delta (real images) ────────────────────────────────────────
+
+
+class TestComputeFrameDelta(unittest.TestCase):
+    def test_identical_frames_return_zero(self) -> None:
+        """Two identical images should have delta of 0."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            # Create two identical black images
+            img = Image.new("RGB", (64, 64), (0, 0, 0))
+            path_a = tmp / "a.jpg"
+            path_b = tmp / "b.jpg"
+            img.save(str(path_a), "JPEG")
+            img.save(str(path_b), "JPEG")
+            delta = _compute_frame_delta(path_a, path_b)
+            self.assertAlmostEqual(delta, 0.0, places=2)
+
+    def test_black_vs_white_returns_high(self) -> None:
+        """Black vs white images should have delta close to 1.0."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            black = Image.new("RGB", (64, 64), (0, 0, 0))
+            white = Image.new("RGB", (64, 64), (255, 255, 255))
+            path_a = tmp / "black.jpg"
+            path_b = tmp / "white.jpg"
+            black.save(str(path_a), "JPEG")
+            white.save(str(path_b), "JPEG")
+            delta = _compute_frame_delta(path_a, path_b)
+            # JPEG compression may shift values; delta should be close to 1.0
+            self.assertGreater(delta, 0.8)
+
+    def test_similar_frames_return_low(self) -> None:
+        """Two slightly different images should have low delta."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            img_a = Image.new("RGB", (64, 64), (128, 128, 128))
+            img_b = Image.new("RGB", (64, 64), (130, 130, 130))
+            path_a = tmp / "a.png"
+            path_b = tmp / "b.png"
+            img_a.save(str(path_a), "PNG")
+            img_b.save(str(path_b), "PNG")
+            delta = _compute_frame_delta(path_a, path_b)
+            self.assertLess(delta, 0.05)
+
+    def test_different_sizes_crop_to_min(self) -> None:
+        """Frames with different dimensions are cropped to the smaller size."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            img_a = Image.new("RGB", (64, 64), (0, 0, 0))
+            img_b = Image.new("RGB", (32, 32), (255, 255, 255))
+            path_a = tmp / "a.png"
+            path_b = tmp / "b.png"
+            img_a.save(str(path_a), "PNG")
+            img_b.save(str(path_b), "PNG")
+            delta = _compute_frame_delta(path_a, path_b)
+            # Should still detect the difference (cropped area is black vs white)
+            self.assertGreater(delta, 0.5)
+
+
 # ── verify_visual_discontinuity ───────────────────────────────────────────────
 
 
@@ -183,13 +247,10 @@ class TestVerifyVisualDiscontinuity(unittest.TestCase):
     @patch("media_tooling.verify._extract_single_frame")
     @patch("media_tooling.verify._compute_frame_delta", return_value=0.05)
     def test_no_discontinuity(self, mock_delta: MagicMock, mock_extract: MagicMock) -> None:
-        with tempfile.NamedTemporaryFile(suffix=".mp4") as f:
-            video = Path(f.name)
-            # Create fake frame files
-            mock_extract.return_value = Path("/tmp/frame.jpg")
-            finding = verify_visual_discontinuity(video, 10.0)
-            self.assertTrue(finding.passed)
-            self.assertEqual(finding.check, "visual_discontinuity")
+        mock_extract.return_value = Path("/tmp/frame.jpg")
+        finding = verify_visual_discontinuity(Path("video.mp4"), 10.0)
+        self.assertTrue(finding.passed)
+        self.assertEqual(finding.check, "visual_discontinuity")
 
     @patch("media_tooling.verify._extract_single_frame")
     @patch("media_tooling.verify._compute_frame_delta", return_value=0.40)
@@ -200,10 +261,11 @@ class TestVerifyVisualDiscontinuity(unittest.TestCase):
         self.assertEqual(finding.severity, "fail")
 
     @patch("media_tooling.verify._extract_single_frame", return_value=None)
-    def test_frame_extraction_failure_skips(self, mock_extract: MagicMock) -> None:
+    def test_frame_extraction_failure_returns_warning(self, mock_extract: MagicMock) -> None:
         finding = verify_visual_discontinuity(Path("video.mp4"), 10.0)
-        self.assertTrue(finding.passed)
-        self.assertIn("skipping", finding.details)
+        self.assertFalse(finding.passed)
+        self.assertEqual(finding.severity, "warning")
+        self.assertIn("not performed", finding.details)
 
 
 # ── verify_audio_pop ─────────────────────────────────────────────────────────
@@ -212,7 +274,6 @@ class TestVerifyVisualDiscontinuity(unittest.TestCase):
 class TestVerifyAudioPop(unittest.TestCase):
     @patch("media_tooling.verify.compute_envelope")
     def test_no_pop(self, mock_env: MagicMock) -> None:
-        import numpy as np
         # Smooth envelope, no spike
         mock_env.return_value = np.full(500, 0.3, dtype=np.float32)
         finding = verify_audio_pop(Path("video.mp4"), 10.0)
@@ -220,7 +281,6 @@ class TestVerifyAudioPop(unittest.TestCase):
 
     @patch("media_tooling.verify.compute_envelope")
     def test_pop_near_cut(self, mock_env: MagicMock) -> None:
-        import numpy as np
         env = np.full(500, 0.3, dtype=np.float32)
         # Spike at the cut point (middle of envelope ≈ cut_time)
         env[250] = 0.95
@@ -230,7 +290,6 @@ class TestVerifyAudioPop(unittest.TestCase):
 
     @patch("media_tooling.verify.compute_envelope")
     def test_pop_far_from_cut_ignored(self, mock_env: MagicMock) -> None:
-        import numpy as np
         env = np.full(500, 0.3, dtype=np.float32)
         # Spike at the very start (far from cut at center)
         env[0] = 0.95
@@ -241,17 +300,19 @@ class TestVerifyAudioPop(unittest.TestCase):
         self.assertTrue(finding.passed)
 
     @patch("media_tooling.verify.compute_envelope", side_effect=RuntimeError("no audio"))
-    def test_envelope_failure(self, mock_env: MagicMock) -> None:
+    def test_envelope_failure_returns_warning(self, mock_env: MagicMock) -> None:
         finding = verify_audio_pop(Path("video.mp4"), 10.0)
-        self.assertTrue(finding.passed)
-        self.assertIn("skipping", finding.details)
+        self.assertFalse(finding.passed)
+        self.assertEqual(finding.severity, "warning")
+        self.assertIn("not performed", finding.details)
 
     @patch("media_tooling.verify.compute_envelope")
-    def test_silent_track(self, mock_env: MagicMock) -> None:
-        import numpy as np
+    def test_silent_track_returns_warning(self, mock_env: MagicMock) -> None:
         mock_env.return_value = np.zeros(500, dtype=np.float32)
         finding = verify_audio_pop(Path("video.mp4"), 10.0)
-        self.assertTrue(finding.passed)
+        self.assertFalse(finding.passed)
+        self.assertEqual(finding.severity, "warning")
+        self.assertIn("not performed", finding.details)
 
 
 # ── verify_grade_consistency ──────────────────────────────────────────────────
@@ -283,6 +344,109 @@ class TestVerifyGradeConsistency(unittest.TestCase):
         finding = verify_grade_consistency(Path("video.mp4"), 60.0)
         self.assertTrue(finding.passed)
         self.assertIn("Insufficient", finding.details)
+
+
+# ── run_verification (integration) ───────────────────────────────────────────
+
+
+class TestRunVerification(unittest.TestCase):
+    @patch("media_tooling.verify.probe_duration", return_value=30.0)
+    @patch("media_tooling.verify.compute_envelope")
+    @patch("media_tooling.verify._extract_single_frame")
+    @patch("media_tooling.verify._compute_frame_delta", return_value=0.05)
+    def test_all_passing(
+        self,
+        mock_delta: MagicMock,
+        mock_extract: MagicMock,
+        mock_env: MagicMock,
+        mock_probe: MagicMock,
+    ) -> None:
+        mock_extract.return_value = Path("/tmp/frame.jpg")
+        mock_env.return_value = np.full(500, 0.3, dtype=np.float32)
+        report = run_verification(
+            Path("video.mp4"),
+            _minimal_edl(),
+            generate_timelines=False,
+        )
+        self.assertTrue(report.passed)
+        self.assertEqual(report.fail_count, 0)
+
+    @patch("media_tooling.verify.probe_duration", return_value=35.0)
+    def test_duration_failure_reported(
+        self,
+        mock_probe: MagicMock,
+    ) -> None:
+        report = run_verification(
+            Path("video.mp4"),
+            _single_range_edl(),
+            generate_timelines=False,
+        )
+        # Duration mismatch: expected 15s, actual 35s
+        self.assertFalse(report.passed)
+        duration_findings = [f for f in report.findings if f.check == "duration"]
+        self.assertEqual(len(duration_findings), 1)
+        self.assertFalse(duration_findings[0].passed)
+
+    @patch("media_tooling.verify.probe_duration", return_value=30.0)
+    @patch("media_tooling.verify.compute_envelope")
+    @patch("media_tooling.verify._extract_single_frame")
+    @patch("media_tooling.verify._compute_frame_delta")
+    def test_max_passes_limits_retries(
+        self,
+        mock_delta: MagicMock,
+        mock_extract: MagicMock,
+        mock_env: MagicMock,
+        mock_probe: MagicMock,
+    ) -> None:
+        """With max_passes=1, no retry occurs and failures are flagged."""
+        mock_extract.return_value = Path("/tmp/frame.jpg")
+        mock_env.return_value = np.full(500, 0.3, dtype=np.float32)
+        # Always fail visual check
+        mock_delta.return_value = 0.5
+        report = run_verification(
+            Path("video.mp4"),
+            _minimal_edl(),
+            max_passes=1,
+            generate_timelines=False,
+        )
+        self.assertFalse(report.passed)
+        # Check that unresolved flag is present after max passes
+        visual_findings = [f for f in report.findings
+                          if f.check == "visual_discontinuity" and not f.passed]
+        self.assertTrue(len(visual_findings) > 0)
+        self.assertIn("unresolved after max passes", visual_findings[0].details)
+
+    @patch("media_tooling.verify.probe_duration", return_value=30.0)
+    @patch("media_tooling.verify.verify_audio_pop")
+    @patch("media_tooling.verify.verify_visual_discontinuity")
+    def test_retry_recovers_from_transient_failure(
+        self,
+        mock_visual: MagicMock,
+        mock_audio: MagicMock,
+        mock_probe: MagicMock,
+    ) -> None:
+        """When a check fails then passes on retry, the report reflects recovery."""
+        # First call fails, second call (retry) passes
+        # There are 2 cut boundaries, so visual is called twice per pass
+        mock_visual.side_effect = [
+            Finding(check="visual_discontinuity", passed=False, details="fail",
+                    severity="fail", cut_time=10.0),
+            Finding(check="visual_discontinuity", passed=True, details="ok",
+                    severity="info", cut_time=20.0),
+            # Retry for cut_time=10.0
+            Finding(check="visual_discontinuity", passed=True, details="ok",
+                    severity="info", cut_time=10.0),
+        ]
+        mock_audio.return_value = Finding(
+            check="audio_pop", passed=True, details="ok", cut_time=10.0,
+        )
+        report = run_verification(
+            Path("video.mp4"),
+            _minimal_edl(),
+            max_passes=3,
+            generate_timelines=False,
+        )
+        self.assertTrue(report.passed)
 
 
 # ── parse_args ────────────────────────────────────────────────────────────────
