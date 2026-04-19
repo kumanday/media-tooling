@@ -159,8 +159,9 @@ class NarratedScene(VoiceoverScene):
         ))
 
         # Voiceover auto-controls scene duration
+        circle = Circle()
         with self.voiceover(text="Here is a circle being drawn.") as tracker:
-            self.play(Create(Circle()), run_time=tracker.duration)
+            self.play(Create(circle), run_time=tracker.duration)
 
         with self.voiceover(text="Now let's transform it into a square.") as tracker:
             self.play(Transform(circle, Square()), run_time=tracker.duration)
