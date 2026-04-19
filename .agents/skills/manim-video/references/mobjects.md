@@ -17,7 +17,7 @@ eq[4].set_color(BLUE)
 t = Tex(r"The area is $\pi r^2$", font_size=36)
 
 # Styled markup
-t = MarkupText('<span foreground="#58C4DD">Blue</span> text', font_size=30)
+t = MarkupText('<span foreground="#58C4DD">Blue</span> text', font_size=30, font=MONO)
 ```
 
 **Always use raw strings (`r""`) for any string with backslashes.**
