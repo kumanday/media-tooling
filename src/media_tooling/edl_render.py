@@ -1160,12 +1160,12 @@ def build_overlay_chain(
 
     Each overlay is composited onto the base with
     ``overlay=enable='between(t,start,end)'``, ordered by z_order
-    (ascending, lowest first).  ``eof_action=end`` prevents short video
+    (ascending, lowest first).  ``eof_action=endall`` prevents short video
     overlays from showing a stale last frame past the overlay's natural
     duration.
 
     Returns a list of filter strings like
-    ``[0:v][a1]overlay=enable='between(t,5.000,10.000)':eof_action=end:x=50:y=100[v1]``.
+    ``[0:v][a1]overlay=enable='between(t,5.000,10.000)':eof_action=endall:x=50:y=100[v1]``.
     """
     indexed = _sorted_overlay_indices(overlays)
 
@@ -1180,7 +1180,7 @@ def build_overlay_chain(
         next_label = f"[v{idx}]"
         parts.append(
             f"{current}[a{idx}]overlay=enable='between(t,{t:.3f},{end:.3f})'"
-            f":eof_action=end:x={x}:y={y}{next_label}"
+            f":eof_action=endall:x={x}:y={y}{next_label}"
         )
         current = next_label
     return parts

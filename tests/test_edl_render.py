@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -2066,7 +2067,7 @@ class BuildOverlayChainTests(unittest.TestCase):
         parts = build_overlay_chain(overlays)
         self.assertEqual(len(parts), 1)
         self.assertIn("overlay=enable='between(t,5.000,10.000)'", parts[0])
-        self.assertIn("eof_action=end", parts[0])
+        self.assertIn("eof_action=endall", parts[0])
         self.assertIn(":x=50:y=100", parts[0])
         self.assertIn("[0:v][a1]", parts[0])
         self.assertIn("[v1]", parts[0])
@@ -2097,13 +2098,13 @@ class BuildOverlayChainTests(unittest.TestCase):
         self.assertIn("enable='between(t,3.500,7.250)'", parts[0])
 
     def test_eof_action_prevents_stale_last_frame(self) -> None:
-        """eof_action=end prevents short video overlays from showing
+        """eof_action=endall prevents short video overlays from showing
         stale last frame past the overlay's natural duration."""
         overlays = [
             {"source": "short.mp4", "start": 5.0, "end": 10.0}
         ]
         parts = build_overlay_chain(overlays)
-        self.assertIn("eof_action=end", parts[0])
+        self.assertIn("eof_action=endall", parts[0])
 
 
 # ── PIL overlay card generation tests ─────────────────────────────────────────
@@ -2771,6 +2772,185 @@ class ResolveOverlaySourcesGuardTests(unittest.TestCase):
             with self.assertRaises(ValueError) as ctx:
                 resolve_overlay_sources(overlays, edit_dir)
             self.assertIn("must have 'source' or 'card'", str(ctx.exception))
+
+
+# ── End-to-end integration tests (require ffmpeg) ─────────────────────────────
+
+_FFMPEG_AVAILABLE = bool(shutil.which("ffmpeg")) and bool(shutil.which("ffprobe"))
+
+
+def _create_test_video(path: Path, duration: float = 3.0, size: str = "320x240") -> None:
+    """Create a small test video using ffmpeg color source."""
+    subprocess.run(
+        [
+            shutil.which("ffmpeg") or "ffmpeg", "-y",
+            "-f", "lavfi", "-i", f"color=c=black:s={size}:d={duration}:r=25",
+            "-f", "lavfi", "-i", f"sine=frequency=440:duration={duration}",
+            "-c:v", "libx264", "-preset", "ultrafast", "-crf", "30",
+            "-c:a", "aac", "-shortest",
+            str(path),
+        ],
+        check=True,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+
+
+@unittest.skipUnless(_FFMPEG_AVAILABLE, "ffmpeg/ffprobe not available")
+class E2EOverlayCompositingTests(unittest.TestCase):
+    """End-to-end tests that run real ffmpeg to prove overlay compositing works.
+
+    These tests address the evidence gap: they demonstrate that the filter
+    graphs produced by build_overlay_filter_parts / build_overlay_chain /
+    build_final_composite actually work with a real ffmpeg process, producing
+    valid output files.
+    """
+
+    def test_image_overlay_composited_over_video(self) -> None:
+        """A PNG overlay card is composited onto a base video with
+        PTS-shifted timing and enable-between visibility."""
+        from PIL import Image, ImageDraw
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            edit_dir = Path(tmpdir)
+
+            # 1. Create a base video (3s, 320x240)
+            base_path = edit_dir / "base.mp4"
+            _create_test_video(base_path, duration=3.0, size="320x240")
+
+            # 2. Create a PNG overlay card (red text on transparent bg)
+            overlay_img = Image.new("RGBA", (320, 240), (0, 0, 0, 0))
+            draw = ImageDraw.Draw(overlay_img)
+            draw.text((100, 100), "TEST", fill=(255, 0, 0, 255))
+            overlay_path = edit_dir / "overlay.png"
+            overlay_img.save(str(overlay_path), "PNG")
+
+            # 3. Build and run composite
+            out_path = edit_dir / "output.mp4"
+            overlays = [
+                {
+                    "source": "overlay.png",
+                    "start": 1.0,
+                    "end": 2.0,
+                    "position": {"x": 0, "y": 0},
+                    "z_order": 0,
+                    "_resolved_path": str(overlay_path),
+                }
+            ]
+            build_final_composite(base_path, overlays, None, out_path)
+
+            # 4. Verify output exists and is a valid video
+            self.assertTrue(out_path.exists(), "output file should exist")
+            self.assertGreater(out_path.stat().st_size, 1000,
+                               "output file should have meaningful size")
+
+            # 5. Verify output is playable (ffprobe can read it)
+            result = subprocess.run(
+                [shutil.which("ffprobe") or "ffprobe",
+                 "-v", "error", "-show_entries", "format=duration",
+                 "-of", "default=noprint_wrappers=1:nokey=1",
+                 str(out_path)],
+                capture_output=True, text=True,
+            )
+            self.assertEqual(result.returncode, 0, "ffprobe should succeed")
+            duration = float(result.stdout.strip())
+            self.assertAlmostEqual(duration, 3.0, delta=0.5,
+                                   msg="output duration should match base video")
+
+    def test_card_overlay_composited_over_video(self) -> None:
+        """A PIL-generated text card is composited onto a base video."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            edit_dir = Path(tmpdir)
+
+            # 1. Create base video
+            base_path = edit_dir / "base.mp4"
+            _create_test_video(base_path, duration=3.0, size="320x240")
+
+            # 2. Generate a card using the production code path
+            cards_dir = edit_dir / "cards"
+            cards_dir.mkdir()
+            card_path = generate_overlay_card(
+                {"type": "text", "text": "HELLO", "width": 320, "height": 240},
+                cards_dir, 0,
+            )
+            self.assertTrue(card_path.exists(), "card PNG should be generated")
+
+            # 3. Build and run composite
+            out_path = edit_dir / "output.mp4"
+            overlays = [
+                {
+                    "card": {"type": "text", "text": "HELLO"},
+                    "start": 0.5,
+                    "end": 2.5,
+                    "position": {"x": 0, "y": 0},
+                    "z_order": 0,
+                    "_resolved_path": str(card_path),
+                }
+            ]
+            build_final_composite(base_path, overlays, None, out_path)
+
+            # 4. Verify output
+            self.assertTrue(out_path.exists(), "output file should exist")
+            self.assertGreater(out_path.stat().st_size, 1000,
+                               "output should have meaningful size")
+
+    def test_overlay_with_subtitles_composited(self) -> None:
+        """Overlays are composited first, then subtitles burned last (Hard Rule 1)."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            edit_dir = Path(tmpdir)
+
+            # 1. Create base video
+            base_path = edit_dir / "base.mp4"
+            _create_test_video(base_path, duration=3.0, size="320x240")
+
+            # 2. Create overlay
+            from PIL import Image, ImageDraw
+            overlay_img = Image.new("RGBA", (320, 240), (0, 0, 0, 0))
+            draw = ImageDraw.Draw(overlay_img)
+            draw.text((80, 100), "OVERLAY", fill=(255, 255, 0, 255))
+            overlay_path = edit_dir / "overlay.png"
+            overlay_img.save(str(overlay_path), "PNG")
+
+            # 3. Create SRT
+            srt_path = edit_dir / "test.srt"
+            srt_path.write_text(
+                "1\n00:00:01,000 --> 00:00:02,000\nSubtitle text\n",
+                encoding="utf-8",
+            )
+
+            # 4. Build and run composite
+            out_path = edit_dir / "output.mp4"
+            overlays = [
+                {
+                    "source": "overlay.png",
+                    "start": 1.0,
+                    "end": 2.0,
+                    "position": {"x": 0, "y": 0},
+                    "z_order": 0,
+                    "_resolved_path": str(overlay_path),
+                }
+            ]
+            build_final_composite(
+                base_path, overlays, srt_path, out_path,
+                sub_style="bold-overlay",
+            )
+
+            # 5. Verify output
+            self.assertTrue(out_path.exists(), "output file should exist")
+            self.assertGreater(out_path.stat().st_size, 1000,
+                               "output should have meaningful size")
+
+            # 6. Verify duration matches base
+            result = subprocess.run(
+                [shutil.which("ffprobe") or "ffprobe",
+                 "-v", "error", "-show_entries", "format=duration",
+                 "-of", "default=noprint_wrappers=1:nokey=1",
+                 str(out_path)],
+                capture_output=True, text=True,
+            )
+            self.assertEqual(result.returncode, 0)
+            duration = float(result.stdout.strip())
+            self.assertAlmostEqual(duration, 3.0, delta=0.5)
 
 
 if __name__ == "__main__":
