@@ -91,7 +91,7 @@ Gather and catalogue all source media.
 
 ### Step 2: Pre-scan
 
-One pass over `takes_packed.md` to identify:
+One pass over the packed transcript(s) to identify:
 
 - Verbal slips, obvious mis-speaks, or phrasings to avoid.
 - Silence gaps that may indicate natural edit points.
@@ -154,10 +154,11 @@ Produce the edit decision list and build the video.
    simultaneously, not sequentially (Hard Rule 10, Anti-pattern 10).
 4. **Apply grade per-segment** during extraction, never post-concat
    (Anti-pattern 1, Anti-pattern 6).
-5. **Render via `media-edl-render`**:
+5. **Render a preview** via `media-edl-render --preview`:
    ```bash
    media-edl-render "$PROJECT_DIR/edit/edl.json" \
-     -o "$PROJECT_DIR/edit/final.mp4" \
+     -o "$PROJECT_DIR/edit/preview.mp4" \
+     --preview \
      --build-subtitles \
      --ffmpeg-bin "$(command -v ffmpeg)" \
      --ffprobe-bin "$(command -v ffprobe)"
@@ -171,20 +172,14 @@ Produce the edit decision list and build the video.
    - Subtitles burned **last** in filter chain (Rule 1).
    - Two-pass loudness normalization (−14 LUFS / −1 dBTP / LRA 11).
 
+   Preview mode uses 720p with faster encode settings. Do **not** render
+   full-quality yet — that happens in Step 8 after user approval.
+
 ### Step 6: Preview
 
-Render a fast preview for initial review:
-
-```bash
-media-edl-render "$PROJECT_DIR/edit/edl.json" \
-  -o "$PROJECT_DIR/edit/preview.mp4" \
-  --preview \
-  --build-subtitles \
-  --ffmpeg-bin "$(command -v ffmpeg)" \
-  --ffprobe-bin "$(command -v ffprobe)"
-```
-
-Preview mode uses 720p with faster encode settings.
+Present the preview render to the user for review. The preview was produced
+in Step 5 using `--preview` mode (720p, faster encode). Walk the user through
+the key moments and transitions.
 
 ### Step 7: Self-eval
 
@@ -325,8 +320,8 @@ Step 8: Iterate on feedback and persist session memory.
 | `media-subtitle` | Step 1 (transcribe) |
 | `media-batch-subtitle` | Step 1 (batch transcribe) |
 | `media-pack-transcript` | Step 1 (pack) |
-| `media-timeline-view` | Steps 1, 2, 5, 7 (on-demand visual drill-down) |
-| `media-edl-render` | Steps 5, 6 (render with EDL) |
+| `media-timeline-view` | Steps 1, 5, 7 (on-demand visual drill-down) |
+| `media-edl-render` | Steps 5, 8 (render with EDL) |
 | `media-burn-subtitles` | Step 5 (subtitle burning, usually via EDL render) |
 | `media-grade` | Step 5 (per-segment grading) |
 | `media-loudnorm` | Step 5 (loudness normalization) |
