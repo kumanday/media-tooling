@@ -51,8 +51,8 @@ $PROJECT_DIR/
 │   ├── project.md            ← session memory (append each session)
 │   ├── edl.json              ← edit decision list
 │   ├── animations/slot_<id>/ ← per-animation source + render + reasoning
-│   ├── clips_graded/         ← per-segment extracts with grade + fades (created by EDL renderer on final render)
 │   ├── clips_preview/       ← preview-grade extracts (created by EDL renderer with --preview)
+│   ├── clips_graded/         ← full-grade extracts (populated by EDL renderer on final render; do not create manually)
 │   ├── master.srt            ← output-timeline subtitles
 │   ├── verify/               ← debug frames / timeline PNGs from self-eval
 │   ├── preview.mp4
@@ -154,10 +154,10 @@ Produce the edit decision list and build the video.
    context would change the editing decision.
 3. **Build animations in parallel** (if applicable) — spawn sub-agents
    simultaneously, not sequentially (Hard Rule 10, Anti-pattern 10).
-4. **Design grade per-segment** in the EDL — specify `grade` on ranges or
+4. **Specify grade per-segment in the EDL** — add `grade` on ranges or
    top-level so the renderer applies it during extraction, never post-concat
-   (Anti-pattern 1, Anti-pattern 6). The EDL renderer handles grading
-   automatically; this is an EDL design principle, not a manual step.
+   (Anti-pattern 1, Anti-pattern 6). No manual grading step is needed;
+   the EDL renderer handles grading automatically when it reads `edl.json`.
 5. **Render a preview** via `media-edl-render --preview`:
    ```bash
    media-edl-render "$PROJECT_DIR/edit/edl.json" \
@@ -333,8 +333,8 @@ Step 8: Iterate on feedback and persist session memory.
 | `media-timeline-view` | Steps 1, 5, 6 (on-demand visual drill-down) |
 | `media-edl-render` | Steps 5, 8 (render with EDL) |
 | `media-burn-subtitles` | Step 5 (subtitle burning, usually via EDL render) |
-| `media-grade` | Step 5 (standalone grading; EDL renderer applies grade automatically) |
-| `media-loudnorm` | Step 5 (standalone normalization; EDL renderer normalizes automatically) |
+| `media-grade` | Step 5 (standalone grading outside EDL workflow; not needed when using `media-edl-render`) |
+| `media-loudnorm` | Step 5 (standalone normalization outside EDL workflow; not needed when using `media-edl-render`) |
 | `media-rough-cut` | Step 5 (alternative: card/image/clip assembly) |
 
 ## EDL JSON format
