@@ -24,7 +24,7 @@ and toolkit commands into a single coherent production pipeline.
 |---|---|
 | `media-corpus-ingest` | Inventory (Step 1) |
 | `media-subtitle-pipeline` | Inventory → Transcribe → Pack (Steps 1–2) |
-| `media-rough-cut-assembly` | Execute → Render (Steps 5–6) |
+| `media-rough-cut-assembly` | Execute → Render (Steps 5, 8) |
 
 Delegate to the appropriate sub-skill when a step's work falls entirely within
 its scope. This skill adds the conversation, strategy, self-evaluation, and
@@ -32,9 +32,10 @@ iteration layers that the sub-skills do not cover.
 
 ## Project workspace
 
-- `$PROJECT_DIR` — the current media project directory
-- All outputs go inside `$PROJECT_DIR` (Hard Rule 12)
-- Source files are never modified (Hard Rule 12)
+- `$PROJECT_DIR` — the current media project directory (set by the agent at
+  session start; typically the working directory or the path passed by the user).
+- All outputs go inside `$PROJECT_DIR` (Hard Rule 12).
+- Source files are never modified (Hard Rule 12).
 
 Expected project output structure:
 
@@ -44,7 +45,7 @@ $PROJECT_DIR/
 ├── inventory/
 ├── transcripts/
 │   ├── <name>.json           ← cached word-level transcripts
-│   └── takes_packed.md       ← phrase-level transcript for agent reasoning
+│   └── <name>_packed.md      ← phrase-level transcript for agent reasoning
 ├── subtitles/
 ├── edit/
 │   ├── project.md            ← session memory (append each session)
@@ -74,17 +75,17 @@ Gather and catalogue all source media.
    - Use `--skip-existing` to avoid re-transcribing cached sources (Hard Rule 9).
 4. For silent media, delegate to the `media-corpus-ingest` skill for contact
    sheets.
-5. After transcription, pack each transcript individually:
+5. After transcription, pack each transcript into its own per-source markdown:
    ```bash
-   # Pack each JSON transcript into its own .md beside the source:
    for json_file in "$PROJECT_DIR/transcripts"/*.json; do
-     media-pack-transcript "$json_file"
+     base="$(basename "$json_file" .json)"
+     media-pack-transcript "$json_file" \
+       -o "$PROJECT_DIR/transcripts/${base}_packed.md"
    done
    ```
-   When `-o` is omitted, `media-pack-transcript` writes `takes_packed.md`
-   beside the input file. For a single source, this is the primary
-   reading view. For multiple sources, each gets its own packed file;
-   concatenate them if a single combined view is needed.
+   Each source gets a `<name>_packed.md` beside its `.json`. For a single source,
+   this is the primary reading view. For multiple sources, read each individually
+   or concatenate if a combined view is needed.
 6. Optionally sample one or two `media-timeline-view` composites for a visual
    first impression. Do **not** scan the entire source — use timeline view only
    at decision points.
@@ -175,13 +176,7 @@ Produce the edit decision list and build the video.
    Preview mode uses 720p with faster encode settings. Do **not** render
    full-quality yet — that happens in Step 8 after user approval.
 
-### Step 6: Preview
-
-Present the preview render to the user for review. The preview was produced
-in Step 5 using `--preview` mode (720p, faster encode). Walk the user through
-the key moments and transitions.
-
-### Step 7: Self-eval
+### Step 6: Self-eval
 
 Before presenting the output to the user, verify your own work.
 
@@ -205,6 +200,12 @@ Before presenting the output to the user, verify your own work.
 
 Only present the preview to the user once self-eval passes, or after 3 passes
 with remaining issues clearly documented.
+
+### Step 7: Preview
+
+Present the preview render to the user for review. The preview was produced
+in Step 5 using `--preview` mode (720p, faster encode) and verified in Step 6.
+Walk the user through the key moments and transitions.
 
 ### Step 8: Iterate + Persist
 
@@ -303,14 +304,15 @@ regardless of style. See `docs/hard-rules.md` for detailed explanations.
 ## Pipeline summary
 
 ```
-Inventory → Pre-scan → Converse → Propose strategy → Execute → Preview → Self-eval → Iterate + Persist
+Inventory → Pre-scan → Converse → Propose strategy → Execute → Self-eval → Preview → Iterate + Persist
    (1)        (2)        (3)           (4)            (5)       (6)       (7)           (8)
 ```
 
 Steps 1–3: Understand the material and the user's intent.
 Step 4: Get explicit confirmation (Hard Rule 11).
-Steps 5–6: Build and preview the edit.
-Step 7: Self-evaluate before showing the user (max 3 passes).
+Step 5: Build the edit (EDL + preview render).
+Step 6: Self-evaluate before showing the user (max 3 passes).
+Step 7: Present the preview to the user.
 Step 8: Iterate on feedback and persist session memory.
 
 ## Toolkit commands
@@ -320,7 +322,7 @@ Step 8: Iterate on feedback and persist session memory.
 | `media-subtitle` | Step 1 (transcribe) |
 | `media-batch-subtitle` | Step 1 (batch transcribe) |
 | `media-pack-transcript` | Step 1 (pack) |
-| `media-timeline-view` | Steps 1, 5, 7 (on-demand visual drill-down) |
+| `media-timeline-view` | Steps 1, 5, 6 (on-demand visual drill-down) |
 | `media-edl-render` | Steps 5, 8 (render with EDL) |
 | `media-burn-subtitles` | Step 5 (subtitle burning, usually via EDL render) |
 | `media-grade` | Step 5 (per-segment grading) |
@@ -370,6 +372,7 @@ Step 8: Iterate on feedback and persist session memory.
 - `grade`: top-level default grade preset or raw ffmpeg filter. Overridden by
   per-range `grade`.
 - `overlays`: rendered animation clips with placement in the output timeline.
+  Paths are resolved relative to `$PROJECT_DIR`.
 - `subtitles`: string (path) or dict with `style`, `path`, `force_style`.
 - `total_duration_s`: expected total duration for verification.
 
