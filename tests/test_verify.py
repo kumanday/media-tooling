@@ -323,6 +323,43 @@ class TestVerifyAudioPop(unittest.TestCase):
         # That's > 0.5s away, so it should pass
         self.assertTrue(finding.passed)
 
+    @patch("media_tooling.verify.compute_envelope")
+    def test_moderate_pop_at_cut_with_louder_elsewhere(self, mock_env: MagicMock) -> None:
+        """A pop at the cut should be detected even if a louder spike exists far away."""
+        env = np.full(500, 0.3, dtype=np.float32)
+        # Louder spike far from cut (index 0 = start of window = 1.5s before cut)
+        env[0] = 0.95
+        # Moderate pop at the cut (index 250 ≈ cut_time for window=1.5)
+        env[250] = 0.82
+        mock_env.return_value = env
+        finding = verify_audio_pop(Path("video.mp4"), 10.0, window=1.5)
+        # The 0.82 spike at the cut is above threshold (0.80) and within ±0.5s
+        self.assertFalse(finding.passed)
+
+    @patch("media_tooling.verify.compute_envelope")
+    def test_spike_near_but_outside_proximity_zone_passes(self, mock_env: MagicMock) -> None:
+        """A spike just outside ±0.5s proximity zone should pass."""
+        env = np.full(500, 0.3, dtype=np.float32)
+        # Spike at ~0.6s before the cut (outside 0.5s proximity)
+        # Window is 1.5s, so start = 8.5, end = 11.5, cut = 10.0
+        # 0.6s before cut = 9.4s → index ≈ (9.4 - 8.5) / 3.0 * 500 = 150
+        env[150] = 0.95
+        mock_env.return_value = env
+        finding = verify_audio_pop(Path("video.mp4"), 10.0, window=1.5)
+        self.assertTrue(finding.passed)
+
+    @patch("media_tooling.verify.compute_envelope")
+    def test_multiple_spikes_near_cut_any_above_threshold_fails(self, mock_env: MagicMock) -> None:
+        """Multiple spikes near cut: any above threshold should fail."""
+        env = np.full(500, 0.3, dtype=np.float32)
+        # Two spikes near the cut, both above threshold
+        env[240] = 0.85
+        env[260] = 0.90
+        mock_env.return_value = env
+        finding = verify_audio_pop(Path("video.mp4"), 10.0, window=1.5)
+        self.assertFalse(finding.passed)
+        self.assertIn("max_near_cut", finding.details)
+
     @patch("media_tooling.verify.compute_envelope", side_effect=RuntimeError("no audio"))
     def test_envelope_failure_returns_warning(self, mock_env: MagicMock) -> None:
         finding = verify_audio_pop(Path("video.mp4"), 10.0)
@@ -366,8 +403,9 @@ class TestVerifyGradeConsistency(unittest.TestCase):
     @patch("media_tooling.verify._sample_luminance", return_value=None)
     def test_no_frames_extracted(self, mock_lum: MagicMock) -> None:
         finding = verify_grade_consistency(Path("video.mp4"), 60.0)
-        self.assertTrue(finding.passed)
+        self.assertFalse(finding.passed)
         self.assertIn("Insufficient", finding.details)
+        self.assertEqual(finding.severity, "warning")
 
 
 # ── run_verification (integration) ───────────────────────────────────────────
@@ -378,8 +416,10 @@ class TestRunVerification(unittest.TestCase):
     @patch("media_tooling.verify.compute_envelope")
     @patch("media_tooling.verify._extract_single_frame")
     @patch("media_tooling.verify._compute_frame_delta", return_value=0.05)
+    @patch("media_tooling.verify._sample_luminance", return_value=0.5)
     def test_all_passing(
         self,
+        mock_lum: MagicMock,
         mock_delta: MagicMock,
         mock_extract: MagicMock,
         mock_env: MagicMock,
@@ -443,8 +483,10 @@ class TestRunVerification(unittest.TestCase):
     @patch("media_tooling.verify.probe_duration", return_value=30.0)
     @patch("media_tooling.verify.verify_audio_pop")
     @patch("media_tooling.verify.verify_visual_discontinuity")
+    @patch("media_tooling.verify.verify_grade_consistency")
     def test_retry_recovers_from_transient_failure(
         self,
+        mock_grade: MagicMock,
         mock_visual: MagicMock,
         mock_audio: MagicMock,
         mock_probe: MagicMock,
@@ -463,6 +505,9 @@ class TestRunVerification(unittest.TestCase):
         ]
         mock_audio.return_value = Finding(
             check="audio_pop", passed=True, details="ok", cut_time=10.0,
+        )
+        mock_grade.return_value = Finding(
+            check="grade_consistency", passed=True, details="ok", severity="info",
         )
         report = run_verification(
             Path("video.mp4"),

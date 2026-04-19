@@ -244,9 +244,15 @@ def verify_visual_discontinuity(
 
     Extracts frames just before and just after the cut and compares
     them.  A large delta suggests a flash, jump, or discontinuity.
+
+    The *before* frame is sampled *window* seconds before the cut.
+    The *after* frame is sampled ``min(window, 0.5)`` seconds after
+    the cut — capped at 0.5 s to ensure the seek crosses the nearest
+    keyframe boundary (ffmpeg ``-ss`` is keyframe-aligned; sampling
+    too close to the cut may return the pre-cut frame).
     """
     before_t = max(0.0, cut_time - window)
-    after_t = cut_time + 0.5  # 0.5s after the cut to cross keyframe boundaries
+    after_t = cut_time + min(window, 0.5)  # up to 0.5s after to cross keyframe boundaries
 
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp = Path(tmpdir)
@@ -328,22 +334,20 @@ def verify_audio_pop(
             cut_time=cut_time,
         )
 
+    # Check for any spike above threshold near the cut boundary
+    near_cut_start = max(0, int((cut_time - 0.5 - start) / (end - start) * envelope.size))
+    near_cut_end = min(envelope.size, int((cut_time + 0.5 - start) / (end - start) * envelope.size))
+    near_cut_region = envelope[near_cut_start:near_cut_end]
+    max_spike_near_cut = float(near_cut_region.max()) if near_cut_region.size > 0 else 0.0
     max_spike = float(envelope.max())
-    # Find position of max spike relative to cut
-    spike_idx = int(np.argmax(envelope))
-    spike_time = start + (end - start) * spike_idx / max(1, envelope.size - 1)
-    proximity = abs(spike_time - cut_time)
-
-    # Only flag if the spike is close to the cut boundary (within 0.5s)
-    is_near_cut = proximity < 0.5
-    passed = not (max_spike > threshold and is_near_cut)
+    passed = max_spike_near_cut <= threshold
 
     return Finding(
         check="audio_pop",
         passed=passed,
         details=(
             f"cut={cut_time:.2f}s max_spike={max_spike:.3f} "
-            f"spike_at={spike_time:.2f}s proximity={proximity:.3f}s "
+            f"max_near_cut={max_spike_near_cut:.3f} "
             f"threshold={threshold:.3f}"
         ),
         severity="info" if passed else "fail",
@@ -411,9 +415,9 @@ def verify_grade_consistency(
     if len(luminances) < 2:
         return Finding(
             check="grade_consistency",
-            passed=True,
-            details="Insufficient frames for grade consistency check.",
-            severity="info",
+            passed=False,
+            details="Insufficient frames for grade consistency check; not performed.",
+            severity="warning",
         )
 
     # Find max pairwise delta
