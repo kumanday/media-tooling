@@ -9,8 +9,9 @@ Pipeline (obeys Hard Rules 1–7):
      - 30 ms audio fades at both edges (Rule 3)
   3. Lossless concat via ffmpeg concat demuxer (Rule 2)
   4. Build master SRT with output-timeline offsets (Rule 5)
-  5. Burn subtitles LAST in filter chain (Rule 1)
-  6. Two-pass loudness normalization (−14 LUFS / −1 dBTP / LRA 11)
+  5. Composite overlays (PTS-shifted, enable-between) — Rule 4
+  6. Burn subtitles LAST in filter chain (Rule 1)
+  7. Two-pass loudness normalization (−14 LUFS / −1 dBTP / LRA 11)
 
 Usage::
 
@@ -27,14 +28,29 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
-from media_tooling.burn_subtitles import burn_subtitles
-from media_tooling.ffprobe_utils import probe_duration
+from PIL import Image, ImageDraw, ImageFont
+
+from media_tooling.burn_subtitles import (
+    BOLD_OVERLAY_FORCE_STYLE,
+    NATURAL_SENTENCE_FORCE_STYLE,
+    burn_subtitles,
+    rechunk_bold_overlay,
+    rechunk_natural_sentence,
+)
+from media_tooling.ffprobe_utils import (
+    probe_duration,
+    probe_frame_rate,
+    probe_video_size,
+)
 from media_tooling.grade import PRESETS, auto_grade_for_clip, get_preset
 from media_tooling.loudnorm import apply_loudnorm_preview, apply_loudnorm_two_pass
 from media_tooling.rough_cut import quote_concat_path, validate_concat_demuxer_usage
+from media_tooling.subtitle import build_srt
+from media_tooling.subtitle_translate import parse_srt_file
 
 # ── Constants ────────────────────────────────────────────────────────────────
 
@@ -46,6 +62,21 @@ MAX_PAD = 0.20  # 200 ms maximum working window (Hard Rule 7)
 EDL_VERSION = 1
 
 PUNCT_BREAK = set(".,!?;:")
+
+# ── Overlay duration bounds ──────────────────────────────────────────────────
+
+OVERLAY_SYNC_MIN = 3.0    # sync-to-narration: minimum 3 s
+OVERLAY_SYNC_MAX = 14.0   # sync-to-narration: maximum 14 s
+OVERLAY_BEAT_MIN = 0.5    # beat-synced accent: minimum 0.5 s
+OVERLAY_BEAT_MAX = 2.0    # beat-synced accent: maximum 2 s
+
+# ── Overlay card defaults ─────────────────────────────────────────────────────
+
+CARD_DEFAULT_WIDTH = 1920
+CARD_DEFAULT_HEIGHT = 1080
+CARD_DEFAULT_FONT_SIZE = 48
+CARD_DEFAULT_COLOR = "white"
+CARD_DEFAULT_BG_COLOR = (0, 0, 0, 0)  # transparent
 
 # ── EDL schema validation ───────────────────────────────────────────────────
 
@@ -185,6 +216,16 @@ def validate_edl(edl: dict[str, Any]) -> None:
             raise EDLSchemaError(
                 f"subtitles must be a string path or dict, got {type(subtitles).__name__}"
             )
+
+    # Validate overlays field if present
+    overlays = edl.get("overlays")
+    if overlays is not None:
+        if not isinstance(overlays, list):
+            raise EDLSchemaError(
+                f"'overlays' must be a list, got {type(overlays).__name__}"
+            )
+        for i, ov in enumerate(overlays):
+            _validate_overlay(ov, i)
 
 
 # ── Path / source resolution ────────────────────────────────────────────────
@@ -515,6 +556,18 @@ def _copy_to_output(
     return 0
 
 
+def _cleanup_cards(edit_dir: Path) -> None:
+    """Remove generated overlay card PNGs from the cards subdirectory."""
+    cards_dir = edit_dir / "cards"
+    if cards_dir.is_dir():
+        for card in cards_dir.iterdir():
+            card.unlink(missing_ok=True)
+        try:
+            cards_dir.rmdir()
+        except OSError:
+            shutil.rmtree(cards_dir, ignore_errors=True)
+
+
 def _probe_source_durations(
     edl: dict[str, Any],
     edit_dir: Path,
@@ -830,7 +883,580 @@ def burn_subtitles_last(
     )
 
 
-# ── CLI ─────────────────────────────────────────────────────────────────────
+# ── Overlay validation ───────────────────────────────────────────────────────
+
+
+def _validate_overlay(ov: dict[str, Any], index: int) -> None:
+    """Validate a single overlay spec dict.
+
+    An overlay must have ``source`` (file path) OR ``card`` (PIL-generated),
+    plus ``start`` and ``end`` times.  Optional: ``position`` (dict with
+    ``x``, ``y``), ``z_order`` (int), ``duration_type`` (``sync`` or ``beat``).
+    """
+    if not isinstance(ov, dict):
+        raise EDLSchemaError(
+            f"overlay[{index}] must be a dict, got {type(ov).__name__}"
+        )
+
+    has_source = "source" in ov
+    has_card = "card" in ov
+    if not has_source and not has_card:
+        raise EDLSchemaError(
+            f"overlay[{index}] must have 'source' or 'card'"
+        )
+    if has_source and has_card:
+        raise EDLSchemaError(
+            f"overlay[{index}] has both 'source' and 'card'; use one"
+        )
+
+    if has_source and not isinstance(ov["source"], str):
+        raise EDLSchemaError(
+            f"overlay[{index}] 'source' must be a string, "
+            f"got {type(ov['source']).__name__}"
+        )
+
+    if has_card:
+        card = ov["card"]
+        if not isinstance(card, dict):
+            raise EDLSchemaError(
+                f"overlay[{index}] 'card' must be a dict, "
+                f"got {type(card).__name__}"
+            )
+        card_type = card.get("type")
+        if card_type not in ("text", "counter"):
+            raise EDLSchemaError(
+                f"overlay[{index}] card 'type' must be 'text' or 'counter', "
+                f"got {card_type!r}"
+            )
+        if card_type == "text" and "text" not in card:
+            raise EDLSchemaError(
+                f"overlay[{index}] text card must have 'text' field"
+            )
+        if card_type == "counter" and (
+            "counter_start" not in card or "counter_end" not in card
+        ):
+            raise EDLSchemaError(
+                f"overlay[{index}] counter card must have "
+                "'counter_start' and 'counter_end' fields"
+            )
+        # Validate visual dimensions
+        for dim_key in ("width", "height"):
+            val = card.get(dim_key)
+            if val is not None:
+                if not isinstance(val, (int, float)) or val <= 0:
+                    raise EDLSchemaError(
+                        f"overlay[{index}] card '{dim_key}' must be a positive "
+                        f"number, got {val!r}"
+                    )
+        font_size_val = card.get("font_size")
+        if font_size_val is not None:
+            if not isinstance(font_size_val, (int, float)) or font_size_val <= 0:
+                raise EDLSchemaError(
+                    f"overlay[{index}] card 'font_size' must be a positive "
+                    f"number, got {font_size_val!r}"
+                )
+
+    for key in ("start", "end"):
+        if key not in ov:
+            raise EDLSchemaError(f"overlay[{index}] missing required key '{key}'")
+        try:
+            val = float(ov[key])
+        except (ValueError, TypeError) as exc:
+            raise EDLSchemaError(
+                f"overlay[{index}] {key} must be numeric: {exc}"
+            ) from exc
+        if not math.isfinite(val):
+            raise EDLSchemaError(
+                f"overlay[{index}] {key} must be finite, got {val!r}"
+            )
+
+    start_val = float(ov["start"])
+    if start_val < 0:
+        raise EDLSchemaError(
+            f"overlay[{index}] start ({start_val}) must be non-negative"
+        )
+
+    if float(ov["end"]) <= start_val:
+        raise EDLSchemaError(
+            f"overlay[{index}] end ({ov['end']}) must be greater than "
+            f"start ({ov['start']})"
+        )
+
+    position = ov.get("position")
+    if position is not None:
+        if not isinstance(position, dict):
+            raise EDLSchemaError(
+                f"overlay[{index}] 'position' must be a dict, "
+                f"got {type(position).__name__}"
+            )
+        for axis in ("x", "y"):
+            if axis in position:
+                try:
+                    float(position[axis])
+                except (ValueError, TypeError) as exc:
+                    raise EDLSchemaError(
+                        f"overlay[{index}] position.{axis} must be numeric: {exc}"
+                    ) from exc
+
+    z_order = ov.get("z_order")
+    if z_order is not None and not isinstance(z_order, (int, float)):
+        raise EDLSchemaError(
+            f"overlay[{index}] 'z_order' must be numeric, "
+            f"got {type(z_order).__name__}"
+        )
+
+    # Validate duration rules
+    duration = float(ov["end"]) - float(ov["start"])
+    duration_type = ov.get("duration_type")
+    if duration_type is not None and duration_type not in ("sync", "beat"):
+        raise EDLSchemaError(
+            f"overlay[{index}] 'duration_type' must be 'sync' or 'beat', "
+            f"got {duration_type!r}"
+        )
+    if duration_type == "sync":
+        if duration < OVERLAY_SYNC_MIN or duration > OVERLAY_SYNC_MAX:
+            raise EDLSchemaError(
+                f"overlay[{index}] sync-to-narration duration ({duration:.1f}s) "
+                f"must be {OVERLAY_SYNC_MIN}-{OVERLAY_SYNC_MAX}s"
+            )
+    elif duration_type == "beat":
+        if duration < OVERLAY_BEAT_MIN or duration > OVERLAY_BEAT_MAX:
+            raise EDLSchemaError(
+                f"overlay[{index}] beat-synced duration ({duration:.1f}s) "
+                f"must be {OVERLAY_BEAT_MIN}-{OVERLAY_BEAT_MAX}s"
+            )
+    # duration_type is None: duration bounds not enforced — silently skip
+
+
+# ── PIL overlay card generation ──────────────────────────────────────────────
+
+
+def generate_overlay_card(
+    card_spec: dict[str, Any],
+    out_dir: Path,
+    index: int,
+) -> Path:
+    """Generate a PNG overlay card from a card spec using Pillow.
+
+    Supports ``type: "text"`` (renders a text string) and ``type: "counter"``
+    (renders a counter like "3/10").
+
+    Returns the path to the generated PNG file.
+    """
+    card_type = card_spec["type"]
+    width = int(card_spec.get("width", CARD_DEFAULT_WIDTH))
+    height = int(card_spec.get("height", CARD_DEFAULT_HEIGHT))
+    font_size = int(card_spec.get("font_size", CARD_DEFAULT_FONT_SIZE))
+    color = card_spec.get("color", CARD_DEFAULT_COLOR)
+    bg_color = card_spec.get("bg_color", CARD_DEFAULT_BG_COLOR)
+
+    img = Image.new("RGBA", (width, height), bg_color)
+    draw = ImageDraw.Draw(img)
+
+    # Cross-platform font fallback: try macOS first, then Linux, then Pillow default
+    font: ImageFont.FreeTypeFont | ImageFont.ImageFont | None = None
+    for _fc in _FONT_CANDIDATES:
+        try:
+            font = ImageFont.truetype(_fc, font_size)
+            break
+        except OSError:
+            continue
+    if font is None:
+        font = ImageFont.load_default(size=font_size)
+
+    if card_type == "text":
+        text = card_spec["text"]
+    elif card_type == "counter":
+        start = int(card_spec.get("counter_start", 1))
+        end = int(card_spec.get("counter_end", 1))
+        text = f"{start}/{end}"
+    else:
+        raise ValueError(f"unknown card type: {card_type!r}")
+
+    bbox = draw.textbbox((0, 0), text, font=font)
+    text_w = bbox[2] - bbox[0]
+    text_h = bbox[3] - bbox[1]
+    x = (width - text_w) // 2
+    y = (height - text_h) // 2
+    draw.text((x, y), text, fill=color, font=font)
+
+    out_path = out_dir / f"overlay_card_{index}.png"
+    img.save(str(out_path), "PNG")
+    return out_path
+
+
+# ── Overlay filter chain builder ─────────────────────────────────────────────
+
+
+_IMAGE_EXTENSIONS = frozenset({".png", ".jpg", ".jpeg", ".bmp", ".webp", ".tiff", ".tif"})
+_FONT_CANDIDATES = ("Helvetica.ttc", "DejaVuSans.ttf", "LiberationSans-Regular.ttf")
+
+
+def _is_image_path(path: str) -> bool:
+    """Return True if the path has an image file extension."""
+    return Path(path).suffix.lower() in _IMAGE_EXTENSIONS
+
+
+def build_overlay_filter_parts(
+    overlays: list[dict[str, Any]],
+    base_fps: int = 30,
+    base_size: tuple[int, int] | None = None,
+) -> list[str]:
+    """Build PTS-shift filter parts for each overlay input.
+
+    Hard Rule 4: Apply ``setpts=PTS-STARTPTS+T/TB`` so that overlay
+    frame 0 lands at the intended time window start.
+
+    For image overlays (PNG, JPG, etc.), an ``fps`` filter is prepended
+    to generate continuous frames from the static image.  Without this,
+    ffmpeg would treat the image as a single-frame video and the
+    ``enable='between(t,...)'`` window would have no frames to show.
+
+    Every overlay receives ``format=yuva420p`` to preserve the alpha
+    channel required for compositing, regardless of whether scaling is
+    applied.  If *base_size* ``(width, height)`` is additionally
+    provided, each overlay is also scaled to match the base video
+    resolution.  This prevents visible artifacts when overlay and base
+    resolutions differ.
+
+    Each overlay must have ``_resolved_path`` set (via
+    ``resolve_overlay_sources``).  If it is missing, ``ValueError`` is
+    raised — consistent with ``build_final_composite``.
+
+    Returns a list of filter strings like
+    ``[1:v]fps=30,scale=1920:-2,format=yuva420p,setpts=PTS-STARTPTS+5.000/TB[a1]``.
+    """
+    parts: list[str] = []
+    for idx, ov in enumerate(overlays, start=1):
+        t = float(ov["start"])
+        if "_resolved_path" not in ov:
+            raise ValueError(
+                f"overlay[{idx - 1}] missing '_resolved_path' — "
+                "call resolve_overlay_sources() first"
+            )
+        resolved = str(ov["_resolved_path"])
+        filters: list[str] = []
+        if _is_image_path(resolved):
+            filters.append(f"fps={base_fps}")
+        if base_size is not None:
+            w = base_size[0] & ~1  # round down to even for yuva420p
+            # -2 auto-calculates even height while preserving aspect ratio
+            filters.append(f"scale={w}:-2")
+        else:
+            # No base_size probe — force even dimensions for yuva420p compatibility
+            filters.append("scale='trunc(iw/2)*2:trunc(ih/2)*2'")
+        filters.append("format=yuva420p")
+        filters.append(f"setpts=PTS-STARTPTS+{t:.3f}/TB")
+        parts.append(f"[{idx}:v]{','.join(filters)}[a{idx}]")
+    return parts
+
+
+def _sorted_overlay_indices(overlays: list[dict[str, Any]]) -> list[tuple[int, dict[str, Any]]]:
+    """Return overlays enumerated (1-based) sorted by z_order ascending.
+
+    Stable sort preserves insertion order for ties.
+    """
+    indexed = list(enumerate(overlays, start=1))
+    indexed.sort(key=lambda pair: float(pair[1].get("z_order", 0)))
+    return indexed
+
+
+def build_overlay_chain(
+    overlays: list[dict[str, Any]],
+) -> tuple[list[str], int | None]:
+    """Build chained overlay filter parts with enable-between time windows.
+
+    Each overlay is composited onto the base with
+    ``overlay=enable='between(t,start,end)'``, ordered by z_order
+    (ascending, lowest first).  ``eof_action=pass`` lets the base video
+    continue when a short video overlay stream ends, avoiding output
+    truncation.  Image overlays (``-loop 1``) never reach EOF, so the
+    setting has no effect for them.
+
+    Returns ``(filter_parts, last_overlay_index)`` where *last_overlay_index*
+    is the 1-based index of the topmost overlay (``None`` when *overlays* is
+    empty).  The caller uses this to determine the current video stream label
+    after the overlay chain.
+    """
+    indexed = _sorted_overlay_indices(overlays)
+
+    parts: list[str] = []
+    current = "[0:v]"
+    last_idx: int | None = None
+    for idx, ov in indexed:
+        t = float(ov["start"])
+        end = float(ov["end"])
+        pos = ov.get("position", {})
+        x = int(float(pos.get("x", 0)))
+        y = int(float(pos.get("y", 0)))
+        next_label = f"[v{idx}]"
+        parts.append(
+            f"{current}[a{idx}]overlay=enable='between(t,{t:.3f},{end:.3f})'"
+            f":eof_action=pass:x={x}:y={y}{next_label}"
+        )
+        current = next_label
+        last_idx = idx
+    return parts, last_idx
+
+
+def build_final_composite(
+    base_path: Path,
+    overlays: list[dict[str, Any]],
+    subtitles_path: Path | None,
+    out_path: Path,
+    sub_style: str = "bold-overlay",
+    sub_style_args: str | None = None,
+    ffmpeg_bin: str = "ffmpeg",
+    ffprobe_bin: str = "ffprobe",
+) -> None:
+    """Final pass: base → overlays (PTS-shifted) → subtitles LAST → out.
+
+    Composites overlay sources onto the base video with PTS-shifted timing
+    (Hard Rule 4) and enable-between visibility windows, then burns
+    subtitles last (Hard Rule 1).
+
+    Each overlay must have ``_resolved_path`` set (via
+    ``resolve_overlay_sources``).  If it is missing, ``ValueError`` is
+    raised rather than silently producing broken output.
+
+    If there are no overlays and no subtitles, copies the base to output.
+    """
+    has_overlays = bool(overlays)
+    has_subs = (
+        subtitles_path is not None and subtitles_path.exists()
+    )
+
+    if not has_overlays and not has_subs:
+        _copy_to_output(base_path, out_path, ffmpeg_bin)
+        return
+
+    if not has_overlays and has_subs:
+        # No overlays — delegate to the existing subtitle-only path
+        burn_subtitles_last(
+            base_path, subtitles_path, out_path,  # type: ignore[arg-type]
+            style=sub_style, style_args=sub_style_args,
+            ffmpeg_bin=ffmpeg_bin,
+        )
+        return
+
+    # Build inputs: base video + overlay sources
+    # For image overlays (PNG, JPG, etc.), add -loop 1 so ffmpeg generates
+    # continuous frames from the static image instead of treating it as a
+    # single-frame video.  The fps filter in the filter_complex then sets
+    # the frame rate before the PTS shift.
+    #
+    # Every overlay must have _resolved_path set by resolve_overlay_sources.
+    # Both this function and build_overlay_filter_parts guard for missing
+    # _resolved_path and raise ValueError — ensuring consistent error handling.
+    inputs: list[str] = ["-i", str(base_path)]
+    for i, ov in enumerate(overlays):
+        if "_resolved_path" not in ov:
+            raise ValueError(
+                f"overlay[{i}] missing '_resolved_path' — "
+                "call resolve_overlay_sources() first"
+            )
+        resolved = str(ov["_resolved_path"])
+        if _is_image_path(resolved):
+            inputs += ["-loop", "1", "-i", resolved]
+        else:
+            inputs += ["-i", resolved]
+
+    # Build filter_complex
+    filter_parts: list[str] = []
+
+    # Probe base video dimensions for overlay scale normalization
+    base_size: tuple[int, int] | None = None
+    try:
+        base_size = probe_video_size(base_path, ffprobe_bin=ffprobe_bin)
+    except (RuntimeError, FileNotFoundError, ValueError) as exc:
+        print(
+            f"warning: could not probe base video size ({exc}); "
+            "overlay scale normalization skipped",
+            file=sys.stderr,
+        )
+
+    # Probe base video frame rate for image overlay fps matching
+    base_fps: int = 30
+    try:
+        base_fps = probe_frame_rate(base_path, ffprobe_bin=ffprobe_bin)
+    except (RuntimeError, FileNotFoundError, ValueError) as exc:
+        print(
+            f"warning: could not probe base video frame rate ({exc}); "
+            f"using default {base_fps}fps for image overlays",
+            file=sys.stderr,
+        )
+
+    # Probe base video duration for output length control.
+    # Using -t <base_duration> instead of -shortest prevents the output
+    # from being truncated when a non-looped video overlay is shorter than
+    # the base video.  -shortest stops at the shortest *input* stream end,
+    # which would be the overlay (not the base) for video overlays.
+    # Image overlays use -loop 1 (infinite frames), so -shortest happens to
+    # work for those, but -t is universally correct.
+    base_duration: float | None = None
+    try:
+        base_duration = probe_duration(base_path, ffprobe_bin=ffprobe_bin)
+    except (RuntimeError, FileNotFoundError, ValueError) as exc:
+        print(
+            f"warning: could not probe base video duration ({exc}); "
+            "falling back to -shortest flag — output may be truncated "
+            "when video overlays are shorter than the base video; "
+            "install ffprobe to avoid this",
+            file=sys.stderr,
+        )
+
+    # PTS-shift every overlay (Hard Rule 4)
+    # Normalize pixel format (alpha-preserving) and optionally scale to base dimensions
+    filter_parts.extend(
+        build_overlay_filter_parts(overlays, base_fps=base_fps, base_size=base_size)
+    )
+
+    # Chain overlays on top of base with enable-between
+    chain_parts, last_idx = build_overlay_chain(overlays)
+    filter_parts.extend(chain_parts)
+
+    # Determine the current video label after overlays
+    current = f"[v{last_idx}]" if last_idx is not None else "[0:v]"
+
+    # Subtitles LAST — Hard Rule 1
+    rechunked_srt_path: Path | None = None
+    if has_subs:
+        if subtitles_path is None:
+            raise RuntimeError(
+                "subtitles_path unexpectedly None despite has_subs=True"
+            )
+        # Rechunk subtitles to match the no-overlay path's formatting
+        # (burn_subtitles_last → burn_subtitles rechunks; we must too)
+        cues = parse_srt_file(subtitles_path)
+        if not cues:
+            raise ValueError(
+                f"No subtitle cues found in {subtitles_path}"
+            )
+        # Resolve force_style based on sub_style, consistent with burn_subtitles
+        if sub_style == "bold-overlay":
+            force_style = sub_style_args or BOLD_OVERLAY_FORCE_STYLE
+        elif sub_style == "natural-sentence":
+            force_style = sub_style_args or NATURAL_SENTENCE_FORCE_STYLE
+        else:
+            raise ValueError(f"Unknown subtitle style: {sub_style}")
+        if sub_style == "bold-overlay":
+            rechunked = rechunk_bold_overlay(cues)
+        else:
+            rechunked = rechunk_natural_sentence(cues)
+        rechunked_srt = build_srt(rechunked)
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".srt", delete=False, encoding="utf-8",
+        ) as tmp_srt:
+            tmp_srt.write(rechunked_srt)
+            rechunked_srt_path = Path(tmp_srt.name)
+
+        subs_source = rechunked_srt_path
+        subs_escaped = (
+            str(subs_source.resolve())
+            .replace("\\", "\\\\")
+            .replace(":", "\\:")
+            .replace(",", "\\,")
+            .replace("'", "\\'")
+            .replace("[", "\\[")
+            .replace("]", "\\]")
+            .replace("%", "\\%")
+            .replace(";", "\\;")
+        )
+        force_style_escaped = force_style.replace("'", "\\'")
+        filter_parts.append(
+            f"{current}subtitles='{subs_escaped}'"
+            f":force_style='{force_style_escaped}'[outv]"
+        )
+        out_label = "[outv]"
+    else:
+        filter_parts.append(f"{current}null[outv]")
+        out_label = "[outv]"
+
+    filter_complex = ";".join(filter_parts)
+
+    # Build ffmpeg command arguments
+    cmd: list[str] = [
+        ffmpeg_bin, "-y",
+        *inputs,
+        "-filter_complex", filter_complex,
+        "-map", out_label,
+        "-map", "0:a?",
+    ]
+
+    # Use explicit -t <base_duration> instead of -shortest.
+    # -shortest stops at the shortest *input stream*, which truncates
+    # output when a non-looped video overlay is shorter than the base.
+    # -t ensures output always matches the base video duration, and also
+    # prevents -loop 1 image overlays from producing infinite output.
+    # Fallback: if duration probe failed, use -shortest as a safety net
+    # (only safe when all overlays are -loop 1 images, which is the common
+    # case for PIL-generated cards).
+    if base_duration is not None:
+        cmd += ["-t", f"{base_duration:.3f}"]
+    else:
+        cmd += ["-shortest"]
+
+    cmd += [
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
+        "-pix_fmt", "yuv420p",
+        "-c:a", "copy",
+        "-movflags", "+faststart",
+        str(out_path),
+    ]
+
+    print(f"compositing → {out_path.name}")
+    print(f"  overlays: {len(overlays)}, subtitles: {'yes' if has_subs else 'no'}")
+
+    try:
+        subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+    except FileNotFoundError:
+        raise RuntimeError(
+            f"{ffmpeg_bin} not found — ensure ffmpeg is installed and on PATH"
+        )
+    except subprocess.CalledProcessError as exc:
+        detail = (exc.stderr or b"").decode(errors="replace")[:500]
+        raise RuntimeError(f"ffmpeg compositing failed: {detail}") from exc
+    finally:
+        if rechunked_srt_path is not None:
+            rechunked_srt_path.unlink(missing_ok=True)
+
+
+def resolve_overlay_sources(
+    overlays: list[dict[str, Any]],
+    edit_dir: Path,
+) -> list[dict[str, Any]]:
+    """Resolve overlay source paths and generate PIL cards.
+
+    For overlays with ``source``, resolves the path relative to *edit_dir*
+    and verifies the file exists.  For overlays with ``card``, generates
+    a PNG card via Pillow.
+
+    Returns a new list of overlay dicts with ``_resolved_path`` added.
+
+    Raises ``FileNotFoundError`` if a source overlay file does not exist.
+    """
+    resolved: list[dict[str, Any]] = []
+    for i, ov in enumerate(overlays):
+        ov = dict(ov)  # shallow copy
+        if "source" in ov:
+            resolved_path = resolve_path(ov["source"], edit_dir)
+            if not resolved_path.exists():
+                raise FileNotFoundError(
+                    f"overlay[{i}] source file not found: {resolved_path}"
+                )
+            ov["_resolved_path"] = str(resolved_path)
+        elif "card" in ov:
+            cards_dir = edit_dir / "cards"
+            cards_dir.mkdir(parents=True, exist_ok=True)
+            card_path = generate_overlay_card(ov["card"], cards_dir, i)
+            ov["_resolved_path"] = str(card_path)
+        else:
+            raise ValueError(
+                f"overlay[{i}] must have 'source' or 'card'; "
+                "neither was provided"
+            )
+        resolved.append(ov)
+    return resolved
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -999,9 +1625,38 @@ def render_edl(
         sub_style = sub_cfg.get("style", sub_style)
         sub_style_args = sub_cfg.get("force_style")
 
-    # 4. Apply subtitles (last in filter chain — Hard Rule 1)
+    # 4. Resolve overlays and composite (overlays first, subtitles last — Hard Rule 1)
+    raw_overlays = edl.get("overlays") or []
     current_path = base_path
-    if subs_path is not None and subs_path.exists():
+
+    if raw_overlays:
+        # Resolve overlay source paths / generate PIL cards
+        try:
+            resolved_overlays = resolve_overlay_sources(raw_overlays, edit_dir)
+        except (OSError, ValueError) as exc:
+            _cleanup_cards(edit_dir)
+            print(f"overlay resolution failed: {exc}", file=sys.stderr)
+            return 1
+
+        composite_output = output_path.with_stem(
+            output_path.stem + ".composited"
+        )
+        try:
+            build_final_composite(
+                base_path, resolved_overlays, subs_path, composite_output,
+                sub_style=sub_style, sub_style_args=sub_style_args,
+                ffmpeg_bin=ffmpeg_bin, ffprobe_bin=ffprobe_bin,
+            )
+        except (ValueError, RuntimeError, FileNotFoundError) as exc:
+            _cleanup_cards(edit_dir)
+            composite_output.unlink(missing_ok=True)
+            print(f"overlay compositing error: {exc}", file=sys.stderr)
+            return 1
+        current_path = composite_output
+        # Cards are only needed for compositing; clean up immediately
+        _cleanup_cards(edit_dir)
+    elif subs_path is not None and subs_path.exists():
+        # No overlays — apply subtitles directly (last in filter chain — Hard Rule 1)
         sub_output = output_path.with_stem(output_path.stem + ".subtitled")
         print(f"burning subtitles (style: {sub_style}) → {sub_output.name}")
         try:
@@ -1011,6 +1666,7 @@ def render_edl(
                 ffmpeg_bin=ffmpeg_bin,
             )
         except (ValueError, RuntimeError, FileNotFoundError) as exc:
+            sub_output.unlink(missing_ok=True)
             print(f"subtitle burning error: {exc}", file=sys.stderr)
             return 1
         current_path = sub_output
