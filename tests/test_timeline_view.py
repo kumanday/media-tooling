@@ -258,9 +258,10 @@ class TestComputeEnvelope(unittest.TestCase):
     @patch("media_tooling.timeline_view.subprocess.run")
     def test_returns_zeros_when_ffmpeg_fails(self, mock_run: MagicMock) -> None:
         mock_run.return_value = MagicMock(returncode=1)
-        result = compute_envelope(Path("test.mp4"), 0.0, 10.0, "ffmpeg")
+        result, raw_peak = compute_envelope(Path("test.mp4"), 0.0, 10.0, "ffmpeg")
         self.assertEqual(result.shape[0], 2000)
         self.assertTrue(np.all(result == 0))
+        self.assertEqual(raw_peak, 0.0)
 
 
 class TestWindowedRms(unittest.TestCase):
@@ -486,7 +487,7 @@ class TestOutputDimensions(unittest.TestCase):
                 img.save(str(fp), "JPEG")
                 frame_paths.append(fp)
             mock_frames.return_value = frame_paths
-            mock_env.return_value = np.zeros(2000, dtype=np.float32)
+            mock_env.return_value = (np.zeros(2000, dtype=np.float32), 0.0)
 
             out_path = Path(tmp) / "output.png"
             generate_timeline(
@@ -515,7 +516,7 @@ class TestOutputDimensions(unittest.TestCase):
     ) -> None:
         """Exercise frame-loading-to-canvas pipeline via placeholder frames (ffmpeg-failure path)."""
         mock_run.return_value = MagicMock(returncode=1)
-        mock_env.return_value = np.zeros(2000, dtype=np.float32)
+        mock_env.return_value = (np.zeros(2000, dtype=np.float32), 0.0)
 
         with tempfile.TemporaryDirectory() as tmp:
             out_path = Path(tmp) / "output.png"
@@ -712,7 +713,7 @@ class TestNFramesZero(unittest.TestCase):
             img = Image.new("RGB", (320, 180), (40, 40, 44))
             img.save(str(fp), "JPEG")
             mock_frames.return_value = [fp]
-            mock_env.return_value = np.zeros(2000, dtype=np.float32)
+            mock_env.return_value = (np.zeros(2000, dtype=np.float32), 0.0)
 
             out_path = Path(tmp) / "output.png"
             generate_timeline(
@@ -754,7 +755,7 @@ class TestNFramesCapAlignment(unittest.TestCase):
                 img.save(str(fp), "JPEG")
                 frame_paths.append(fp)
             mock_frames.return_value = frame_paths
-            mock_env.return_value = np.zeros(2000, dtype=np.float32)
+            mock_env.return_value = (np.zeros(2000, dtype=np.float32), 0.0)
 
             out_path = Path(tmp) / "output.png"
             generate_timeline(
@@ -868,7 +869,7 @@ class TestTranscriptRendering(unittest.TestCase):
                 img.save(str(fp), "JPEG")
                 frame_paths.append(fp)
             mock_frames.return_value = frame_paths
-            mock_env.return_value = np.zeros(2000, dtype=np.float32)
+            mock_env.return_value = (np.zeros(2000, dtype=np.float32), 0.0)
 
             # Create a transcript JSON with a silence gap 3.0→7.0 (4s gap ≥ 400ms)
             transcript = {
@@ -939,7 +940,7 @@ class TestTranscriptRendering(unittest.TestCase):
                 img.save(str(fp), "JPEG")
                 frame_paths.append(fp)
             mock_frames.return_value = frame_paths
-            mock_env.return_value = np.zeros(2000, dtype=np.float32)
+            mock_env.return_value = (np.zeros(2000, dtype=np.float32), 0.0)
 
             out_path = Path(tmp) / "output.png"
             generate_timeline(
@@ -981,7 +982,7 @@ class TestTranscriptRendering(unittest.TestCase):
                 img.save(str(fp), "JPEG")
                 frame_paths.append(fp)
             mock_frames.return_value = frame_paths
-            mock_env.return_value = np.zeros(2000, dtype=np.float32)
+            mock_env.return_value = (np.zeros(2000, dtype=np.float32), 0.0)
 
             transcript = {
                 "words": [

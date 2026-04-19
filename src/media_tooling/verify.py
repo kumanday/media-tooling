@@ -45,6 +45,7 @@ DEFAULT_MAX_PASSES = 3
 DURATION_TOLERANCE_S = 0.5  # tolerance for duration check
 VISUAL_DELTA_THRESHOLD = 0.25  # normalised pixel-delta threshold for discontinuity
 AUDIO_SPIKE_THRESHOLD = 0.80  # normalised amplitude threshold for audio pop
+MIN_ABSOLUTE_RMS_LEVEL = 0.05  # RMS peak below this is too quiet for meaningful pop detection (~7% of full-scale RMS)
 GRADE_LUMINANCE_TOLERANCE = 0.15  # tolerance for grade consistency (normalised)
 GRADE_SAMPLE_MIDPOINTS = 3  # number of mid-points to sample for grade consistency
 N_FRAMES_PER_BOUNDARY = 4  # frames per boundary for visual check
@@ -314,17 +315,25 @@ def verify_audio_pop(
     ffmpeg_bin: str = "ffmpeg",
     window: float = CUT_BOUNDARY_WINDOW_S,
     threshold: float = AUDIO_SPIKE_THRESHOLD,
+    min_absolute_rms_level: float = MIN_ABSOLUTE_RMS_LEVEL,
 ) -> Finding:
     """Check for waveform spikes near a cut boundary indicating audio pops.
 
     Examines the normalised audio envelope ±window around the cut.
     A spike (value above *threshold*) near the cut suggests an audio pop.
+
+    If the RMS peak of the un-normalised envelope is below
+    *min_absolute_rms_level*, the audio is too quiet for meaningful pop
+    detection and the check is skipped (non-blocking pass).  The value is
+    compared against the RMS peak returned by ``compute_envelope``, which
+    for a full-scale sine wave is ~0.707 — so 0.05 corresponds to ~7% of
+    full-scale RMS, not 5% of PCM sample amplitude.
     """
     start = max(0.0, cut_time - window)
     end = cut_time + window
 
     try:
-        envelope = compute_envelope(video_path, start, end, ffmpeg_bin, samples=500)
+        envelope, raw_peak = compute_envelope(video_path, start, end, ffmpeg_bin, samples=500)
     except Exception as exc:
         return Finding(
             check="audio_pop",
@@ -345,6 +354,23 @@ def verify_audio_pop(
             non_blocking=True,
         )
 
+    # Minimum-absolute-RMS-level gate: if the RMS peak is too low, the
+    # normalised threshold is meaningless (a barely-audible segment
+    # normalises to 1.0 just like a full-scale one).  Skip detection.
+    if raw_peak < min_absolute_rms_level:
+        return Finding(
+            check="audio_pop",
+            passed=True,
+            details=(
+                f"cut={cut_time:.2f}s raw_peak={raw_peak:.4f} "
+                f"< min_rms_level={min_absolute_rms_level:.3f}; "
+                f"too quiet for meaningful pop detection"
+            ),
+            severity="info",
+            cut_time=cut_time,
+            non_blocking=True,
+        )
+
     # Check for any spike above threshold near the cut boundary
     near_cut_start = max(0, int((cut_time - 0.5 - start) / (end - start) * envelope.size))
     near_cut_end = min(envelope.size, int((cut_time + 0.5 - start) / (end - start) * envelope.size))
@@ -357,7 +383,8 @@ def verify_audio_pop(
         check="audio_pop",
         passed=passed,
         details=(
-            f"cut={cut_time:.2f}s max_spike={max_spike:.3f} "
+            f"cut={cut_time:.2f}s raw_peak={raw_peak:.4f} "
+            f"max_spike={max_spike:.3f} "
             f"max_near_cut={max_spike_near_cut:.3f} "
             f"threshold={threshold:.3f}"
         ),
