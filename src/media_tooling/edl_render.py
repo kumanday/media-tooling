@@ -34,7 +34,13 @@ from typing import Any
 
 from PIL import Image, ImageDraw, ImageFont
 
-from media_tooling.burn_subtitles import burn_subtitles
+from media_tooling.burn_subtitles import (
+    BOLD_OVERLAY_FORCE_STYLE,
+    NATURAL_SENTENCE_FORCE_STYLE,
+    burn_subtitles,
+    rechunk_bold_overlay,
+    rechunk_natural_sentence,
+)
 from media_tooling.ffprobe_utils import (
     probe_duration,
     probe_frame_rate,
@@ -43,6 +49,8 @@ from media_tooling.ffprobe_utils import (
 from media_tooling.grade import PRESETS, auto_grade_for_clip, get_preset
 from media_tooling.loudnorm import apply_loudnorm_preview, apply_loudnorm_two_pass
 from media_tooling.rough_cut import quote_concat_path, validate_concat_demuxer_usage
+from media_tooling.subtitle import build_srt
+from media_tooling.subtitle_translate import parse_srt_file
 
 # ── Constants ────────────────────────────────────────────────────────────────
 
@@ -1319,26 +1327,19 @@ def build_final_composite(
             )
         # Rechunk subtitles to match the no-overlay path's formatting
         # (burn_subtitles_last → burn_subtitles rechunks; we must too)
-        from media_tooling.burn_subtitles import (
-            BOLD_OVERLAY_FORCE_STYLE,
-            NATURAL_SENTENCE_FORCE_STYLE,
-            rechunk_bold_overlay,
-            rechunk_natural_sentence,
-        )
-        from media_tooling.subtitle import build_srt
-        from media_tooling.subtitle_translate import parse_srt_file
-
         cues = parse_srt_file(subtitles_path)
-        force_style = sub_style_args  # may be overridden by rechunking below
+        # Resolve force_style based on sub_style, consistent with burn_subtitles
+        if sub_style == "bold-overlay":
+            force_style = sub_style_args or BOLD_OVERLAY_FORCE_STYLE
+        elif sub_style == "natural-sentence":
+            force_style = sub_style_args or NATURAL_SENTENCE_FORCE_STYLE
+        else:
+            raise ValueError(f"Unknown subtitle style: {sub_style}")
         if cues:
             if sub_style == "bold-overlay":
                 rechunked = rechunk_bold_overlay(cues)
-                force_style = sub_style_args or BOLD_OVERLAY_FORCE_STYLE
-            elif sub_style == "natural-sentence":
-                rechunked = rechunk_natural_sentence(cues)
-                force_style = sub_style_args or NATURAL_SENTENCE_FORCE_STYLE
             else:
-                raise ValueError(f"Unknown subtitle style: {sub_style}")
+                rechunked = rechunk_natural_sentence(cues)
             rechunked_srt = build_srt(rechunked)
             with tempfile.NamedTemporaryFile(
                 mode="w", suffix=".srt", delete=False, encoding="utf-8",
@@ -1358,8 +1359,6 @@ def build_final_composite(
             .replace("%", "\\%")
             .replace(";", "\\;")
         )
-        if not force_style:
-            force_style = BOLD_OVERLAY_FORCE_STYLE
         force_style_escaped = force_style.replace("'", "\\'")
         filter_parts.append(
             f"{current}subtitles='{subs_escaped}'"
