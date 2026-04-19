@@ -655,8 +655,8 @@ def concat_segments(
     # Use single quotes with backslash-escaped inner single quotes (same as rough_cut.py)
     lines: list[str] = []
     for p in segment_paths:
-        lines.append(f"file {quote_concat_path(p.resolve())}\n")
-    concat_list.write_text("".join(lines), encoding="utf-8")
+        lines.append(f"file {quote_concat_path(p.resolve())}")
+    concat_list.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
     cmd: list[str] = [
         ffmpeg_bin, "-y",
