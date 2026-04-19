@@ -15,6 +15,7 @@ dependencies = [
 
 [project.optional-dependencies]
 elevenlabs = ["requests>=2.31"]
+animations = ["manim>=0.20", "manim-voiceover>=0.3"]
 
 [dependency-groups]
 dev = [
