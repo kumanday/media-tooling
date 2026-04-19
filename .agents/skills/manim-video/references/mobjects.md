@@ -5,7 +5,7 @@ Everything visible on screen is a Mobject. They have position, color, opacity, a
 ## Text
 
 ```python
-title = Text("Hello World", font_size=48, color=BLUE)
+title = Text("Hello World", font_size=48, color=BLUE, font=MONO)
 eq = MathTex(r"E = mc^2", font_size=40)
 
 # Multi-part (for selective coloring)
@@ -103,7 +103,7 @@ shapes.set_color(BLUE)
 **Group** is for mixed collections (Text + shapes, or any Mobject types):
 ```python
 # Text objects are Mobjects, not VMobjects — use Group when mixing
-labeled_shape = Group(circle, Text("Label").next_to(circle, DOWN))
+labeled_shape = Group(circle, Text("Label", font=MONO).next_to(circle, DOWN))
 labeled_shape.move_to(ORIGIN)
 
 # FadeOut everything on screen (may contain mixed types)
@@ -128,7 +128,7 @@ mob.set_z_index(1)                         # layering
 
 ```python
 nl = NumberLine(x_range=[-3, 3, 1], length=8, include_numbers=True)
-table = Table([["A", "B"], ["C", "D"]], row_labels=[Text("R1"), Text("R2")])
+table = Table([["A", "B"], ["C", "D"]], row_labels=[Text("R1", font=MONO), Text("R2", font=MONO)])
 code = Code("example.py", tab_width=4, font_size=20, language="python")
 highlight = SurroundingRectangle(target, color=YELLOW, buff=0.2)
 bg = BackgroundRectangle(equation, fill_opacity=0.7, buff=0.2)
@@ -199,7 +199,7 @@ Note: images cannot be animated with `.animate` (they're raster, not vector). Us
 ## Variable — Auto-Updating Display
 
 ```python
-var = Variable(0, Text("x"), num_decimal_places=2)
+var = Variable(0, Text("x", font=MONO), num_decimal_places=2)
 var.move_to(ORIGIN)
 self.add(var)
 
@@ -263,10 +263,10 @@ Use cases: Venn diagrams, set theory, geometric proofs, area calculations.
 
 ```python
 # Arrow with built-in label (auto-positioned)
-arr = LabeledArrow(Text("force", font_size=18), start=LEFT, end=RIGHT, color=RED)
+arr = LabeledArrow(Text("force", font_size=18, font=MONO), start=LEFT, end=RIGHT, color=RED)
 
 # Line with label
-line = LabeledLine(Text("d = 5m", font_size=18), start=LEFT * 2, end=RIGHT * 2)
+line = LabeledLine(Text("d = 5m", font_size=18, font=MONO), start=LEFT * 2, end=RIGHT * 2)
 ```
 
 Auto-handles label positioning — cleaner than manual `Arrow` + `Text().next_to()`.
@@ -277,20 +277,22 @@ Auto-handles label positioning — cleaner than manual `Arrow` + `Text().next_to
 # Color specific words (t2c = text-to-color)
 text = Text(
     "Gradient descent minimizes the loss function",
-    t2c={"Gradient descent": BLUE, "loss function": RED}
+    t2c={"Gradient descent": BLUE, "loss function": RED},
+    font=MONO
 )
 
 # Different fonts per word (t2f = text-to-font)
 text = Text(
     "Use Menlo for code and Inter for prose",
-    t2f={"Menlo": "Menlo", "Inter": "Inter"}
+    t2f={"Menlo": "Menlo", "Inter": "Inter"},
+    font=MONO
 )
 
 # Italic/slant per word (t2s = text-to-slant)
-text = Text("Normal and italic text", t2s={"italic": ITALIC})
+text = Text("Normal and italic text", t2s={"italic": ITALIC}, font=MONO)
 
 # Bold per word (t2w = text-to-weight)
-text = Text("Normal and bold text", t2w={"bold": BOLD})
+text = Text("Normal and bold text", t2w={"bold": BOLD}, font=MONO)
 ```
 
 These are much cleaner than creating separate Text objects and grouping them.

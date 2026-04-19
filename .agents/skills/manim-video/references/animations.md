@@ -162,7 +162,7 @@ self.play(square.animate.scale(2))  # brace auto-adjusts
 h_line = always_redraw(lambda: axes.get_h_line(dot.get_left()))
 
 # Label that always stays next to another mobject
-label = always_redraw(lambda: Text("here", font_size=20).next_to(dot, UP, buff=0.2))
+label = always_redraw(lambda: Text("here", font_size=20, font=MONO).next_to(dot, UP, buff=0.2))
 ```
 
 Note: `always_redraw` recreates the mobject every frame. For simple property tracking, use `add_updater` instead (cheaper):

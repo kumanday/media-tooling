@@ -156,7 +156,7 @@ Once a color is assigned a meaning, it keeps that meaning for the entire video:
 When showing a number changing:
 ```python
 # GOOD: DecimalNumber with smooth animation
-counter = DecimalNumber(0, font_size=48, num_decimal_places=0, font="Menlo")
+counter = DecimalNumber(0, font_size=48, num_decimal_places=0, font=MONO)
 self.play(counter.animate.set_value(1000), run_time=3, rate_func=rush_from)
 
 # BAD: Text that jumps between values
