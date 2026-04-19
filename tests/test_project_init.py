@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import tempfile
+import tomllib
 import unittest
 from pathlib import Path
 
@@ -196,22 +197,14 @@ class ProjectInitTests(unittest.TestCase):
     def test_project_agents_template_lists_all_cli_commands(self) -> None:
         template = load_project_agents_template()
 
-        for command in (
-            "media-subtitle",
-            "media-batch-subtitle",
-            "media-contact-sheet",
-            "media-batch-contact-sheet",
-            "media-rough-cut",
-            "media-burn-subtitles",
-            "media-batch-burn-subtitles",
-            "media-translate-subtitles",
-            "media-pack-transcript",
-            "media-timeline-view",
-            "media-edl-render",
-            "media-grade",
-            "media-loudnorm",
-            "media-verify",
-        ):
+        pyproject = Path(__file__).resolve().parent.parent / "pyproject.toml"
+        with pyproject.open("rb") as f:
+            registered = {
+                k
+                for k in tomllib.load(f)["project"]["scripts"]
+                if k.startswith("media-") and k != "media-tooling-init"
+            }
+        for command in sorted(registered):
             self.assertIn(command, template)
 
 
