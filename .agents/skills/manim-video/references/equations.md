@@ -83,7 +83,7 @@ MathTex(r"\begin{vmatrix} a & b \\ c & d \end{vmatrix}")
 MathTex(r"\begin{matrix} x_1 \\ x_2 \\ x_3 \end{matrix}")
 ```
 
-For matrices you need to animate element-by-element or color individual entries, use the `IntegerMatrix`, `DecimalMatrix`, or `MobjectMatrix` mobjects instead — see `mobjects.md`.
+For matrices **that** you need to animate element-by-element or color individual entries, use the `IntegerMatrix`, `DecimalMatrix`, or `MobjectMatrix` mobjects instead — see `mobjects.md`.
 
 ## Cases and Piecewise Functions
 

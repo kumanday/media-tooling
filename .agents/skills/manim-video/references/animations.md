@@ -255,8 +255,8 @@ self.play(FadeIn(mob, rate_func=running_start))
 # there_and_back_with_pause: goes there, holds, comes back
 self.play(mob.animate.shift(UP), rate_func=there_and_back_with_pause)
 
-# not_quite_there: stops at a fraction of the full animation
-self.play(FadeIn(mob, rate_func=not_quite_there(0.7)))
+# not_quite_there: stops at ~70% of the full animation
+self.play(FadeIn(mob, rate_func=not_quite_there))
 ```
 
 ## ShowIncreasingSubsets / ShowSubmobjectsOneByOne
