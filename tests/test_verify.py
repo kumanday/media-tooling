@@ -319,8 +319,8 @@ class TestVerifyVisualDiscontinuity(unittest.TestCase):
 class TestVerifyAudioPop(unittest.TestCase):
     @patch("media_tooling.verify.compute_envelope")
     def test_no_pop(self, mock_env: MagicMock) -> None:
-        # Smooth envelope, no spike
-        mock_env.return_value = np.full(500, 0.3, dtype=np.float32)
+        # Smooth envelope, no spike; raw_peak high enough to pass the gate
+        mock_env.return_value = (np.full(500, 0.3, dtype=np.float32), 0.3)
         finding = verify_audio_pop(Path("video.mp4"), 10.0)
         self.assertTrue(finding.passed)
 
@@ -329,7 +329,7 @@ class TestVerifyAudioPop(unittest.TestCase):
         env = np.full(500, 0.3, dtype=np.float32)
         # Spike at the cut point (middle of envelope ≈ cut_time)
         env[250] = 0.95
-        mock_env.return_value = env
+        mock_env.return_value = (env, 0.3)
         finding = verify_audio_pop(Path("video.mp4"), 10.0, window=1.5)
         self.assertFalse(finding.passed)
 
@@ -338,7 +338,7 @@ class TestVerifyAudioPop(unittest.TestCase):
         env = np.full(500, 0.3, dtype=np.float32)
         # Spike at the very start (far from cut at center)
         env[0] = 0.95
-        mock_env.return_value = env
+        mock_env.return_value = (env, 0.3)
         finding = verify_audio_pop(Path("video.mp4"), 10.0, window=1.5)
         # The spike is at the start of the window, which is 1.5s before the cut
         # That's > 0.5s away, so it should pass
@@ -352,7 +352,7 @@ class TestVerifyAudioPop(unittest.TestCase):
         env[0] = 0.95
         # Moderate pop at the cut (index 250 ≈ cut_time for window=1.5)
         env[250] = 0.82
-        mock_env.return_value = env
+        mock_env.return_value = (env, 0.3)
         finding = verify_audio_pop(Path("video.mp4"), 10.0, window=1.5)
         # The 0.82 spike at the cut is above threshold (0.80) and within ±0.5s
         self.assertFalse(finding.passed)
@@ -365,7 +365,7 @@ class TestVerifyAudioPop(unittest.TestCase):
         # Window is 1.5s, so start = 8.5, end = 11.5, cut = 10.0
         # 0.6s before cut = 9.4s → index ≈ (9.4 - 8.5) / 3.0 * 500 = 150
         env[150] = 0.95
-        mock_env.return_value = env
+        mock_env.return_value = (env, 0.3)
         finding = verify_audio_pop(Path("video.mp4"), 10.0, window=1.5)
         self.assertTrue(finding.passed)
 
@@ -376,7 +376,7 @@ class TestVerifyAudioPop(unittest.TestCase):
         # Two spikes near the cut, both above threshold
         env[240] = 0.85
         env[260] = 0.90
-        mock_env.return_value = env
+        mock_env.return_value = (env, 0.3)
         finding = verify_audio_pop(Path("video.mp4"), 10.0, window=1.5)
         self.assertFalse(finding.passed)
         self.assertIn("max_near_cut", finding.details)
@@ -391,12 +391,62 @@ class TestVerifyAudioPop(unittest.TestCase):
 
     @patch("media_tooling.verify.compute_envelope")
     def test_silent_track_returns_warning(self, mock_env: MagicMock) -> None:
-        mock_env.return_value = np.zeros(500, dtype=np.float32)
+        mock_env.return_value = (np.zeros(500, dtype=np.float32), 0.0)
         finding = verify_audio_pop(Path("video.mp4"), 10.0)
         self.assertFalse(finding.passed)
         self.assertEqual(finding.severity, "warning")
         self.assertTrue(finding.non_blocking)
         self.assertIn("not performed", finding.details)
+
+    @patch("media_tooling.verify.compute_envelope")
+    def test_quiet_audio_skips_pop_detection(self, mock_env: MagicMock) -> None:
+        """Audio with raw_peak below min_absolute_level is too quiet for meaningful pop detection."""
+        # Normalized envelope has a spike at 1.0 (would normally fail), but raw_peak is 0.01
+        env = np.full(500, 0.3, dtype=np.float32)
+        env[250] = 1.0  # Normalized spike (would fail without the gate)
+        mock_env.return_value = (env, 0.01)  # raw_peak=0.01 < MIN_ABSOLUTE_LEVEL=0.05
+        finding = verify_audio_pop(Path("video.mp4"), 10.0)
+        # Gate should kick in: too quiet to detect pops meaningfully
+        self.assertTrue(finding.passed)
+        self.assertTrue(finding.non_blocking)
+        self.assertIn("too quiet", finding.details)
+        self.assertIn("raw_peak=0.0100", finding.details)
+        self.assertIn("min_level=0.050", finding.details)
+
+    @patch("media_tooling.verify.compute_envelope")
+    def test_quiet_audio_with_custom_min_level(self, mock_env: MagicMock) -> None:
+        """Custom min_absolute_level threshold overrides the default."""
+        env = np.full(500, 0.3, dtype=np.float32)
+        env[250] = 1.0
+        # raw_peak=0.08 > default 0.05, but we set min_level=0.10
+        mock_env.return_value = (env, 0.08)
+        finding = verify_audio_pop(Path("video.mp4"), 10.0, min_absolute_level=0.10)
+        self.assertTrue(finding.passed)
+        self.assertTrue(finding.non_blocking)
+        self.assertIn("too quiet", finding.details)
+
+    @patch("media_tooling.verify.compute_envelope")
+    def test_quiet_audio_just_above_gate_still_checked(self, mock_env: MagicMock) -> None:
+        """Audio just above the min_absolute_level gate proceeds to normal pop detection."""
+        env = np.full(500, 0.3, dtype=np.float32)
+        env[250] = 0.95  # Spike above threshold
+        # raw_peak=0.06 > 0.05 default, so gate doesn't skip
+        mock_env.return_value = (env, 0.06)
+        finding = verify_audio_pop(Path("video.mp4"), 10.0, window=1.5)
+        # Should NOT skip - raw_peak above gate, and spike at cut fails
+        self.assertFalse(finding.passed)
+        self.assertIn("raw_peak=0.0600", finding.details)
+
+    @patch("media_tooling.verify.compute_envelope")
+    def test_loud_audio_pop_detected_despite_normalized_spike(self, mock_env: MagicMock) -> None:
+        """Loud audio with a real pop at cut boundary is correctly detected."""
+        env = np.full(500, 0.3, dtype=np.float32)
+        env[250] = 0.95
+        # raw_peak=0.30 (well above 0.05 gate), so pop detection proceeds normally
+        mock_env.return_value = (env, 0.30)
+        finding = verify_audio_pop(Path("video.mp4"), 10.0, window=1.5)
+        self.assertFalse(finding.passed)
+        self.assertIn("raw_peak=0.3000", finding.details)
 
 
 # ── verify_grade_consistency ──────────────────────────────────────────────────
@@ -452,7 +502,7 @@ class TestRunVerification(unittest.TestCase):
         mock_probe: MagicMock,
     ) -> None:
         mock_extract.return_value = Path("/tmp/frame.jpg")
-        mock_env.return_value = np.full(500, 0.3, dtype=np.float32)
+        mock_env.return_value = (np.full(500, 0.3, dtype=np.float32), 0.3)
         report = run_verification(
             Path("video.mp4"),
             _minimal_edl(),
@@ -490,7 +540,7 @@ class TestRunVerification(unittest.TestCase):
     ) -> None:
         """When probe_duration fails, grade_consistency emits a warning finding."""
         mock_extract.return_value = Path("/tmp/frame.jpg")
-        mock_env.return_value = np.full(500, 0.3, dtype=np.float32)
+        mock_env.return_value = (np.full(500, 0.3, dtype=np.float32), 0.3)
         report = run_verification(
             Path("video.mp4"),
             _single_range_edl(),
@@ -517,7 +567,7 @@ class TestRunVerification(unittest.TestCase):
     ) -> None:
         """With max_passes=1, one retry occurs and persistent failures are flagged."""
         mock_extract.return_value = Path("/tmp/frame.jpg")
-        mock_env.return_value = np.full(500, 0.3, dtype=np.float32)
+        mock_env.return_value = (np.full(500, 0.3, dtype=np.float32), 0.3)
         # Always fail visual check
         mock_delta.return_value = 0.5
         report = run_verification(
@@ -546,7 +596,7 @@ class TestRunVerification(unittest.TestCase):
     ) -> None:
         """Structural warnings (severity=warning) should not get 'unresolved' suffix."""
         mock_extract.return_value = Path("/tmp/frame.jpg")
-        mock_env.return_value = np.full(500, 0.3, dtype=np.float32)
+        mock_env.return_value = (np.full(500, 0.3, dtype=np.float32), 0.3)
         report = run_verification(
             Path("video.mp4"),
             _single_range_edl(),
@@ -574,7 +624,7 @@ class TestRunVerification(unittest.TestCase):
         """Non-blocking warnings should not consume retry passes."""
         mock_extract.return_value = Path("/tmp/frame.jpg")
         # Make audio pop check return a non-blocking warning (structural issue)
-        mock_env.return_value = np.zeros(500, dtype=np.float32)  # silent → warning
+        mock_env.return_value = (np.zeros(500, dtype=np.float32), 0.0)  # silent → warning
         report = run_verification(
             Path("video.mp4"),
             _minimal_edl(),
@@ -608,7 +658,7 @@ class TestRunVerification(unittest.TestCase):
     ) -> None:
         """When timeline PNG generation fails, a non-blocking warning finding is produced."""
         mock_extract.return_value = Path("/tmp/frame.jpg")
-        mock_env.return_value = np.full(500, 0.3, dtype=np.float32)
+        mock_env.return_value = (np.full(500, 0.3, dtype=np.float32), 0.3)
         report = run_verification(
             Path("video.mp4"),
             _minimal_edl(),
@@ -641,7 +691,7 @@ class TestRunVerification(unittest.TestCase):
     ) -> None:
         """When some timeline PNGs fail, each failure gets a non-blocking finding."""
         mock_extract.return_value = Path("/tmp/frame.jpg")
-        mock_env.return_value = np.full(500, 0.3, dtype=np.float32)
+        mock_env.return_value = (np.full(500, 0.3, dtype=np.float32), 0.3)
         # 2 boundaries: first succeeds, second fails
         mock_timelines.return_value = (
             {0: "/tmp/boundary_000_10.00s.png"},
@@ -685,7 +735,7 @@ class TestRunVerification(unittest.TestCase):
     ) -> None:
         """PNG-to-boundary mapping is correct even when middle boundary fails."""
         mock_extract.return_value = Path("/tmp/frame.jpg")
-        mock_env.return_value = np.full(500, 0.3, dtype=np.float32)
+        mock_env.return_value = (np.full(500, 0.3, dtype=np.float32), 0.3)
         # 3-boundary EDL: boundary 0 (10.0s) succeeds, boundary 1 (20.0s) fails,
         # boundary 2 (30.0s) succeeds. PNG map keyed by boundary index.
         mock_timelines.return_value = (

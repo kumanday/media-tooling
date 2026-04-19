@@ -233,8 +233,13 @@ def compute_envelope(
     end: float,
     ffmpeg_bin: str,
     samples: int = 2000,
-) -> np.ndarray[tuple[int], np.dtype[np.float32]]:
-    """Extract the audio segment and return a normalised RMS envelope of length *samples*."""
+) -> tuple[np.ndarray[tuple[int], np.dtype[np.float32]], float]:
+    """Extract the audio segment and return (normalised RMS envelope, raw peak).
+
+    The envelope is normalised to [0, 1].  The raw peak is the maximum
+    value of the un-normalised RMS envelope (before division by max),
+    which callers can use to gate checks on quiet audio segments.
+    """
     wav_path: Path | None = None
     try:
         with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
@@ -252,17 +257,18 @@ def compute_envelope(
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
         )
         if result.returncode != 0 or not wav_path.exists() or wav_path.stat().st_size == 0:
-            return np.zeros(samples, dtype=np.float32)
+            return np.zeros(samples, dtype=np.float32), 0.0
 
         pcm = _read_pcm_mono_16k(wav_path)
         if pcm.size == 0:
-            return np.zeros(samples, dtype=np.float32)
+            return np.zeros(samples, dtype=np.float32), 0.0
 
         env = _windowed_rms(pcm, samples)
+        raw_peak = float(env.max())
         # Normalise to [0, 1]
-        if env.max() > 0:
-            env = env / env.max()
-        return env.astype(np.float32)
+        if raw_peak > 0:
+            env = env / raw_peak
+        return env.astype(np.float32), raw_peak
     finally:
         if wav_path is not None:
             wav_path.unlink(missing_ok=True)
@@ -594,7 +600,7 @@ def generate_timeline(
         silences = find_silences(words, start, end) if words else []
 
         # Waveform + word labels
-        env = compute_envelope(input_path, start, end, ffmpeg_bin, samples=max(strip_span, 200))
+        env, _ = compute_envelope(input_path, start, end, ffmpeg_bin, samples=max(strip_span, 200))
         _render_waveform(
             draw, env, layout, strip_x0, strip_x1,
             silences, words, start, end, small_font,
