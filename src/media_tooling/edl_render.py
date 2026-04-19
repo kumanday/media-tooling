@@ -379,6 +379,7 @@ def extract_segment(
     draft: bool = False,
     ffmpeg_bin: str = "ffmpeg",
     ffprobe_bin: str = "ffprobe",
+    has_audio: bool | None = None,
 ) -> None:
     """Extract a cut range as its own MP4 with grade + 30 ms audio fades.
 
@@ -398,7 +399,8 @@ def extract_segment(
     vf = ",".join(vf_parts)
 
     afade = build_afade_filter(duration)
-    has_audio = _source_has_audio(source, ffprobe_bin)
+    if has_audio is None:
+        has_audio = _source_has_audio(source, ffprobe_bin)
 
     if draft:
         preset, crf = "ultrafast", "28"
@@ -573,6 +575,7 @@ def extract_all_segments(
 
     ranges = edl["ranges"]
     seg_paths: list[Path] = []
+    audio_cache: dict[str, bool] = {}
 
     for i, r in enumerate(ranges):
         src_name = r["source"]
@@ -609,6 +612,11 @@ def extract_all_segments(
 
         out_path = clips_dir / f"seg_{i:02d}_{Path(src_name).stem}.mp4"
 
+        # Cache audio detection per-source to avoid redundant ffprobe calls
+        if src_name not in audio_cache:
+            audio_cache[src_name] = _source_has_audio(src_path, ffprobe_bin)
+        has_audio = audio_cache[src_name]
+
         note = r.get("beat") or r.get("note") or ""
         print(
             f"  [{i:02d}] {src_name}  "
@@ -619,7 +627,7 @@ def extract_all_segments(
         extract_segment(
             src_path, padded_start, duration, seg_filter, out_path,
             preview=preview, draft=draft, ffmpeg_bin=ffmpeg_bin,
-            ffprobe_bin=ffprobe_bin,
+            ffprobe_bin=ffprobe_bin, has_audio=has_audio,
         )
         seg_paths.append(out_path)
 
