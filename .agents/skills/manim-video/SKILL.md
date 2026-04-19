@@ -153,7 +153,7 @@ self.play(Rotating(gear, angle=TAU, run_time=4, rate_func=linear))
 self.play(FadeIn(mob), rate_func=linear)  # NEVER DO THIS
 ```
 
-Available cubic-rate functions: `smooth`, `rush_into`, `rush_from`, `double_smooth`, `there_and_back_with_pause`. See `references/animations.md` for the full list.
+Recommended cubic rate functions: `smooth` (ease in/out), `rush_into` (ease in cubic), `rush_from` (ease out cubic), `double_smooth`. See `references/animations.md` for the full list including pattern functions like `there_and_back_with_pause`.
 
 ### Per-Scene Variation
 
@@ -190,6 +190,7 @@ class Scene1_Introduction(Scene):
         self.play(Write(title), run_time=1.5)
         self.wait(1.0)
         self.play(FadeOut(title), run_time=0.5)
+        self.wait(0.3)
 ```
 
 Key patterns:
@@ -235,7 +236,7 @@ MathTex(r"\frac{1}{2}")
 label.to_edge(DOWN, buff=0.5)  # never < 0.5
 ```
 
-### FadeOut Before Replacing Text
+### Use ReplacementTransform for Text Changes
 ```python
 self.play(ReplacementTransform(note1, note2))  # not Write(note2) on top
 ```

@@ -141,7 +141,7 @@ class NetworkNode(Group):
     def __init__(self, label_text, color=BLUE, **kwargs):
         super().__init__(**kwargs)
         self.circle = Circle(radius=0.4, color=color, fill_opacity=0.3)
-        self.label = Text(label_text, font_size=20).move_to(self.circle)
+        self.label = Text(label_text, font_size=20, font=MONO).move_to(self.circle)
         self.add(self.circle, self.label)
 ```
 
