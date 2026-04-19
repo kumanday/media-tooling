@@ -10,6 +10,7 @@ from unittest.mock import MagicMock, patch
 
 from media_tooling.edl_render import (
     EDLSchemaError,
+    _cleanup_cards,
     _is_image_path,
     _resolve_segment_bounds,
     _sorted_overlay_indices,
@@ -2433,6 +2434,53 @@ class BuildFinalCompositeTests(unittest.TestCase):
             self.assertIn("_resolved_path", str(ctx.exception))
             self.assertIn("resolve_overlay_sources", str(ctx.exception))
 
+    @patch("media_tooling.edl_render.subprocess.run")
+    @patch("media_tooling.edl_render.probe_video_size", side_effect=FileNotFoundError("ffprobe not found"))
+    def test_probe_failure_prints_warning(self, mock_probe: MagicMock, mock_run: MagicMock) -> None:
+        """build_final_composite prints warning when probe_video_size
+        fails (e.g. bad ffprobe_bin), instead of silently proceeding."""
+        mock_run.return_value = MagicMock(returncode=0)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            edit_dir = Path(tmpdir)
+            base_path = edit_dir / "base.mp4"
+            base_path.write_bytes(b"\x00" * 100)
+            out_path = edit_dir / "output.mp4"
+            overlays = [
+                {"source": "overlay.png", "start": 5.0, "end": 10.0,
+                 "_resolved_path": str(edit_dir / "overlay.png")},
+            ]
+            import io
+            import sys as _sys
+            old_stderr = _sys.stderr
+            _sys.stderr = buf = io.StringIO()
+            try:
+                build_final_composite(base_path, overlays, None, out_path)
+            finally:
+                _sys.stderr = old_stderr
+        self.assertIn("warning:", buf.getvalue())
+        self.assertIn("could not probe base video size", buf.getvalue())
+
+
+class CleanupCardsTests(unittest.TestCase):
+    def test_cleanup_cards_removes_cards_dir(self) -> None:
+        """_cleanup_cards removes the cards/ subdirectory and its contents."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            edit_dir = Path(tmpdir)
+            cards_dir = edit_dir / "cards"
+            cards_dir.mkdir()
+            (cards_dir / "card_0.png").write_bytes(b"\x00" * 10)
+            (cards_dir / "card_1.png").write_bytes(b"\x00" * 10)
+            self.assertTrue(cards_dir.exists())
+            _cleanup_cards(edit_dir)
+            self.assertFalse(cards_dir.exists())
+
+    def test_cleanup_cards_noop_when_no_cards_dir(self) -> None:
+        """_cleanup_cards is a no-op when cards/ doesn't exist."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            edit_dir = Path(tmpdir)
+            # Should not raise
+            _cleanup_cards(edit_dir)
+
 
 # ── Render EDL integration tests with overlays ────────────────────────────────
 
@@ -2526,6 +2574,47 @@ class RenderEDLOverlayTests(unittest.TestCase):
                     render_edl(edl_path, output_path, no_loudnorm=True)
 
         self.assertTrue(mock_burn.called)
+
+    @patch("media_tooling.edl_render._probe_source_durations")
+    @patch("media_tooling.edl_render.apply_loudnorm_two_pass", return_value=True)
+    @patch("media_tooling.edl_render.concat_segments")
+    @patch("media_tooling.edl_render.extract_all_segments")
+    @patch("media_tooling.edl_render.build_final_composite", side_effect=RuntimeError("boom"))
+    def test_render_edl_overlay_failure_cleans_up_cards(
+        self,
+        mock_composite: MagicMock,
+        mock_extract: MagicMock,
+        mock_concat: MagicMock,
+        mock_loudnorm: MagicMock,
+        mock_probe: MagicMock,
+    ) -> None:
+        """render_edl cleans up generated card PNGs even when
+        build_final_composite raises."""
+        mock_probe.return_value = {"source1.mp4": 60.0}
+        mock_extract.return_value = [Path("/tmp/seg_00.mp4")]
+        mock_concat.side_effect = lambda *a, **kw: None
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            edit_dir = Path(tmpdir)
+            base_path = edit_dir / "base.mp4"
+            base_path.write_bytes(b"\x00" * 100)
+            overlay_file = edit_dir / "overlay.png"
+            overlay_file.write_bytes(b"\x00" * 10)
+            edl_path = edit_dir / "test_edl.json"
+            edl = _minimal_edl()
+            edl["overlays"] = [
+                {"source": "overlay.png", "start": 5.0, "end": 10.0}
+            ]
+            edl_path.write_text(json.dumps(edl), encoding="utf-8")
+            output_path = edit_dir / "output.mp4"
+
+            from media_tooling.edl_render import render_edl
+            with patch("media_tooling.edl_render.subprocess.run") as mock_run:
+                mock_run.return_value = MagicMock(returncode=0)
+                result = render_edl(edl_path, output_path, no_subtitles=True,
+                                    no_loudnorm=True)
+
+        self.assertEqual(result, 1)
 
 
 if __name__ == "__main__":
