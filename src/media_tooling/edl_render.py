@@ -1155,7 +1155,7 @@ def _sorted_overlay_indices(overlays: list[dict[str, Any]]) -> list[tuple[int, d
 
 def build_overlay_chain(
     overlays: list[dict[str, Any]],
-) -> list[str]:
+) -> tuple[list[str], int | None]:
     """Build chained overlay filter parts with enable-between time windows.
 
     Each overlay is composited onto the base with
@@ -1164,13 +1164,16 @@ def build_overlay_chain(
     overlays from showing a stale last frame past the overlay's natural
     duration.
 
-    Returns a list of filter strings like
-    ``[0:v][a1]overlay=enable='between(t,5.000,10.000)':eof_action=endall:x=50:y=100[v1]``.
+    Returns ``(filter_parts, last_overlay_index)`` where *last_overlay_index*
+    is the 1-based index of the topmost overlay (``None`` when *overlays* is
+    empty).  The caller uses this to determine the current video stream label
+    after the overlay chain.
     """
     indexed = _sorted_overlay_indices(overlays)
 
     parts: list[str] = []
     current = "[0:v]"
+    last_idx: int | None = None
     for idx, ov in indexed:
         t = float(ov["start"])
         end = float(ov["end"])
@@ -1183,7 +1186,8 @@ def build_overlay_chain(
             f":eof_action=endall:x={x}:y={y}{next_label}"
         )
         current = next_label
-    return parts
+        last_idx = idx
+    return parts, last_idx
 
 
 def build_final_composite(
@@ -1297,14 +1301,11 @@ def build_final_composite(
     )
 
     # Chain overlays on top of base with enable-between
-    chain_parts = build_overlay_chain(overlays)
+    chain_parts, last_idx = build_overlay_chain(overlays)
     filter_parts.extend(chain_parts)
 
     # Determine the current video label after overlays
-    # (last overlay output label — uses same sort as build_overlay_chain)
-    indexed = _sorted_overlay_indices(overlays)
-    last_idx = indexed[-1][0]
-    current = f"[v{last_idx}]"
+    current = f"[v{last_idx}]" if last_idx is not None else "[0:v]"
 
     # Subtitles LAST — Hard Rule 1
     if has_subs:

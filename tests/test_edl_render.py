@@ -2064,20 +2064,21 @@ class BuildOverlayChainTests(unittest.TestCase):
             {"source": "a.png", "start": 5.0, "end": 10.0,
              "position": {"x": 50, "y": 100}, "z_order": 0}
         ]
-        parts = build_overlay_chain(overlays)
+        parts, last_idx = build_overlay_chain(overlays)
         self.assertEqual(len(parts), 1)
         self.assertIn("overlay=enable='between(t,5.000,10.000)'", parts[0])
         self.assertIn("eof_action=endall", parts[0])
         self.assertIn(":x=50:y=100", parts[0])
         self.assertIn("[0:v][a1]", parts[0])
         self.assertIn("[v1]", parts[0])
+        self.assertEqual(last_idx, 1)
 
     def test_z_order_sorting(self) -> None:
         overlays = [
             {"source": "a.png", "start": 5.0, "end": 10.0, "z_order": 2},
             {"source": "b.png", "start": 5.0, "end": 10.0, "z_order": 1},
         ]
-        parts = build_overlay_chain(overlays)
+        parts, last_idx = build_overlay_chain(overlays)
         self.assertEqual(len(parts), 2)
         # z_order=1 (overlay index 2) should be first
         self.assertIn("[0:v][a2]", parts[0])
@@ -2087,14 +2088,14 @@ class BuildOverlayChainTests(unittest.TestCase):
         overlays = [
             {"source": "a.png", "start": 5.0, "end": 10.0}
         ]
-        parts = build_overlay_chain(overlays)
+        parts, last_idx = build_overlay_chain(overlays)
         self.assertIn(":x=0:y=0", parts[0])
 
     def test_enable_between_restricts_visibility(self) -> None:
         overlays = [
             {"source": "a.png", "start": 3.5, "end": 7.25}
         ]
-        parts = build_overlay_chain(overlays)
+        parts, last_idx = build_overlay_chain(overlays)
         self.assertIn("enable='between(t,3.500,7.250)'", parts[0])
 
     def test_eof_action_prevents_stale_last_frame(self) -> None:
@@ -2103,8 +2104,14 @@ class BuildOverlayChainTests(unittest.TestCase):
         overlays = [
             {"source": "short.mp4", "start": 5.0, "end": 10.0}
         ]
-        parts = build_overlay_chain(overlays)
+        parts, last_idx = build_overlay_chain(overlays)
         self.assertIn("eof_action=endall", parts[0])
+
+    def test_empty_overlays_returns_none_index(self) -> None:
+        """Empty overlay list returns empty parts and None last_idx."""
+        parts, last_idx = build_overlay_chain([])
+        self.assertEqual(parts, [])
+        self.assertIsNone(last_idx)
 
 
 # ── PIL overlay card generation tests ─────────────────────────────────────────
