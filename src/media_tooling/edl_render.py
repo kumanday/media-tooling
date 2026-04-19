@@ -9,8 +9,9 @@ Pipeline (obeys Hard Rules 1–7):
      - 30 ms audio fades at both edges (Rule 3)
   3. Lossless concat via ffmpeg concat demuxer (Rule 2)
   4. Build master SRT with output-timeline offsets (Rule 5)
-  5. Burn subtitles LAST in filter chain (Rule 1)
-  6. Two-pass loudness normalization (−14 LUFS / −1 dBTP / LRA 11)
+  5. Composite overlays (PTS-shifted, enable-between) — Rule 4
+  6. Burn subtitles LAST in filter chain (Rule 1)
+  7. Two-pass loudness normalization (−14 LUFS / −1 dBTP / LRA 11)
 
 Usage::
 
@@ -30,6 +31,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from PIL import Image, ImageDraw, ImageFont
+
 from media_tooling.burn_subtitles import burn_subtitles
 from media_tooling.ffprobe_utils import probe_duration
 from media_tooling.grade import PRESETS, auto_grade_for_clip, get_preset
@@ -46,6 +49,22 @@ MAX_PAD = 0.20  # 200 ms maximum working window (Hard Rule 7)
 EDL_VERSION = 1
 
 PUNCT_BREAK = set(".,!?;:")
+
+# ── Overlay duration bounds ──────────────────────────────────────────────────
+
+OVERLAY_SYNC_MIN = 3.0    # sync-to-narration: minimum 3 s
+OVERLAY_SYNC_MAX = 14.0   # sync-to-narration: maximum 14 s
+OVERLAY_BEAT_MIN = 0.5    # beat-synced accent: minimum 0.5 s
+OVERLAY_BEAT_MAX = 2.0    # beat-synced accent: maximum 2 s
+OVERLAY_HOLD_MIN = 1.0    # hold final frame: minimum 1 s
+
+# ── Overlay card defaults ─────────────────────────────────────────────────────
+
+CARD_DEFAULT_WIDTH = 1920
+CARD_DEFAULT_HEIGHT = 1080
+CARD_DEFAULT_FONT_SIZE = 48
+CARD_DEFAULT_COLOR = "white"
+CARD_DEFAULT_BG_COLOR = (0, 0, 0, 0)  # transparent
 
 # ── EDL schema validation ───────────────────────────────────────────────────
 
@@ -185,6 +204,16 @@ def validate_edl(edl: dict[str, Any]) -> None:
             raise EDLSchemaError(
                 f"subtitles must be a string path or dict, got {type(subtitles).__name__}"
             )
+
+    # Validate overlays field if present
+    overlays = edl.get("overlays")
+    if overlays is not None:
+        if not isinstance(overlays, list):
+            raise EDLSchemaError(
+                f"'overlays' must be a list, got {type(overlays).__name__}"
+            )
+        for i, ov in enumerate(overlays):
+            _validate_overlay(ov, i)
 
 
 # ── Path / source resolution ────────────────────────────────────────────────
@@ -830,7 +859,372 @@ def burn_subtitles_last(
     )
 
 
-# ── CLI ─────────────────────────────────────────────────────────────────────
+# ── Overlay validation ───────────────────────────────────────────────────────
+
+
+def _validate_overlay(ov: dict[str, Any], index: int) -> None:
+    """Validate a single overlay spec dict.
+
+    An overlay must have ``source`` (file path) OR ``card`` (PIL-generated),
+    plus ``start`` and ``end`` times.  Optional: ``position`` (dict with
+    ``x``, ``y``), ``z_order`` (int), ``duration_type`` (``sync`` or ``beat``).
+    """
+    if not isinstance(ov, dict):
+        raise EDLSchemaError(
+            f"overlay[{index}] must be a dict, got {type(ov).__name__}"
+        )
+
+    has_source = "source" in ov
+    has_card = "card" in ov
+    if not has_source and not has_card:
+        raise EDLSchemaError(
+            f"overlay[{index}] must have 'source' or 'card'"
+        )
+    if has_source and has_card:
+        raise EDLSchemaError(
+            f"overlay[{index}] has both 'source' and 'card'; use one"
+        )
+
+    if has_source and not isinstance(ov["source"], str):
+        raise EDLSchemaError(
+            f"overlay[{index}] 'source' must be a string, "
+            f"got {type(ov['source']).__name__}"
+        )
+
+    if has_card:
+        card = ov["card"]
+        if not isinstance(card, dict):
+            raise EDLSchemaError(
+                f"overlay[{index}] 'card' must be a dict, "
+                f"got {type(card).__name__}"
+            )
+        card_type = card.get("type")
+        if card_type not in ("text", "counter"):
+            raise EDLSchemaError(
+                f"overlay[{index}] card 'type' must be 'text' or 'counter', "
+                f"got {card_type!r}"
+            )
+        if card_type == "text" and "text" not in card:
+            raise EDLSchemaError(
+                f"overlay[{index}] text card must have 'text' field"
+            )
+        if card_type == "counter" and (
+            "counter_start" not in card or "counter_end" not in card
+        ):
+            raise EDLSchemaError(
+                f"overlay[{index}] counter card must have "
+                "'counter_start' and 'counter_end' fields"
+            )
+
+    for key in ("start", "end"):
+        if key not in ov:
+            raise EDLSchemaError(f"overlay[{index}] missing required key '{key}'")
+        try:
+            val = float(ov[key])
+        except (ValueError, TypeError) as exc:
+            raise EDLSchemaError(
+                f"overlay[{index}] {key} must be numeric: {exc}"
+            ) from exc
+        if not math.isfinite(val):
+            raise EDLSchemaError(
+                f"overlay[{index}] {key} must be finite, got {val!r}"
+            )
+
+    if float(ov["end"]) <= float(ov["start"]):
+        raise EDLSchemaError(
+            f"overlay[{index}] end ({ov['end']}) must be greater than "
+            f"start ({ov['start']})"
+        )
+
+    position = ov.get("position")
+    if position is not None:
+        if not isinstance(position, dict):
+            raise EDLSchemaError(
+                f"overlay[{index}] 'position' must be a dict, "
+                f"got {type(position).__name__}"
+            )
+        for axis in ("x", "y"):
+            if axis in position:
+                try:
+                    float(position[axis])
+                except (ValueError, TypeError) as exc:
+                    raise EDLSchemaError(
+                        f"overlay[{index}] position.{axis} must be numeric: {exc}"
+                    ) from exc
+
+    z_order = ov.get("z_order")
+    if z_order is not None and not isinstance(z_order, (int, float)):
+        raise EDLSchemaError(
+            f"overlay[{index}] 'z_order' must be numeric, "
+            f"got {type(z_order).__name__}"
+        )
+
+    # Validate duration rules
+    duration = float(ov["end"]) - float(ov["start"])
+    duration_type = ov.get("duration_type")
+    if duration_type == "sync":
+        if duration < OVERLAY_SYNC_MIN or duration > OVERLAY_SYNC_MAX:
+            raise EDLSchemaError(
+                f"overlay[{index}] sync-to-narration duration ({duration:.1f}s) "
+                f"must be {OVERLAY_SYNC_MIN}-{OVERLAY_SYNC_MAX}s"
+            )
+    elif duration_type == "beat":
+        if duration < OVERLAY_BEAT_MIN or duration > OVERLAY_BEAT_MAX:
+            raise EDLSchemaError(
+                f"overlay[{index}] beat-synced duration ({duration:.1f}s) "
+                f"must be {OVERLAY_BEAT_MIN}-{OVERLAY_BEAT_MAX}s"
+            )
+
+
+# ── PIL overlay card generation ──────────────────────────────────────────────
+
+
+def generate_overlay_card(
+    card_spec: dict[str, Any],
+    out_dir: Path,
+    index: int,
+) -> Path:
+    """Generate a PNG overlay card from a card spec using Pillow.
+
+    Supports ``type: "text"`` (renders a text string) and ``type: "counter"``
+    (renders a counter like "3/10").
+
+    Returns the path to the generated PNG file.
+    """
+    card_type = card_spec["type"]
+    width = card_spec.get("width", CARD_DEFAULT_WIDTH)
+    height = card_spec.get("height", CARD_DEFAULT_HEIGHT)
+    font_size = card_spec.get("font_size", CARD_DEFAULT_FONT_SIZE)
+    color = card_spec.get("color", CARD_DEFAULT_COLOR)
+    bg_color = card_spec.get("bg_color", CARD_DEFAULT_BG_COLOR)
+
+    img = Image.new("RGBA", (width, height), bg_color)
+    draw = ImageDraw.Draw(img)
+
+    try:
+        font: ImageFont.FreeTypeFont | ImageFont.ImageFont = ImageFont.truetype(
+            "Helvetica.ttc", font_size
+        )
+    except OSError:
+        font = ImageFont.load_default(size=font_size)
+
+    if card_type == "text":
+        text = card_spec["text"]
+    elif card_type == "counter":
+        start = int(card_spec.get("counter_start", 1))
+        end = int(card_spec.get("counter_end", 1))
+        text = f"{start}/{end}"
+    else:
+        raise ValueError(f"unknown card type: {card_type!r}")
+
+    bbox = draw.textbbox((0, 0), text, font=font)
+    text_w = bbox[2] - bbox[0]
+    text_h = bbox[3] - bbox[1]
+    x = (width - text_w) // 2
+    y = (height - text_h) // 2
+    draw.text((x, y), text, fill=color, font=font)
+
+    out_path = out_dir / f"overlay_card_{index}.png"
+    img.save(str(out_path), "PNG")
+    return out_path
+
+
+# ── Overlay filter chain builder ─────────────────────────────────────────────
+
+
+def build_overlay_filter_parts(
+    overlays: list[dict[str, Any]],
+) -> list[str]:
+    """Build PTS-shift filter parts for each overlay input.
+
+    Hard Rule 4: Apply ``setpts=PTS-STARTPTS+T/TB`` so that overlay
+    frame 0 lands at the intended time window start.
+
+    Returns a list of filter strings like
+    ``[1:v]setpts=PTS-STARTPTS+5.000/TB[a1]``.
+    """
+    parts: list[str] = []
+    for idx, ov in enumerate(overlays, start=1):
+        t = float(ov["start"])
+        parts.append(f"[{idx}:v]setpts=PTS-STARTPTS+{t:.3f}/TB[a{idx}]")
+    return parts
+
+
+def build_overlay_chain(
+    overlays: list[dict[str, Any]],
+) -> list[str]:
+    """Build chained overlay filter parts with enable-between time windows.
+
+    Each overlay is composited onto the base with
+    ``overlay=enable='between(t,start,end)'``, ordered by z_order
+    (ascending, lowest first).
+
+    Returns a list of filter strings like
+    ``[0:v][a1]overlay=enable='between(t,5.000,10.000)':x=50:y=100[v1]``.
+    """
+    # Sort by z_order (stable sort preserves insertion order for ties)
+    indexed = list(enumerate(overlays, start=1))
+    indexed.sort(key=lambda pair: float(pair[1].get("z_order", 0)))
+
+    parts: list[str] = []
+    current = "[0:v]"
+    for idx, ov in indexed:
+        t = float(ov["start"])
+        end = float(ov["end"])
+        pos = ov.get("position", {})
+        x = int(float(pos.get("x", 0)))
+        y = int(float(pos.get("y", 0)))
+        next_label = f"[v{idx}]"
+        parts.append(
+            f"{current}[a{idx}]overlay=enable='between(t,{t:.3f},{end:.3f})'"
+            f":x={x}:y={y}{next_label}"
+        )
+        current = next_label
+    return parts
+
+
+def build_final_composite(
+    base_path: Path,
+    overlays: list[dict[str, Any]],
+    subtitles_path: Path | None,
+    out_path: Path,
+    edit_dir: Path,
+    sub_style: str = "bold-overlay",
+    sub_style_args: str | None = None,
+    ffmpeg_bin: str = "ffmpeg",
+) -> None:
+    """Final pass: base → overlays (PTS-shifted) → subtitles LAST → out.
+
+    Composites overlay sources onto the base video with PTS-shifted timing
+    (Hard Rule 4) and enable-between visibility windows, then burns
+    subtitles last (Hard Rule 1).
+
+    If there are no overlays and no subtitles, copies the base to output.
+    """
+    has_overlays = bool(overlays)
+    has_subs = (
+        subtitles_path is not None and subtitles_path.exists()
+    )
+
+    if not has_overlays and not has_subs:
+        _copy_to_output(base_path, out_path, ffmpeg_bin)
+        return
+
+    if not has_overlays and has_subs:
+        # No overlays — delegate to the existing subtitle-only path
+        burn_subtitles_last(
+            base_path, subtitles_path, out_path,  # type: ignore[arg-type]
+            style=sub_style, style_args=sub_style_args,
+            ffmpeg_bin=ffmpeg_bin,
+        )
+        return
+
+    # Build inputs: base video + overlay sources
+    inputs: list[str] = ["-i", str(base_path)]
+    for ov in overlays:
+        inputs += ["-i", str(ov["_resolved_path"])]
+
+    # Build filter_complex
+    filter_parts: list[str] = []
+
+    # PTS-shift every overlay (Hard Rule 4)
+    filter_parts.extend(build_overlay_filter_parts(overlays))
+
+    # Chain overlays on top of base with enable-between
+    chain_parts = build_overlay_chain(overlays)
+    filter_parts.extend(chain_parts)
+
+    # Determine the current video label after overlays
+    # (last overlay output label)
+    indexed = list(enumerate(overlays, start=1))
+    indexed.sort(key=lambda pair: float(pair[1].get("z_order", 0)))
+    last_idx = indexed[-1][0]
+    current = f"[v{last_idx}]"
+
+    # Subtitles LAST — Hard Rule 1
+    if has_subs:
+        assert subtitles_path is not None  # guaranteed by has_subs check
+        subs_escaped = (
+            str(subtitles_path.resolve())
+            .replace("\\", "\\\\")
+            .replace(":", "\\:")
+            .replace(",", "\\,")
+            .replace("'", "\\'")
+            .replace("[", "\\[")
+            .replace("]", "\\]")
+            .replace("%", "\\%")
+            .replace(";", "\\;")
+        )
+        force_style = sub_style_args
+        if not force_style:
+            if sub_style == "bold-overlay":
+                from media_tooling.burn_subtitles import BOLD_OVERLAY_FORCE_STYLE
+                force_style = BOLD_OVERLAY_FORCE_STYLE
+            else:
+                from media_tooling.burn_subtitles import NATURAL_SENTENCE_FORCE_STYLE
+                force_style = NATURAL_SENTENCE_FORCE_STYLE
+        force_style_escaped = force_style.replace("'", "\\'")
+        filter_parts.append(
+            f"{current}subtitles='{subs_escaped}'"
+            f":force_style='{force_style_escaped}'[outv]"
+        )
+        out_label = "[outv]"
+    else:
+        filter_parts.append(f"{current}null[outv]")
+        out_label = "[outv]"
+
+    filter_complex = ";".join(filter_parts)
+
+    cmd: list[str] = [
+        ffmpeg_bin, "-y",
+        *inputs,
+        "-filter_complex", filter_complex,
+        "-map", out_label,
+        "-map", "0:a?",
+        "-c:v", "libx264", "-preset", "fast", "-crf", "18",
+        "-pix_fmt", "yuv420p",
+        "-c:a", "copy",
+        "-movflags", "+faststart",
+        str(out_path),
+    ]
+
+    print(f"compositing → {out_path.name}")
+    print(f"  overlays: {len(overlays)}, subtitles: {'yes' if has_subs else 'no'}")
+
+    try:
+        subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+    except FileNotFoundError:
+        raise RuntimeError(
+            f"{ffmpeg_bin} not found — ensure ffmpeg is installed and on PATH"
+        )
+    except subprocess.CalledProcessError as exc:
+        detail = (exc.stderr or b"").decode(errors="replace")[:500]
+        raise RuntimeError(f"ffmpeg compositing failed: {detail}") from exc
+
+
+def resolve_overlay_sources(
+    overlays: list[dict[str, Any]],
+    edit_dir: Path,
+) -> list[dict[str, Any]]:
+    """Resolve overlay source paths and generate PIL cards.
+
+    For overlays with ``source``, resolves the path relative to *edit_dir*.
+    For overlays with ``card``, generates a PNG card via Pillow.
+
+    Returns a new list of overlay dicts with ``_resolved_path`` added.
+    """
+    resolved: list[dict[str, Any]] = []
+    for i, ov in enumerate(overlays):
+        ov = dict(ov)  # shallow copy
+        if "source" in ov:
+            ov["_resolved_path"] = str(resolve_path(ov["source"], edit_dir))
+        elif "card" in ov:
+            cards_dir = edit_dir / "cards"
+            cards_dir.mkdir(parents=True, exist_ok=True)
+            card_path = generate_overlay_card(ov["card"], cards_dir, i)
+            ov["_resolved_path"] = str(card_path)
+        resolved.append(ov)
+    return resolved
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -999,9 +1393,34 @@ def render_edl(
         sub_style = sub_cfg.get("style", sub_style)
         sub_style_args = sub_cfg.get("force_style")
 
-    # 4. Apply subtitles (last in filter chain — Hard Rule 1)
+    # 4. Resolve overlays and composite (overlays first, subtitles last — Hard Rule 1)
+    raw_overlays = edl.get("overlays") or []
     current_path = base_path
-    if subs_path is not None and subs_path.exists():
+
+    if raw_overlays:
+        # Resolve overlay source paths / generate PIL cards
+        try:
+            resolved_overlays = resolve_overlay_sources(raw_overlays, edit_dir)
+        except (OSError, ValueError) as exc:
+            print(f"overlay resolution failed: {exc}", file=sys.stderr)
+            return 1
+
+        composite_output = output_path.with_stem(
+            output_path.stem + ".composited"
+        )
+        try:
+            build_final_composite(
+                base_path, resolved_overlays, subs_path, composite_output,
+                edit_dir,
+                sub_style=sub_style, sub_style_args=sub_style_args,
+                ffmpeg_bin=ffmpeg_bin,
+            )
+        except (ValueError, RuntimeError, FileNotFoundError) as exc:
+            print(f"overlay compositing error: {exc}", file=sys.stderr)
+            return 1
+        current_path = composite_output
+    elif subs_path is not None and subs_path.exists():
+        # No overlays — apply subtitles directly (last in filter chain — Hard Rule 1)
         sub_output = output_path.with_stem(output_path.stem + ".subtitled")
         print(f"burning subtitles (style: {sub_style}) → {sub_output.name}")
         try:
@@ -1057,6 +1476,16 @@ def render_edl(
             current_path.unlink(missing_ok=True)
     if base_path.resolve() != output_path.resolve() and base_path.exists():
         base_path.unlink(missing_ok=True)
+
+    # Clean up generated overlay cards
+    cards_dir = edit_dir / "cards"
+    if cards_dir.is_dir():
+        for card in cards_dir.iterdir():
+            card.unlink(missing_ok=True)
+        try:
+            cards_dir.rmdir()
+        except OSError:
+            shutil.rmtree(cards_dir, ignore_errors=True)
 
     # Clean up extracted clips
     clips_subdir = (

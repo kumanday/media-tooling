@@ -13,14 +13,20 @@ from media_tooling.edl_render import (
     _resolve_segment_bounds,
     _source_has_audio,
     _srt_timestamp,
+    _validate_overlay,
     _words_in_range,
     apply_padding,
     build_afade_filter,
+    build_final_composite,
     build_master_srt,
+    build_overlay_chain,
+    build_overlay_filter_parts,
     concat_segments,
     extract_all_segments,
     extract_segment,
+    generate_overlay_card,
     resolve_grade_filter,
+    resolve_overlay_sources,
     resolve_path,
     resolve_source_path,
     snap_to_word_boundary,
@@ -1620,6 +1626,532 @@ class RenderEDLTests(unittest.TestCase):
         # extract_all_segments received source_durations kwarg
         _, kwargs = mock_extract.call_args
         self.assertIsNotNone(kwargs.get("source_durations"))
+
+
+# ── Overlay validation tests ─────────────────────────────────────────────────
+
+
+class ValidateOverlayTests(unittest.TestCase):
+    def test_valid_source_overlay(self) -> None:
+        ov = {"source": "overlay.png", "start": 5.0, "end": 10.0}
+        _validate_overlay(ov, 0)  # should not raise
+
+    def test_valid_card_text_overlay(self) -> None:
+        ov = {"card": {"type": "text", "text": "Hello"}, "start": 5.0, "end": 10.0}
+        _validate_overlay(ov, 0)  # should not raise
+
+    def test_valid_card_counter_overlay(self) -> None:
+        ov = {
+            "card": {"type": "counter", "counter_start": 1, "counter_end": 5},
+            "start": 5.0,
+            "end": 10.0,
+        }
+        _validate_overlay(ov, 0)  # should not raise
+
+    def test_overlay_with_position_and_z_order(self) -> None:
+        ov = {
+            "source": "overlay.png",
+            "start": 5.0,
+            "end": 10.0,
+            "position": {"x": 50, "y": 100},
+            "z_order": 2,
+        }
+        _validate_overlay(ov, 0)  # should not raise
+
+    def test_overlay_not_dict_raises(self) -> None:
+        with self.assertRaises(EDLSchemaError) as ctx:
+            _validate_overlay("not a dict", 0)  # type: ignore[arg-type]
+        self.assertIn("must be a dict", str(ctx.exception))
+
+    def test_overlay_missing_source_and_card_raises(self) -> None:
+        with self.assertRaises(EDLSchemaError) as ctx:
+            _validate_overlay({"start": 5.0, "end": 10.0}, 0)
+        self.assertIn("must have 'source' or 'card'", str(ctx.exception))
+
+    def test_overlay_both_source_and_card_raises(self) -> None:
+        with self.assertRaises(EDLSchemaError) as ctx:
+            _validate_overlay(
+                {"source": "a.png", "card": {"type": "text", "text": "X"},
+                 "start": 5.0, "end": 10.0}, 0)
+        self.assertIn("both 'source' and 'card'", str(ctx.exception))
+
+    def test_overlay_source_not_string_raises(self) -> None:
+        with self.assertRaises(EDLSchemaError) as ctx:
+            _validate_overlay({"source": 42, "start": 5.0, "end": 10.0}, 0)
+        self.assertIn("'source' must be a string", str(ctx.exception))
+
+    def test_overlay_card_not_dict_raises(self) -> None:
+        with self.assertRaises(EDLSchemaError) as ctx:
+            _validate_overlay({"card": "bad", "start": 5.0, "end": 10.0}, 0)
+        self.assertIn("'card' must be a dict", str(ctx.exception))
+
+    def test_overlay_card_invalid_type_raises(self) -> None:
+        with self.assertRaises(EDLSchemaError) as ctx:
+            _validate_overlay(
+                {"card": {"type": "image"}, "start": 5.0, "end": 10.0}, 0)
+        self.assertIn("must be 'text' or 'counter'", str(ctx.exception))
+
+    def test_overlay_card_text_missing_text_raises(self) -> None:
+        with self.assertRaises(EDLSchemaError) as ctx:
+            _validate_overlay(
+                {"card": {"type": "text"}, "start": 5.0, "end": 10.0}, 0)
+        self.assertIn("text card must have 'text' field", str(ctx.exception))
+
+    def test_overlay_card_counter_missing_fields_raises(self) -> None:
+        with self.assertRaises(EDLSchemaError) as ctx:
+            _validate_overlay(
+                {"card": {"type": "counter", "counter_start": 1},
+                 "start": 5.0, "end": 10.0}, 0)
+        self.assertIn("counter card must have", str(ctx.exception))
+
+    def test_overlay_missing_start_raises(self) -> None:
+        with self.assertRaises(EDLSchemaError) as ctx:
+            _validate_overlay({"source": "a.png", "end": 10.0}, 0)
+        self.assertIn("missing required key 'start'", str(ctx.exception))
+
+    def test_overlay_missing_end_raises(self) -> None:
+        with self.assertRaises(EDLSchemaError) as ctx:
+            _validate_overlay({"source": "a.png", "start": 5.0}, 0)
+        self.assertIn("missing required key 'end'", str(ctx.exception))
+
+    def test_overlay_end_before_start_raises(self) -> None:
+        with self.assertRaises(EDLSchemaError) as ctx:
+            _validate_overlay({"source": "a.png", "start": 10.0, "end": 5.0}, 0)
+        self.assertIn("must be greater than", str(ctx.exception))
+
+    def test_overlay_non_numeric_start_raises(self) -> None:
+        with self.assertRaises(EDLSchemaError) as ctx:
+            _validate_overlay({"source": "a.png", "start": "abc", "end": 10.0}, 0)
+        self.assertIn("must be numeric", str(ctx.exception))
+
+    def test_overlay_infinite_start_raises(self) -> None:
+        with self.assertRaises(EDLSchemaError) as ctx:
+            _validate_overlay(
+                {"source": "a.png", "start": float("inf"), "end": 10.0}, 0)
+        self.assertIn("must be finite", str(ctx.exception))
+
+    def test_overlay_position_not_dict_raises(self) -> None:
+        with self.assertRaises(EDLSchemaError) as ctx:
+            _validate_overlay(
+                {"source": "a.png", "start": 5.0, "end": 10.0, "position": "bad"},
+                0)
+        self.assertIn("'position' must be a dict", str(ctx.exception))
+
+    def test_overlay_position_non_numeric_x_raises(self) -> None:
+        with self.assertRaises(EDLSchemaError) as ctx:
+            _validate_overlay(
+                {"source": "a.png", "start": 5.0, "end": 10.0,
+                 "position": {"x": "abc", "y": 10}}, 0)
+        self.assertIn("position.x must be numeric", str(ctx.exception))
+
+    def test_overlay_z_order_non_numeric_raises(self) -> None:
+        with self.assertRaises(EDLSchemaError) as ctx:
+            _validate_overlay(
+                {"source": "a.png", "start": 5.0, "end": 10.0, "z_order": "bad"},
+                0)
+        self.assertIn("'z_order' must be numeric", str(ctx.exception))
+
+    def test_overlay_sync_duration_too_short_raises(self) -> None:
+        with self.assertRaises(EDLSchemaError) as ctx:
+            _validate_overlay(
+                {"source": "a.png", "start": 0.0, "end": 2.0,
+                 "duration_type": "sync"}, 0)
+        self.assertIn("sync-to-narration duration", str(ctx.exception))
+
+    def test_overlay_sync_duration_too_long_raises(self) -> None:
+        with self.assertRaises(EDLSchemaError) as ctx:
+            _validate_overlay(
+                {"source": "a.png", "start": 0.0, "end": 15.0,
+                 "duration_type": "sync"}, 0)
+        self.assertIn("sync-to-narration duration", str(ctx.exception))
+
+    def test_overlay_beat_duration_too_short_raises(self) -> None:
+        with self.assertRaises(EDLSchemaError) as ctx:
+            _validate_overlay(
+                {"source": "a.png", "start": 0.0, "end": 0.3,
+                 "duration_type": "beat"}, 0)
+        self.assertIn("beat-synced duration", str(ctx.exception))
+
+    def test_overlay_beat_duration_too_long_raises(self) -> None:
+        with self.assertRaises(EDLSchemaError) as ctx:
+            _validate_overlay(
+                {"source": "a.png", "start": 0.0, "end": 3.0,
+                 "duration_type": "beat"}, 0)
+        self.assertIn("beat-synced duration", str(ctx.exception))
+
+    def test_overlay_sync_valid_duration_passes(self) -> None:
+        ov = {"source": "a.png", "start": 0.0, "end": 7.0, "duration_type": "sync"}
+        _validate_overlay(ov, 0)  # 7s is within 3-14s
+
+    def test_overlay_beat_valid_duration_passes(self) -> None:
+        ov = {"source": "a.png", "start": 0.0, "end": 1.0, "duration_type": "beat"}
+        _validate_overlay(ov, 0)  # 1s is within 0.5-2s
+
+
+class OverlayEDLValidationTests(unittest.TestCase):
+    """Tests for overlay validation within validate_edl()."""
+
+    def test_edl_with_valid_overlays_passes(self) -> None:
+        edl = _minimal_edl()
+        edl["overlays"] = [
+            {"source": "overlay.png", "start": 5.0, "end": 10.0}
+        ]
+        validate_edl(edl)  # should not raise
+
+    def test_edl_with_empty_overlays_passes(self) -> None:
+        edl = _minimal_edl()
+        edl["overlays"] = []
+        validate_edl(edl)  # should not raise
+
+    def test_edl_without_overlays_passes(self) -> None:
+        edl = _minimal_edl()
+        del edl["overlays"]
+        validate_edl(edl)  # should not raise
+
+    def test_edl_overlays_not_list_raises(self) -> None:
+        edl = _minimal_edl()
+        edl["overlays"] = "not a list"
+        with self.assertRaises(EDLSchemaError) as ctx:
+            validate_edl(edl)
+        self.assertIn("'overlays' must be a list", str(ctx.exception))
+
+    def test_edl_with_invalid_overlay_raises(self) -> None:
+        edl = _minimal_edl()
+        edl["overlays"] = [{"start": 5.0, "end": 10.0}]  # missing source/card
+        with self.assertRaises(EDLSchemaError) as ctx:
+            validate_edl(edl)
+        self.assertIn("must have 'source' or 'card'", str(ctx.exception))
+
+
+# ── Overlay filter builder tests ──────────────────────────────────────────────
+
+
+class BuildOverlayFilterPartsTests(unittest.TestCase):
+    def test_single_overlay_pts_shift(self) -> None:
+        overlays = [{"source": "a.png", "start": 5.0, "end": 10.0}]
+        parts = build_overlay_filter_parts(overlays)
+        self.assertEqual(len(parts), 1)
+        self.assertIn("setpts=PTS-STARTPTS+5.000/TB", parts[0])
+        self.assertIn("[1:v]", parts[0])
+        self.assertIn("[a1]", parts[0])
+
+    def test_multiple_overlay_pts_shifts(self) -> None:
+        overlays = [
+            {"source": "a.png", "start": 5.0, "end": 10.0},
+            {"source": "b.png", "start": 15.0, "end": 20.0},
+        ]
+        parts = build_overlay_filter_parts(overlays)
+        self.assertEqual(len(parts), 2)
+        self.assertIn("PTS-STARTPTS+5.000/TB", parts[0])
+        self.assertIn("PTS-STARTPTS+15.000/TB", parts[1])
+
+
+class BuildOverlayChainTests(unittest.TestCase):
+    def test_single_overlay_chain(self) -> None:
+        overlays = [
+            {"source": "a.png", "start": 5.0, "end": 10.0,
+             "position": {"x": 50, "y": 100}, "z_order": 0}
+        ]
+        parts = build_overlay_chain(overlays)
+        self.assertEqual(len(parts), 1)
+        self.assertIn("overlay=enable='between(t,5.000,10.000)'", parts[0])
+        self.assertIn(":x=50:y=100", parts[0])
+        self.assertIn("[0:v][a1]", parts[0])
+        self.assertIn("[v1]", parts[0])
+
+    def test_z_order_sorting(self) -> None:
+        overlays = [
+            {"source": "a.png", "start": 5.0, "end": 10.0, "z_order": 2},
+            {"source": "b.png", "start": 5.0, "end": 10.0, "z_order": 1},
+        ]
+        parts = build_overlay_chain(overlays)
+        self.assertEqual(len(parts), 2)
+        # z_order=1 (overlay index 2) should be first
+        self.assertIn("[0:v][a2]", parts[0])
+        self.assertIn("[v2]", parts[0])
+
+    def test_default_position_is_zero(self) -> None:
+        overlays = [
+            {"source": "a.png", "start": 5.0, "end": 10.0}
+        ]
+        parts = build_overlay_chain(overlays)
+        self.assertIn(":x=0:y=0", parts[0])
+
+    def test_enable_between_restricts_visibility(self) -> None:
+        overlays = [
+            {"source": "a.png", "start": 3.5, "end": 7.25}
+        ]
+        parts = build_overlay_chain(overlays)
+        self.assertIn("enable='between(t,3.500,7.250)'", parts[0])
+
+
+# ── PIL overlay card generation tests ─────────────────────────────────────────
+
+
+class GenerateOverlayCardTests(unittest.TestCase):
+    def test_text_card_generates_png(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            out_dir = Path(tmpdir)
+            spec = {"type": "text", "text": "Chapter 1"}
+            path = generate_overlay_card(spec, out_dir, 0)
+            self.assertTrue(path.exists())
+            self.assertTrue(str(path).endswith(".png"))
+            self.assertEqual(path.name, "overlay_card_0.png")
+
+    def test_counter_card_generates_png(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            out_dir = Path(tmpdir)
+            spec = {"type": "counter", "counter_start": 1, "counter_end": 5}
+            path = generate_overlay_card(spec, out_dir, 1)
+            self.assertTrue(path.exists())
+            self.assertEqual(path.name, "overlay_card_1.png")
+
+    def test_card_with_custom_dimensions(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            out_dir = Path(tmpdir)
+            spec = {
+                "type": "text", "text": "Test",
+                "width": 800, "height": 600, "font_size": 36,
+            }
+            path = generate_overlay_card(spec, out_dir, 0)
+            self.assertTrue(path.exists())
+            # Verify it's a valid image with the right dimensions
+            from PIL import Image
+            img = Image.open(path)
+            self.assertEqual(img.size, (800, 600))
+
+    def test_unknown_card_type_raises(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            out_dir = Path(tmpdir)
+            spec = {"type": "unknown"}
+            with self.assertRaises(ValueError) as ctx:
+                generate_overlay_card(spec, out_dir, 0)
+            self.assertIn("unknown card type", str(ctx.exception))
+
+
+# ── Resolve overlay sources tests ─────────────────────────────────────────────
+
+
+class ResolveOverlaySourcesTests(unittest.TestCase):
+    def test_source_overlay_resolves_path(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            edit_dir = Path(tmpdir)
+            overlays = [{"source": "overlay.png", "start": 5.0, "end": 10.0}]
+            resolved = resolve_overlay_sources(overlays, edit_dir)
+            self.assertEqual(len(resolved), 1)
+            self.assertIn("_resolved_path", resolved[0])
+            self.assertTrue(
+                resolved[0]["_resolved_path"].endswith("overlay.png")
+            )
+
+    def test_card_overlay_generates_png(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            edit_dir = Path(tmpdir)
+            overlays = [
+                {"card": {"type": "text", "text": "Hello"},
+                 "start": 5.0, "end": 10.0}
+            ]
+            resolved = resolve_overlay_sources(overlays, edit_dir)
+            self.assertEqual(len(resolved), 1)
+            self.assertIn("_resolved_path", resolved[0])
+            self.assertIn("overlay_card_0.png", resolved[0]["_resolved_path"])
+
+    def test_source_overlay_does_not_modify_original(self) -> None:
+        overlays = [{"source": "overlay.png", "start": 5.0, "end": 10.0}]
+        resolved = resolve_overlay_sources(overlays, Path("/tmp"))
+        self.assertNotIn("_resolved_path", overlays[0])
+        self.assertIn("_resolved_path", resolved[0])
+
+
+# ── Build final composite tests ───────────────────────────────────────────────
+
+
+class BuildFinalCompositeTests(unittest.TestCase):
+    @patch("media_tooling.edl_render.subprocess.run")
+    def test_overlays_with_subtitles(self, mock_run: MagicMock) -> None:
+        """build_final_composite builds filter_complex with PTS shift,
+        enable-between, and subtitles last."""
+        mock_run.return_value = MagicMock(returncode=0)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            edit_dir = Path(tmpdir)
+            base_path = edit_dir / "base.mp4"
+            base_path.write_bytes(b"\x00" * 100)
+            srt_path = edit_dir / "test.srt"
+            srt_path.write_text("1\n00:00:00,000 --> 00:00:05,000\nTEST\n",
+                                encoding="utf-8")
+            out_path = edit_dir / "output.mp4"
+            overlays = [
+                {"source": "overlay.png", "start": 5.0, "end": 10.0,
+                 "position": {"x": 50, "y": 100}, "z_order": 0,
+                 "_resolved_path": str(edit_dir / "overlay.png")},
+            ]
+            build_final_composite(
+                base_path, overlays, srt_path, out_path, edit_dir
+            )
+        # Verify the ffmpeg command was called
+        self.assertTrue(mock_run.called)
+        cmd = mock_run.call_args[0][0]
+        cmd_str = " ".join(cmd)
+        self.assertIn("setpts=PTS-STARTPTS+5.000/TB", cmd_str)
+        self.assertIn("overlay=enable='between(t,5.000,10.000)'", cmd_str)
+        self.assertIn("subtitles=", cmd_str)
+        # Verify subtitles filter comes after overlay filter in the chain
+        fc_idx = cmd.index("-filter_complex")
+        filter_complex = cmd[fc_idx + 1]
+        overlay_pos = filter_complex.find("overlay=")
+        subs_pos = filter_complex.find("subtitles=")
+        self.assertLess(overlay_pos, subs_pos,
+                        "subtitles filter must come after overlay filter")
+
+    @patch("media_tooling.edl_render.subprocess.run")
+    def test_overlays_without_subtitles(self, mock_run: MagicMock) -> None:
+        """build_final_composite with overlays but no subtitles
+        uses null filter for final output label."""
+        mock_run.return_value = MagicMock(returncode=0)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            edit_dir = Path(tmpdir)
+            base_path = edit_dir / "base.mp4"
+            base_path.write_bytes(b"\x00" * 100)
+            out_path = edit_dir / "output.mp4"
+            overlays = [
+                {"source": "overlay.png", "start": 5.0, "end": 10.0,
+                 "_resolved_path": str(edit_dir / "overlay.png")},
+            ]
+            build_final_composite(
+                base_path, overlays, None, out_path, edit_dir
+            )
+        self.assertTrue(mock_run.called)
+        cmd = mock_run.call_args[0][0]
+        cmd_str = " ".join(cmd)
+        self.assertIn("setpts=PTS-STARTPTS", cmd_str)
+        self.assertIn("overlay=enable='between(t,", cmd_str)
+        self.assertNotIn("subtitles=", cmd_str)
+        self.assertIn("null[outv]", cmd_str)
+
+    @patch("media_tooling.edl_render.burn_subtitles_last")
+    def test_no_overlays_with_subtitles_delegates(
+        self, mock_burn: MagicMock
+    ) -> None:
+        """build_final_composite with no overlays but subtitles
+        delegates to burn_subtitles_last."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            edit_dir = Path(tmpdir)
+            base_path = edit_dir / "base.mp4"
+            base_path.write_bytes(b"\x00" * 100)
+            srt_path = edit_dir / "test.srt"
+            srt_path.write_text("1\n00:00:00,000 --> 00:00:05,000\nTEST\n",
+                                encoding="utf-8")
+            out_path = edit_dir / "output.mp4"
+            build_final_composite(
+                base_path, [], srt_path, out_path, edit_dir
+            )
+        self.assertTrue(mock_burn.called)
+
+    @patch("media_tooling.edl_render._copy_to_output")
+    def test_no_overlays_no_subtitles_copies(
+        self, mock_copy: MagicMock
+    ) -> None:
+        """build_final_composite with no overlays and no subtitles
+        copies base to output."""
+        mock_copy.return_value = 0
+        with tempfile.TemporaryDirectory() as tmpdir:
+            edit_dir = Path(tmpdir)
+            base_path = edit_dir / "base.mp4"
+            base_path.write_bytes(b"\x00" * 100)
+            out_path = edit_dir / "output.mp4"
+            build_final_composite(base_path, [], None, out_path, edit_dir)
+        self.assertTrue(mock_copy.called)
+
+
+# ── Render EDL integration tests with overlays ────────────────────────────────
+
+
+class RenderEDLOverlayTests(unittest.TestCase):
+    @patch("media_tooling.edl_render._probe_source_durations")
+    @patch("media_tooling.edl_render.apply_loudnorm_two_pass", return_value=True)
+    @patch("media_tooling.edl_render.concat_segments")
+    @patch("media_tooling.edl_render.extract_all_segments")
+    @patch("media_tooling.edl_render.build_final_composite")
+    def test_render_edl_with_overlays_calls_build_final_composite(
+        self,
+        mock_composite: MagicMock,
+        mock_extract: MagicMock,
+        mock_concat: MagicMock,
+        mock_loudnorm: MagicMock,
+        mock_probe: MagicMock,
+    ) -> None:
+        """render_edl with overlays calls build_final_composite
+        instead of burn_subtitles_last."""
+        mock_probe.return_value = {"source1.mp4": 60.0}
+        mock_extract.return_value = [Path("/tmp/seg_00.mp4")]
+        mock_concat.side_effect = lambda *a, **kw: None
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            edit_dir = Path(tmpdir)
+            base_path = edit_dir / "base.mp4"
+            base_path.write_bytes(b"\x00" * 100)
+            edl_path = edit_dir / "test_edl.json"
+            edl = _minimal_edl()
+            edl["overlays"] = [
+                {"source": "overlay.png", "start": 5.0, "end": 10.0}
+            ]
+            edl_path.write_text(json.dumps(edl), encoding="utf-8")
+            output_path = edit_dir / "output.mp4"
+
+            # Mock build_final_composite to write output file
+            def fake_composite(*a: object, **kw: object) -> None:
+                output_path.write_bytes(b"\x00" * 100)
+            mock_composite.side_effect = fake_composite
+
+            from media_tooling.edl_render import render_edl
+            with patch("media_tooling.edl_render.subprocess.run") as mock_run:
+                mock_run.return_value = MagicMock(returncode=0)
+                render_edl(edl_path, output_path, no_subtitles=True,
+                           no_loudnorm=True)
+
+        self.assertTrue(mock_composite.called)
+
+    @patch("media_tooling.edl_render._probe_source_durations")
+    @patch("media_tooling.edl_render.apply_loudnorm_two_pass", return_value=True)
+    @patch("media_tooling.edl_render.concat_segments")
+    @patch("media_tooling.edl_render.extract_all_segments")
+    def test_render_edl_without_overlays_uses_burn_subtitles(
+        self,
+        mock_extract: MagicMock,
+        mock_concat: MagicMock,
+        mock_loudnorm: MagicMock,
+        mock_probe: MagicMock,
+    ) -> None:
+        """render_edl without overlays uses burn_subtitles_last
+        for subtitle burning (existing path)."""
+        mock_probe.return_value = {"source1.mp4": 60.0}
+        mock_extract.return_value = [Path("/tmp/seg_00.mp4")]
+        mock_concat.side_effect = lambda *a, **kw: None
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            edit_dir = Path(tmpdir)
+            base_path = edit_dir / "base.mp4"
+            base_path.write_bytes(b"\x00" * 100)
+            edl_path = edit_dir / "test_edl.json"
+            edl = _minimal_edl()
+            del edl["overlays"]
+            edl["subtitles"] = "test.srt"
+            edl_path.write_text(json.dumps(edl), encoding="utf-8")
+            srt_path = edit_dir / "test.srt"
+            srt_path.write_text(
+                "1\n00:00:00,000 --> 00:00:05,000\nTEST\n",
+                encoding="utf-8",
+            )
+            output_path = edit_dir / "output.mp4"
+
+            from media_tooling.edl_render import render_edl
+            with patch("media_tooling.edl_render.burn_subtitles_last") as mock_burn:
+                mock_burn.side_effect = lambda *a, **kw: None
+                with patch("media_tooling.edl_render.subprocess.run") as mock_run:
+                    mock_run.return_value = MagicMock(returncode=0)
+                    render_edl(edl_path, output_path, no_loudnorm=True)
+
+        self.assertTrue(mock_burn.called)
 
 
 if __name__ == "__main__":
