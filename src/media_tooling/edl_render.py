@@ -56,7 +56,6 @@ OVERLAY_SYNC_MIN = 3.0    # sync-to-narration: minimum 3 s
 OVERLAY_SYNC_MAX = 14.0   # sync-to-narration: maximum 14 s
 OVERLAY_BEAT_MIN = 0.5    # beat-synced accent: minimum 0.5 s
 OVERLAY_BEAT_MAX = 2.0    # beat-synced accent: maximum 2 s
-OVERLAY_HOLD_MIN = 1.0    # hold final frame: minimum 1 s
 
 # ── Overlay card defaults ─────────────────────────────────────────────────────
 
@@ -1032,21 +1031,41 @@ def generate_overlay_card(
 # ── Overlay filter chain builder ─────────────────────────────────────────────
 
 
+_IMAGE_EXTENSIONS = frozenset({".png", ".jpg", ".jpeg", ".bmp", ".webp", ".tiff", ".tif"})
+
+
+def _is_image_path(path: str) -> bool:
+    """Return True if the path has an image file extension."""
+    return Path(path).suffix.lower() in _IMAGE_EXTENSIONS
+
+
 def build_overlay_filter_parts(
     overlays: list[dict[str, Any]],
+    base_fps: int = 30,
 ) -> list[str]:
     """Build PTS-shift filter parts for each overlay input.
 
     Hard Rule 4: Apply ``setpts=PTS-STARTPTS+T/TB`` so that overlay
     frame 0 lands at the intended time window start.
 
+    For image overlays (PNG, JPG, etc.), an ``fps`` filter is prepended
+    to generate continuous frames from the static image.  Without this,
+    ffmpeg would treat the image as a single-frame video and the
+    ``enable='between(t,...)'`` window would have no frames to show.
+
     Returns a list of filter strings like
-    ``[1:v]setpts=PTS-STARTPTS+5.000/TB[a1]``.
+    ``[1:v]fps=30,setpts=PTS-STARTPTS+5.000/TB[a1]``.
     """
     parts: list[str] = []
     for idx, ov in enumerate(overlays, start=1):
         t = float(ov["start"])
-        parts.append(f"[{idx}:v]setpts=PTS-STARTPTS+{t:.3f}/TB[a{idx}]")
+        resolved = ov.get("_resolved_path", "")
+        if _is_image_path(resolved):
+            parts.append(
+                f"[{idx}:v]fps={base_fps},setpts=PTS-STARTPTS+{t:.3f}/TB[a{idx}]"
+            )
+        else:
+            parts.append(f"[{idx}:v]setpts=PTS-STARTPTS+{t:.3f}/TB[a{idx}]")
     return parts
 
 
@@ -1120,9 +1139,17 @@ def build_final_composite(
         return
 
     # Build inputs: base video + overlay sources
+    # For image overlays (PNG, JPG, etc.), add -loop 1 so ffmpeg generates
+    # continuous frames from the static image instead of treating it as a
+    # single-frame video.  The fps filter in the filter_complex then sets
+    # the frame rate before the PTS shift.
     inputs: list[str] = ["-i", str(base_path)]
     for ov in overlays:
-        inputs += ["-i", str(ov["_resolved_path"])]
+        resolved = str(ov["_resolved_path"])
+        if _is_image_path(resolved):
+            inputs += ["-loop", "1", "-i", resolved]
+        else:
+            inputs += ["-i", resolved]
 
     # Build filter_complex
     filter_parts: list[str] = []
@@ -1181,7 +1208,7 @@ def build_final_composite(
         "-filter_complex", filter_complex,
         "-map", out_label,
         "-map", "0:a?",
-        "-c:v", "libx264", "-preset", "fast", "-crf", "18",
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
         "-pix_fmt", "yuv420p",
         "-c:a", "copy",
         "-movflags", "+faststart",

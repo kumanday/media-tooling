@@ -10,6 +10,7 @@ from unittest.mock import MagicMock, patch
 
 from media_tooling.edl_render import (
     EDLSchemaError,
+    _is_image_path,
     _resolve_segment_bounds,
     _source_has_audio,
     _srt_timestamp,
@@ -1837,13 +1838,81 @@ class BuildOverlayFilterPartsTests(unittest.TestCase):
 
     def test_multiple_overlay_pts_shifts(self) -> None:
         overlays = [
-            {"source": "a.png", "start": 5.0, "end": 10.0},
-            {"source": "b.png", "start": 15.0, "end": 20.0},
+            {"source": "a.mp4", "start": 5.0, "end": 10.0},
+            {"source": "b.mp4", "start": 15.0, "end": 20.0},
         ]
         parts = build_overlay_filter_parts(overlays)
         self.assertEqual(len(parts), 2)
         self.assertIn("PTS-STARTPTS+5.000/TB", parts[0])
         self.assertIn("PTS-STARTPTS+15.000/TB", parts[1])
+
+    def test_image_overlay_gets_fps_filter(self) -> None:
+        """Image overlays need fps filter to generate continuous frames."""
+        overlays = [
+            {"source": "card.png", "start": 5.0, "end": 10.0,
+             "_resolved_path": "/tmp/cards/overlay_card_0.png"},
+        ]
+        parts = build_overlay_filter_parts(overlays)
+        self.assertEqual(len(parts), 1)
+        self.assertIn("fps=30", parts[0])
+        self.assertIn("setpts=PTS-STARTPTS+5.000/TB", parts[0])
+
+    def test_video_overlay_no_fps_filter(self) -> None:
+        """Video overlays should NOT get fps filter."""
+        overlays = [
+            {"source": "overlay.mp4", "start": 5.0, "end": 10.0,
+             "_resolved_path": "/tmp/overlay.mp4"},
+        ]
+        parts = build_overlay_filter_parts(overlays)
+        self.assertEqual(len(parts), 1)
+        self.assertNotIn("fps=", parts[0])
+        self.assertIn("setpts=PTS-STARTPTS+5.000/TB", parts[0])
+
+    def test_custom_fps_for_image_overlay(self) -> None:
+        overlays = [
+            {"source": "card.png", "start": 5.0, "end": 10.0,
+             "_resolved_path": "/tmp/card.png"},
+        ]
+        parts = build_overlay_filter_parts(overlays, base_fps=24)
+        self.assertIn("fps=24", parts[0])
+
+    def test_mixed_image_and_video_overlays(self) -> None:
+        overlays = [
+            {"source": "card.png", "start": 5.0, "end": 10.0,
+             "_resolved_path": "/tmp/card.png"},
+            {"source": "clip.mp4", "start": 15.0, "end": 20.0,
+             "_resolved_path": "/tmp/clip.mp4"},
+        ]
+        parts = build_overlay_filter_parts(overlays)
+        self.assertIn("fps=30", parts[0])  # image gets fps
+        self.assertNotIn("fps=", parts[1])  # video does not
+
+
+# ── IsImagePath helper tests ──────────────────────────────────────────────────
+
+
+class IsImagePathTests(unittest.TestCase):
+    def test_png_is_image(self) -> None:
+        self.assertTrue(_is_image_path("/tmp/overlay.png"))
+
+    def test_jpg_is_image(self) -> None:
+        self.assertTrue(_is_image_path("/tmp/photo.jpg"))
+
+    def test_jpeg_is_image(self) -> None:
+        self.assertTrue(_is_image_path("/tmp/photo.jpeg"))
+
+    def test_webp_is_image(self) -> None:
+        self.assertTrue(_is_image_path("/tmp/img.webp"))
+
+    def test_mp4_is_not_image(self) -> None:
+        self.assertFalse(_is_image_path("/tmp/clip.mp4"))
+
+    def test_mov_is_not_image(self) -> None:
+        self.assertFalse(_is_image_path("/tmp/clip.mov"))
+
+    def test_case_insensitive(self) -> None:
+        self.assertTrue(_is_image_path("/tmp/overlay.PNG"))
+        self.assertTrue(_is_image_path("/tmp/overlay.Jpg"))
 
 
 class BuildOverlayChainTests(unittest.TestCase):
@@ -1992,6 +2061,10 @@ class BuildFinalCompositeTests(unittest.TestCase):
         self.assertTrue(mock_run.called)
         cmd = mock_run.call_args[0][0]
         cmd_str = " ".join(cmd)
+        # Image overlay gets -loop 1
+        self.assertIn("-loop 1", cmd_str)
+        # Image overlay gets fps filter in filter_complex
+        self.assertIn("fps=30", cmd_str)
         self.assertIn("setpts=PTS-STARTPTS+5.000/TB", cmd_str)
         self.assertIn("overlay=enable='between(t,5.000,10.000)'", cmd_str)
         self.assertIn("subtitles=", cmd_str)
@@ -2023,10 +2096,55 @@ class BuildFinalCompositeTests(unittest.TestCase):
         self.assertTrue(mock_run.called)
         cmd = mock_run.call_args[0][0]
         cmd_str = " ".join(cmd)
+        self.assertIn("-loop 1", cmd_str)
+        self.assertIn("fps=30", cmd_str)
         self.assertIn("setpts=PTS-STARTPTS", cmd_str)
         self.assertIn("overlay=enable='between(t,", cmd_str)
         self.assertNotIn("subtitles=", cmd_str)
         self.assertIn("null[outv]", cmd_str)
+
+    @patch("media_tooling.edl_render.subprocess.run")
+    def test_video_overlay_no_loop(self, mock_run: MagicMock) -> None:
+        """Video overlay inputs should NOT get -loop 1."""
+        mock_run.return_value = MagicMock(returncode=0)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            edit_dir = Path(tmpdir)
+            base_path = edit_dir / "base.mp4"
+            base_path.write_bytes(b"\x00" * 100)
+            out_path = edit_dir / "output.mp4"
+            overlays = [
+                {"source": "clip.mp4", "start": 5.0, "end": 10.0,
+                 "_resolved_path": str(edit_dir / "clip.mp4")},
+            ]
+            build_final_composite(
+                base_path, overlays, None, out_path, edit_dir
+            )
+        cmd = mock_run.call_args[0][0]
+        cmd_str = " ".join(cmd)
+        self.assertNotIn("-loop", cmd_str)
+        self.assertNotIn("fps=", cmd_str)
+        self.assertIn("setpts=PTS-STARTPTS", cmd_str)
+
+    @patch("media_tooling.edl_render.subprocess.run")
+    def test_codec_matches_subtitle_path(self, mock_run: MagicMock) -> None:
+        """Compositing codec settings should match burn_subtitles."""
+        mock_run.return_value = MagicMock(returncode=0)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            edit_dir = Path(tmpdir)
+            base_path = edit_dir / "base.mp4"
+            base_path.write_bytes(b"\x00" * 100)
+            out_path = edit_dir / "output.mp4"
+            overlays = [
+                {"source": "overlay.png", "start": 5.0, "end": 10.0,
+                 "_resolved_path": str(edit_dir / "overlay.png")},
+            ]
+            build_final_composite(
+                base_path, overlays, None, out_path, edit_dir
+            )
+        cmd = mock_run.call_args[0][0]
+        # Verify codec matches burn_subtitles settings
+        self.assertIn("veryfast", cmd)
+        self.assertIn("20", cmd)  # CRF 20
 
     @patch("media_tooling.edl_render.burn_subtitles_last")
     def test_no_overlays_with_subtitles_delegates(
