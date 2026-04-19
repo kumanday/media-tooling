@@ -385,7 +385,10 @@ Step 8: Iterate on feedback and persist session memory.
   per-range `grade`.
 - `overlays`: rendered animation clips with placement in the output timeline.
   Paths are resolved relative to `$PROJECT_DIR`.
-- `subtitles`: string (path) or dict with `style`, `path`, `force_style`.
+- `subtitles`: string (path) or dict with optional keys `style`, `path`,
+  `force_style`. `style` is the most common; `path` and `force_style` are
+  only needed when overriding defaults.
+- `version`: required schema version, currently `1`.
 - `total_duration_s`: expected total duration for verification.
 
 ## Animation guidance (when requested)
