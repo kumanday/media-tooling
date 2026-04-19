@@ -153,8 +153,10 @@ Produce the edit decision list and build the video.
    context would change the editing decision.
 3. **Build animations in parallel** (if applicable) — spawn sub-agents
    simultaneously, not sequentially (Hard Rule 10, Anti-pattern 10).
-4. **Apply grade per-segment** during extraction, never post-concat
-   (Anti-pattern 1, Anti-pattern 6).
+4. **Design grade per-segment** in the EDL — specify `grade` on ranges or
+   top-level so the renderer applies it during extraction, never post-concat
+   (Anti-pattern 1, Anti-pattern 6). The EDL renderer handles grading
+   automatically; this is an EDL design principle, not a manual step.
 5. **Render a preview** via `media-edl-render --preview`:
    ```bash
    media-edl-render "$PROJECT_DIR/edit/edl.json" \
@@ -213,8 +215,9 @@ Walk the user through the key moments and transitions.
 
 After the user reviews the preview:
 
-1. **Address feedback** — make requested changes to the EDL, re-render, and
-   re-run self-eval.
+1. **Address feedback** — make requested changes to the EDL, re-render the
+   preview, re-run self-eval, and present the revised preview to the user.
+   Repeat until the user approves.
 2. **Final render** — once approved, produce the full-quality render:
    ```bash
    media-edl-render "$PROJECT_DIR/edit/edl.json" \
@@ -371,7 +374,9 @@ Step 8: Iterate on feedback and persist session memory.
   short names are needed for range references, or when multiple sources share
   the same basename. A **list** of absolute paths is accepted as a shorthand
   when all basenames are unique (matched by basename; duplicates rejected),
-  but dict is preferred for clarity.
+  but dict is preferred for clarity. When using list form, `ranges[].source`
+  references the basename without extension (e.g., `"/path/C0103.MP4"` →
+  `"C0103"`).
 - `ranges`: ordered list of segments to include. Each requires `source`,
   `start`, `end`. Optional: `beat`, `quote`, `reason`, `grade`.
 - `grade`: top-level default grade preset or raw ffmpeg filter. Overridden by
