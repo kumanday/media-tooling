@@ -51,7 +51,8 @@ $PROJECT_DIR/
 │   ├── project.md            ← session memory (append each session)
 │   ├── edl.json              ← edit decision list
 │   ├── animations/slot_<id>/ ← per-animation source + render + reasoning
-│   ├── clips_graded/         ← per-segment extracts with grade + fades (created by EDL renderer)
+│   ├── clips_graded/         ← per-segment extracts with grade + fades (created by EDL renderer on final render)
+│   ├── clips_preview/       ← preview-grade extracts (created by EDL renderer with --preview)
 │   ├── master.srt            ← output-timeline subtitles
 │   ├── verify/               ← debug frames / timeline PNGs from self-eval
 │   ├── preview.mp4
@@ -198,7 +199,7 @@ Before presenting the output to the user, verify your own work.
    ffprobe -v error -show_entries format=duration \
      -of csv=p=0 "$PROJECT_DIR/edit/preview.mp4"
    ```
-5. **If anything fails:** fix the EDL → re-render → re-eval.
+5. **If anything fails:** fix the EDL → re-render (`--preview`) → re-eval.
 6. **Cap at 3 self-eval passes.** If issues remain after 3 passes, flag them
    explicitly to the user instead of continuing to iterate.
 
