@@ -217,7 +217,8 @@ bullets = BulletedList(
     "First key point",
     "Second important fact",
     "Third conclusion",
-    font_size=28
+    font_size=28,
+    font=MONO
 )
 bullets.to_edge(LEFT, buff=1.0)
 self.play(Write(bullets))

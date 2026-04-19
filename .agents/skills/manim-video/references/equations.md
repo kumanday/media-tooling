@@ -50,7 +50,7 @@ self.play(Indicate(eq[4], color=YELLOW))
 
 ```python
 brace = Brace(eq, DOWN, color=YELLOW)
-label = brace.get_text("Fundamental Theorem", font_size=24)
+label = brace.get_text("Fundamental Theorem", font_size=24, font=MONO)
 self.play(GrowFromCenter(brace), Write(label))
 ```
 

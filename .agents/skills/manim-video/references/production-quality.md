@@ -46,10 +46,10 @@ if text.width > config.frame_width - 1.0:
 # RULE: Define MONO once, use everywhere
 MONO = "Menlo"
 
-# WRONG: mixing fonts
-Text("Title", font="Helvetica")
-Text("Label", font="Arial")
-Text("Code", font="Courier")
+# WRONG: mixing fonts (anti-pattern — do not copy)
+Text("Title", font="Helvetica")  # BAD
+Text("Label", font="Arial")  # BAD
+Text("Code", font="Courier")  # BAD
 
 # RIGHT: one font
 Text("Title", font=MONO, weight=BOLD, font_size=48)
