@@ -1160,9 +1160,10 @@ def build_overlay_chain(
 
     Each overlay is composited onto the base with
     ``overlay=enable='between(t,start,end)'``, ordered by z_order
-    (ascending, lowest first).  ``eof_action=endall`` prevents short video
-    overlays from showing a stale last frame past the overlay's natural
-    duration.
+    (ascending, lowest first).  ``eof_action=pass`` lets the base video
+    continue when a short video overlay stream ends, avoiding output
+    truncation.  Image overlays (``-loop 1``) never reach EOF, so the
+    setting has no effect for them.
 
     Returns ``(filter_parts, last_overlay_index)`` where *last_overlay_index*
     is the 1-based index of the topmost overlay (``None`` when *overlays* is
@@ -1183,7 +1184,7 @@ def build_overlay_chain(
         next_label = f"[v{idx}]"
         parts.append(
             f"{current}[a{idx}]overlay=enable='between(t,{t:.3f},{end:.3f})'"
-            f":eof_action=endall:x={x}:y={y}{next_label}"
+            f":eof_action=pass:x={x}:y={y}{next_label}"
         )
         current = next_label
         last_idx = idx

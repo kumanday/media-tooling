@@ -2067,7 +2067,7 @@ class BuildOverlayChainTests(unittest.TestCase):
         parts, last_idx = build_overlay_chain(overlays)
         self.assertEqual(len(parts), 1)
         self.assertIn("overlay=enable='between(t,5.000,10.000)'", parts[0])
-        self.assertIn("eof_action=endall", parts[0])
+        self.assertIn("eof_action=pass", parts[0])
         self.assertIn(":x=50:y=100", parts[0])
         self.assertIn("[0:v][a1]", parts[0])
         self.assertIn("[v1]", parts[0])
@@ -2098,14 +2098,14 @@ class BuildOverlayChainTests(unittest.TestCase):
         parts, last_idx = build_overlay_chain(overlays)
         self.assertIn("enable='between(t,3.500,7.250)'", parts[0])
 
-    def test_eof_action_prevents_stale_last_frame(self) -> None:
-        """eof_action=endall prevents short video overlays from showing
-        stale last frame past the overlay's natural duration."""
+    def test_eof_action_prevents_output_truncation(self) -> None:
+        """eof_action=pass lets base video continue when a short video
+        overlay stream ends, avoiding output truncation."""
         overlays = [
             {"source": "short.mp4", "start": 5.0, "end": 10.0}
         ]
         parts, last_idx = build_overlay_chain(overlays)
-        self.assertIn("eof_action=endall", parts[0])
+        self.assertIn("eof_action=pass", parts[0])
 
     def test_empty_overlays_returns_none_index(self) -> None:
         """Empty overlay list returns empty parts and None last_idx."""
