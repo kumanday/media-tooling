@@ -1290,7 +1290,9 @@ def build_final_composite(
     except (RuntimeError, FileNotFoundError, ValueError) as exc:
         print(
             f"warning: could not probe base video duration ({exc}); "
-            "falling back to -shortest flag",
+            "falling back to -shortest flag — output may be truncated "
+            "when video overlays are shorter than the base video; "
+            "install ffprobe to avoid this",
             file=sys.stderr,
         )
 

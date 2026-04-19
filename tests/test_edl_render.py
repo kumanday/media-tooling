@@ -2473,6 +2473,7 @@ class BuildFinalCompositeTests(unittest.TestCase):
         self.assertIn("-shortest", cmd)
         self.assertIn("warning:", buf.getvalue())
         self.assertIn("could not probe base video duration", buf.getvalue())
+        self.assertIn("truncated", buf.getvalue())
 
     @patch("media_tooling.edl_render.probe_duration", return_value=3.0)
     @patch("media_tooling.edl_render.probe_frame_rate", return_value=30)
