@@ -508,6 +508,61 @@ class TestRunVerification(unittest.TestCase):
         self.assertTrue(len(visual_findings) > 0)
         self.assertIn("unresolved after max passes", visual_findings[0].details)
 
+    @patch("media_tooling.verify.probe_duration", side_effect=RuntimeError("ffprobe failed"))
+    @patch("media_tooling.verify.compute_envelope")
+    @patch("media_tooling.verify._extract_single_frame")
+    @patch("media_tooling.verify._compute_frame_delta", return_value=0.05)
+    def test_warnings_do_not_get_unresolved_suffix(
+        self,
+        mock_delta: MagicMock,
+        mock_extract: MagicMock,
+        mock_env: MagicMock,
+        mock_probe: MagicMock,
+    ) -> None:
+        """Structural warnings (severity=warning) should not get 'unresolved' suffix."""
+        mock_extract.return_value = Path("/tmp/frame.jpg")
+        mock_env.return_value = np.full(500, 0.3, dtype=np.float32)
+        report = run_verification(
+            Path("video.mp4"),
+            _single_range_edl(),
+            max_passes=1,
+            generate_timelines=False,
+        )
+        warning_findings = [f for f in report.findings
+                            if not f.passed and f.severity == "warning"]
+        for f in warning_findings:
+            self.assertNotIn("unresolved after max passes", f.details)
+
+    @patch("media_tooling.verify.generate_boundary_timelines", return_value=[])
+    @patch("media_tooling.verify.probe_duration", return_value=30.0)
+    @patch("media_tooling.verify.compute_envelope")
+    @patch("media_tooling.verify._extract_single_frame")
+    @patch("media_tooling.verify._compute_frame_delta", return_value=0.05)
+    @patch("media_tooling.verify._sample_luminance", return_value=0.5)
+    def test_timeline_generation_failure_produces_finding(
+        self,
+        mock_lum: MagicMock,
+        mock_delta: MagicMock,
+        mock_extract: MagicMock,
+        mock_env: MagicMock,
+        mock_probe: MagicMock,
+        mock_timelines: MagicMock,
+    ) -> None:
+        """When timeline PNG generation fails, a warning finding is produced."""
+        mock_extract.return_value = Path("/tmp/frame.jpg")
+        mock_env.return_value = np.full(500, 0.3, dtype=np.float32)
+        report = run_verification(
+            Path("video.mp4"),
+            _minimal_edl(),
+            generate_timelines=True,
+        )
+        timeline_findings = [f for f in report.findings
+                             if f.check == "timeline_pngs"]
+        self.assertEqual(len(timeline_findings), 1)
+        self.assertFalse(timeline_findings[0].passed)
+        self.assertEqual(timeline_findings[0].severity, "warning")
+        self.assertIn("failed", timeline_findings[0].details)
+
     @patch("media_tooling.verify.probe_duration", return_value=30.0)
     @patch("media_tooling.verify.verify_audio_pop")
     @patch("media_tooling.verify.verify_visual_discontinuity")

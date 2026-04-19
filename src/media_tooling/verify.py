@@ -612,9 +612,12 @@ def run_verification(
         report.passed = report.fail_count == 0
 
     # Flag remaining failures after max_passes exhausted
+    # Only flag severity="fail" findings as unresolved; severity="warning"
+    # findings represent structural issues (missing data, unavailable tools)
+    # that retrying cannot fix.
     if report.fail_count > 0:
         for f in report.findings:
-            if not f.passed and "unresolved" not in f.details:
+            if not f.passed and f.severity == "fail" and "unresolved" not in f.details:
                 f.details += " [unresolved after max passes]"
 
     # 7. Timeline PNGs
@@ -641,6 +644,13 @@ def run_verification(
                             break
                     if idx is not None and idx < len(png_paths):
                         finding.timeline_png = png_paths[idx]
+        else:
+            report.add(Finding(
+                check="timeline_pngs",
+                passed=False,
+                details=f"timeline PNG generation failed for all {len(cut_boundaries)} cut boundary/ies",
+                severity="warning",
+            ))
 
     return report
 
