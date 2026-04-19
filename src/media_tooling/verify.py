@@ -171,7 +171,7 @@ def verify_duration(
 
     try:
         actual = probe_duration(video_path, ffprobe_bin)
-    except RuntimeError as exc:
+    except (RuntimeError, json.JSONDecodeError) as exc:
         return Finding(
             check="duration",
             passed=False,
@@ -564,7 +564,7 @@ def run_verification(
     # 5. Grade consistency
     try:
         total_duration = probe_duration(video_path, ffprobe_bin)
-    except RuntimeError:
+    except (RuntimeError, json.JSONDecodeError):
         total_duration = 0.0
 
     if total_duration > 0:
