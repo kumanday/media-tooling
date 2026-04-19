@@ -2180,9 +2180,10 @@ class ResolveOverlaySourcesTests(unittest.TestCase):
 
 
 class BuildFinalCompositeTests(unittest.TestCase):
+    @patch("media_tooling.edl_render.probe_frame_rate", return_value=30)
     @patch("media_tooling.edl_render.probe_video_size", return_value=(1920, 1080))
     @patch("media_tooling.edl_render.subprocess.run")
-    def test_overlays_with_subtitles(self, mock_run: MagicMock, mock_probe: MagicMock) -> None:
+    def test_overlays_with_subtitles(self, mock_run: MagicMock, mock_probe: MagicMock, mock_fps: MagicMock) -> None:
         """build_final_composite builds filter_complex with PTS shift,
         enable-between, and subtitles last."""
         mock_run.return_value = MagicMock(returncode=0)
@@ -2221,9 +2222,10 @@ class BuildFinalCompositeTests(unittest.TestCase):
         self.assertLess(overlay_pos, subs_pos,
                         "subtitles filter must come after overlay filter")
 
+    @patch("media_tooling.edl_render.probe_frame_rate", return_value=30)
     @patch("media_tooling.edl_render.probe_video_size", return_value=(1920, 1080))
     @patch("media_tooling.edl_render.subprocess.run")
-    def test_overlays_without_subtitles(self, mock_run: MagicMock, mock_probe: MagicMock) -> None:
+    def test_overlays_without_subtitles(self, mock_run: MagicMock, mock_probe: MagicMock, mock_fps: MagicMock) -> None:
         """build_final_composite with overlays but no subtitles
         uses null filter for final output label."""
         mock_run.return_value = MagicMock(returncode=0)
@@ -2249,9 +2251,10 @@ class BuildFinalCompositeTests(unittest.TestCase):
         self.assertNotIn("subtitles=", cmd_str)
         self.assertIn("null[outv]", cmd_str)
 
+    @patch("media_tooling.edl_render.probe_frame_rate", return_value=30)
     @patch("media_tooling.edl_render.probe_video_size", return_value=(1280, 720))
     @patch("media_tooling.edl_render.subprocess.run")
-    def test_video_overlay_no_loop(self, mock_run: MagicMock, mock_probe: MagicMock) -> None:
+    def test_video_overlay_no_loop(self, mock_run: MagicMock, mock_probe: MagicMock, mock_fps: MagicMock) -> None:
         """Video overlay inputs should NOT get -loop 1."""
         mock_run.return_value = MagicMock(returncode=0)
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -2272,9 +2275,10 @@ class BuildFinalCompositeTests(unittest.TestCase):
         self.assertNotIn("fps=", cmd_str)
         self.assertIn("setpts=PTS-STARTPTS", cmd_str)
 
+    @patch("media_tooling.edl_render.probe_frame_rate", return_value=30)
     @patch("media_tooling.edl_render.probe_video_size", return_value=(1920, 1080))
     @patch("media_tooling.edl_render.subprocess.run")
-    def test_codec_matches_subtitle_path(self, mock_run: MagicMock, mock_probe: MagicMock) -> None:
+    def test_codec_matches_subtitle_path(self, mock_run: MagicMock, mock_probe: MagicMock, mock_fps: MagicMock) -> None:
         """Compositing codec settings should match burn_subtitles."""
         mock_run.return_value = MagicMock(returncode=0)
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -2294,9 +2298,10 @@ class BuildFinalCompositeTests(unittest.TestCase):
         self.assertIn("veryfast", cmd)
         self.assertIn("20", cmd)  # CRF 20
 
+    @patch("media_tooling.edl_render.probe_frame_rate", return_value=30)
     @patch("media_tooling.edl_render.probe_video_size", return_value=(1920, 1080))
     @patch("media_tooling.edl_render.subprocess.run")
-    def test_shortest_flag_with_loop(self, mock_run: MagicMock, mock_probe: MagicMock) -> None:
+    def test_shortest_flag_with_loop(self, mock_run: MagicMock, mock_probe: MagicMock, mock_fps: MagicMock) -> None:
         """-shortest must be present when -loop 1 is used for image overlays."""
         mock_run.return_value = MagicMock(returncode=0)
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -2315,9 +2320,10 @@ class BuildFinalCompositeTests(unittest.TestCase):
         self.assertIn("-shortest", cmd)
         self.assertIn("-loop", cmd)
 
+    @patch("media_tooling.edl_render.probe_frame_rate", return_value=30)
     @patch("media_tooling.edl_render.probe_video_size", return_value=(1920, 1080))
     @patch("media_tooling.edl_render.subprocess.run")
-    def test_scale_normalization_with_base_size(self, mock_run: MagicMock, mock_probe: MagicMock) -> None:
+    def test_scale_normalization_with_base_size(self, mock_run: MagicMock, mock_probe: MagicMock, mock_fps: MagicMock) -> None:
         """build_final_composite applies scale+format when base video dimensions are known."""
         mock_run.return_value = MagicMock(returncode=0)
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -2337,9 +2343,10 @@ class BuildFinalCompositeTests(unittest.TestCase):
         self.assertIn("scale=1920:1080", cmd_str)
         self.assertIn("format=yuva420p", cmd_str)
 
+    @patch("media_tooling.edl_render.probe_frame_rate", return_value=30)
     @patch("media_tooling.edl_render.probe_video_size", side_effect=RuntimeError("probe failed"))
     @patch("media_tooling.edl_render.subprocess.run")
-    def test_probe_failure_proceeds_without_scale(self, mock_run: MagicMock, mock_probe: MagicMock) -> None:
+    def test_probe_failure_proceeds_without_scale(self, mock_run: MagicMock, mock_probe: MagicMock, mock_fps: MagicMock) -> None:
         """If probing base video dimensions fails, compositing proceeds
         without scale/format normalization."""
         mock_run.return_value = MagicMock(returncode=0)
@@ -2360,9 +2367,10 @@ class BuildFinalCompositeTests(unittest.TestCase):
         self.assertNotIn("scale=", cmd_str)
         self.assertNotIn("format=yuva420p", cmd_str)
 
+    @patch("media_tooling.edl_render.probe_frame_rate", return_value=30)
     @patch("media_tooling.edl_render.probe_video_size", return_value=(1920, 1080))
     @patch("media_tooling.edl_render.subprocess.run")
-    def test_ffprobe_bin_forwarded_to_probe(self, mock_run: MagicMock, mock_probe: MagicMock) -> None:
+    def test_ffprobe_bin_forwarded_to_probe(self, mock_run: MagicMock, mock_probe: MagicMock, mock_fps: MagicMock) -> None:
         """build_final_composite passes ffprobe_bin to probe_video_size."""
         mock_run.return_value = MagicMock(returncode=0)
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -2435,8 +2443,9 @@ class BuildFinalCompositeTests(unittest.TestCase):
             self.assertIn("resolve_overlay_sources", str(ctx.exception))
 
     @patch("media_tooling.edl_render.subprocess.run")
+    @patch("media_tooling.edl_render.probe_frame_rate", return_value=30)
     @patch("media_tooling.edl_render.probe_video_size", side_effect=FileNotFoundError("ffprobe not found"))
-    def test_probe_failure_prints_warning(self, mock_probe: MagicMock, mock_run: MagicMock) -> None:
+    def test_probe_failure_prints_warning(self, mock_probe: MagicMock, mock_fps: MagicMock, mock_run: MagicMock) -> None:
         """build_final_composite prints warning when probe_video_size
         fails (e.g. bad ffprobe_bin), instead of silently proceeding."""
         mock_run.return_value = MagicMock(returncode=0)
@@ -2461,8 +2470,9 @@ class BuildFinalCompositeTests(unittest.TestCase):
         self.assertIn("could not probe base video size", buf.getvalue())
 
     @patch("media_tooling.edl_render.subprocess.run")
+    @patch("media_tooling.edl_render.probe_frame_rate", return_value=30)
     @patch("media_tooling.edl_render.probe_video_size", side_effect=RuntimeError("Invalid video dimensions (0x0)"))
-    def test_zero_dimensions_produces_warning(self, mock_probe: MagicMock, mock_run: MagicMock) -> None:
+    def test_zero_dimensions_produces_warning(self, mock_probe: MagicMock, mock_fps: MagicMock, mock_run: MagicMock) -> None:
         """build_final_composite prints warning when probe_video_size
         raises RuntimeError for zero dimensions, instead of crashing."""
         mock_run.return_value = MagicMock(returncode=0)
@@ -2641,6 +2651,76 @@ class RenderEDLOverlayTests(unittest.TestCase):
                                     no_loudnorm=True)
 
         self.assertEqual(result, 1)
+
+
+# ── Frame rate probing tests ────────────────────────────────────────────────────
+
+
+class ProbeFrameRateTests(unittest.TestCase):
+    @patch("media_tooling.edl_render.probe_frame_rate", return_value=60)
+    @patch("media_tooling.edl_render.probe_video_size", return_value=(1920, 1080))
+    @patch("media_tooling.edl_render.subprocess.run")
+    def test_frame_rate_forwarded_to_filter(self, mock_run: MagicMock, mock_probe: MagicMock, mock_fps: MagicMock) -> None:
+        """build_final_composite probes base fps and passes it to
+        build_overlay_filter_parts for image overlay frame generation."""
+        mock_run.return_value = MagicMock(returncode=0)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            edit_dir = Path(tmpdir)
+            base_path = edit_dir / "base.mp4"
+            base_path.write_bytes(b"\x00" * 100)
+            out_path = edit_dir / "output.mp4"
+            overlays = [
+                {"source": "overlay.png", "start": 5.0, "end": 10.0,
+                 "_resolved_path": str(edit_dir / "overlay.png")},
+            ]
+            build_final_composite(base_path, overlays, None, out_path)
+        cmd = mock_run.call_args[0][0]
+        cmd_str = " ".join(cmd)
+        # 60fps base → fps=60 in filter for image overlay
+        self.assertIn("fps=60", cmd_str)
+
+    @patch("media_tooling.edl_render.probe_frame_rate", side_effect=RuntimeError("probe failed"))
+    @patch("media_tooling.edl_render.probe_video_size", return_value=(1920, 1080))
+    @patch("media_tooling.edl_render.subprocess.run")
+    def test_frame_rate_probe_failure_uses_default(self, mock_run: MagicMock, mock_probe: MagicMock, mock_fps: MagicMock) -> None:
+        """build_final_composite falls back to 30fps when frame rate
+        probing fails, printing a warning."""
+        mock_run.return_value = MagicMock(returncode=0)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            edit_dir = Path(tmpdir)
+            base_path = edit_dir / "base.mp4"
+            base_path.write_bytes(b"\x00" * 100)
+            out_path = edit_dir / "output.mp4"
+            overlays = [
+                {"source": "overlay.png", "start": 5.0, "end": 10.0,
+                 "_resolved_path": str(edit_dir / "overlay.png")},
+            ]
+            import io
+            import sys as _sys
+            old_stderr = _sys.stderr
+            _sys.stderr = buf = io.StringIO()
+            try:
+                build_final_composite(base_path, overlays, None, out_path)
+            finally:
+                _sys.stderr = old_stderr
+        cmd = mock_run.call_args[0][0]
+        cmd_str = " ".join(cmd)
+        # Falls back to 30fps default
+        self.assertIn("fps=30", cmd_str)
+        self.assertIn("warning:", buf.getvalue())
+        self.assertIn("frame rate", buf.getvalue())
+
+
+class ResolveOverlaySourcesGuardTests(unittest.TestCase):
+    def test_overlay_without_source_or_card_raises(self) -> None:
+        """resolve_overlay_sources raises ValueError for overlays with
+        neither 'source' nor 'card'."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            edit_dir = Path(tmpdir)
+            overlays = [{"start": 5.0, "end": 10.0}]
+            with self.assertRaises(ValueError) as ctx:
+                resolve_overlay_sources(overlays, edit_dir)
+            self.assertIn("must have 'source' or 'card'", str(ctx.exception))
 
 
 if __name__ == "__main__":

@@ -34,7 +34,11 @@ from typing import Any
 from PIL import Image, ImageDraw, ImageFont
 
 from media_tooling.burn_subtitles import burn_subtitles
-from media_tooling.ffprobe_utils import probe_duration, probe_video_size
+from media_tooling.ffprobe_utils import (
+    probe_duration,
+    probe_frame_rate,
+    probe_video_size,
+)
 from media_tooling.grade import PRESETS, auto_grade_for_clip, get_preset
 from media_tooling.loudnorm import apply_loudnorm_preview, apply_loudnorm_two_pass
 from media_tooling.rough_cut import quote_concat_path, validate_concat_demuxer_usage
@@ -1223,16 +1227,29 @@ def build_final_composite(
     base_size: tuple[int, int] | None = None
     try:
         base_size = probe_video_size(base_path, ffprobe_bin=ffprobe_bin)
-    except (RuntimeError, FileNotFoundError) as exc:
+    except (RuntimeError, FileNotFoundError, ValueError) as exc:
         print(
             f"warning: could not probe base video size ({exc}); "
             "overlay scale normalization skipped",
             file=sys.stderr,
         )
 
+    # Probe base video frame rate for image overlay fps matching
+    base_fps: int = 30
+    try:
+        base_fps = probe_frame_rate(base_path, ffprobe_bin=ffprobe_bin)
+    except (RuntimeError, FileNotFoundError, ValueError) as exc:
+        print(
+            f"warning: could not probe base video frame rate ({exc}); "
+            f"using default {base_fps}fps for image overlays",
+            file=sys.stderr,
+        )
+
     # PTS-shift every overlay (Hard Rule 4)
     # Scale overlays to base dimensions and normalize pixel format
-    filter_parts.extend(build_overlay_filter_parts(overlays, base_size=base_size))
+    filter_parts.extend(
+        build_overlay_filter_parts(overlays, base_fps=base_fps, base_size=base_size)
+    )
 
     # Chain overlays on top of base with enable-between
     chain_parts = build_overlay_chain(overlays)
@@ -1341,6 +1358,11 @@ def resolve_overlay_sources(
             cards_dir.mkdir(parents=True, exist_ok=True)
             card_path = generate_overlay_card(ov["card"], cards_dir, i)
             ov["_resolved_path"] = str(card_path)
+        else:
+            raise ValueError(
+                f"overlay[{i}] must have 'source' or 'card'; "
+                "neither was provided"
+            )
         resolved.append(ov)
     return resolved
 
