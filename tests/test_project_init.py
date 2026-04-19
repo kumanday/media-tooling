@@ -11,6 +11,7 @@ from media_tooling.project_init import (
     PROJECT_MEMORY_INITIAL_CONTENT,
     PROJECT_MEMORY_PATH,
     PROJECT_SUBDIRECTORIES,
+    SKILL_NAMES,
     ensure_project_directories,
     ensure_project_memory,
     load_project_agents_template,
@@ -99,22 +100,8 @@ class ProjectInitTests(unittest.TestCase):
     def test_render_project_agents_block_lists_all_skill_paths(self) -> None:
         block = render_project_agents_block(Path("/tmp/toolkit-skills"))
 
-        self.assertIn(
-            "/tmp/toolkit-skills/media-corpus-ingest/SKILL.md",
-            block,
-        )
-        self.assertIn(
-            "/tmp/toolkit-skills/media-subtitle-pipeline/SKILL.md",
-            block,
-        )
-        self.assertIn(
-            "/tmp/toolkit-skills/media-rough-cut-assembly/SKILL.md",
-            block,
-        )
-        self.assertIn(
-            "/tmp/toolkit-skills/media-render-pipeline/SKILL.md",
-            block,
-        )
+        for skill_name in SKILL_NAMES:
+            self.assertIn(f"/tmp/toolkit-skills/{skill_name}/SKILL.md", block)
 
     def test_project_agents_template_contains_required_placeholder(self) -> None:
         template = load_project_agents_template()
