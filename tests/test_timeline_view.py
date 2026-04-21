@@ -9,7 +9,11 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 from PIL import Image, ImageDraw
 
-from media_tooling.ffprobe_utils import probe_duration
+from media_tooling.ffprobe_utils import (
+    probe_duration,
+    probe_frame_rate,
+    probe_video_size,
+)
 from media_tooling.timeline_view import (
     FRAME_GAP,
     _cap_n_frames,
@@ -254,9 +258,10 @@ class TestComputeEnvelope(unittest.TestCase):
     @patch("media_tooling.timeline_view.subprocess.run")
     def test_returns_zeros_when_ffmpeg_fails(self, mock_run: MagicMock) -> None:
         mock_run.return_value = MagicMock(returncode=1)
-        result = compute_envelope(Path("test.mp4"), 0.0, 10.0, "ffmpeg")
+        result, raw_peak = compute_envelope(Path("test.mp4"), 0.0, 10.0, "ffmpeg")
         self.assertEqual(result.shape[0], 2000)
         self.assertTrue(np.all(result == 0))
+        self.assertEqual(raw_peak, 0.0)
 
 
 class TestWindowedRms(unittest.TestCase):
@@ -305,6 +310,157 @@ class TestProbeDuration(unittest.TestCase):
             probe_duration(Path("test.mp4"), "ffprobe")
 
 
+class TestProbeVideoSize(unittest.TestCase):
+    @patch("media_tooling.ffprobe_utils.subprocess.run")
+    def test_extracts_dimensions(self, mock_run: MagicMock) -> None:
+        mock_run.return_value = MagicMock(
+            returncode=0,
+            stdout='{"streams": [{"width": 1920, "height": 1080}]}',
+        )
+        w, h = probe_video_size(Path("test.mp4"), "ffprobe")
+        self.assertEqual((w, h), (1920, 1080))
+
+    @patch("media_tooling.ffprobe_utils.subprocess.run")
+    def test_raises_on_ffprobe_failure(self, mock_run: MagicMock) -> None:
+        mock_run.return_value = MagicMock(returncode=1, stderr="error")
+        with self.assertRaises(RuntimeError):
+            probe_video_size(Path("missing.mp4"), "ffprobe")
+
+    @patch("media_tooling.ffprobe_utils.subprocess.run")
+    def test_raises_when_no_streams(self, mock_run: MagicMock) -> None:
+        mock_run.return_value = MagicMock(
+            returncode=0,
+            stdout='{"streams": []}',
+        )
+        with self.assertRaises(RuntimeError):
+            probe_video_size(Path("test.mp4"), "ffprobe")
+
+    @patch("media_tooling.ffprobe_utils.subprocess.run")
+    def test_raises_on_zero_width(self, mock_run: MagicMock) -> None:
+        mock_run.return_value = MagicMock(
+            returncode=0,
+            stdout='{"streams": [{"width": 0, "height": 1080}]}',
+        )
+        with self.assertRaises(RuntimeError) as ctx:
+            probe_video_size(Path("corrupt.mp4"), "ffprobe")
+        self.assertIn("Invalid video dimensions", str(ctx.exception))
+
+    @patch("media_tooling.ffprobe_utils.subprocess.run")
+    def test_raises_on_zero_height(self, mock_run: MagicMock) -> None:
+        mock_run.return_value = MagicMock(
+            returncode=0,
+            stdout='{"streams": [{"width": 1920, "height": 0}]}',
+        )
+        with self.assertRaises(RuntimeError) as ctx:
+            probe_video_size(Path("corrupt.mp4"), "ffprobe")
+        self.assertIn("Invalid video dimensions", str(ctx.exception))
+
+
+class TestProbeFrameRate(unittest.TestCase):
+    @patch("media_tooling.ffprobe_utils.subprocess.run")
+    def test_extracts_frame_rate(self, mock_run: MagicMock) -> None:
+        mock_run.return_value = MagicMock(
+            returncode=0,
+            stdout='{"streams": [{"r_frame_rate": "30/1"}]}',
+        )
+        fps = probe_frame_rate(Path("test.mp4"), "ffprobe")
+        self.assertEqual(fps, 30)
+
+    @patch("media_tooling.ffprobe_utils.subprocess.run")
+    def test_ntsc_frame_rate_rounded(self, mock_run: MagicMock) -> None:
+        mock_run.return_value = MagicMock(
+            returncode=0,
+            stdout='{"streams": [{"r_frame_rate": "24000/1001"}]}',
+        )
+        fps = probe_frame_rate(Path("test.mp4"), "ffprobe")
+        self.assertEqual(fps, 24)
+
+    @patch("media_tooling.ffprobe_utils.subprocess.run")
+    def test_60fps_frame_rate(self, mock_run: MagicMock) -> None:
+        mock_run.return_value = MagicMock(
+            returncode=0,
+            stdout='{"streams": [{"r_frame_rate": "60/1"}]}',
+        )
+        fps = probe_frame_rate(Path("test.mp4"), "ffprobe")
+        self.assertEqual(fps, 60)
+
+    @patch("media_tooling.ffprobe_utils.subprocess.run")
+    def test_raises_on_ffprobe_failure(self, mock_run: MagicMock) -> None:
+        mock_run.return_value = MagicMock(returncode=1, stderr="error")
+        with self.assertRaises(RuntimeError):
+            probe_frame_rate(Path("missing.mp4"), "ffprobe")
+
+    @patch("media_tooling.ffprobe_utils.subprocess.run")
+    def test_raises_when_no_streams(self, mock_run: MagicMock) -> None:
+        mock_run.return_value = MagicMock(
+            returncode=0,
+            stdout='{"streams": []}',
+        )
+        with self.assertRaises(RuntimeError):
+            probe_frame_rate(Path("test.mp4"), "ffprobe")
+
+    @patch("media_tooling.ffprobe_utils.subprocess.run")
+    def test_raises_when_no_frame_rate(self, mock_run: MagicMock) -> None:
+        mock_run.return_value = MagicMock(
+            returncode=0,
+            stdout='{"streams": [{"width": 1920}]}',
+        )
+        with self.assertRaises(RuntimeError):
+            probe_frame_rate(Path("test.mp4"), "ffprobe")
+
+    @patch("media_tooling.ffprobe_utils.subprocess.run")
+    def test_raises_on_invalid_format(self, mock_run: MagicMock) -> None:
+        mock_run.return_value = MagicMock(
+            returncode=0,
+            stdout='{"streams": [{"r_frame_rate": "not-a-fraction"}]}',
+        )
+        with self.assertRaises(RuntimeError):
+            probe_frame_rate(Path("test.mp4"), "ffprobe")
+
+    @patch("media_tooling.ffprobe_utils.subprocess.run")
+    def test_raises_on_zero_denominator(self, mock_run: MagicMock) -> None:
+        mock_run.return_value = MagicMock(
+            returncode=0,
+            stdout='{"streams": [{"r_frame_rate": "30/0"}]}',
+        )
+        with self.assertRaises(RuntimeError):
+            probe_frame_rate(Path("test.mp4"), "ffprobe")
+
+    @patch("media_tooling.ffprobe_utils.subprocess.run")
+    def test_raises_on_malformed_json(self, mock_run: MagicMock) -> None:
+        mock_run.return_value = MagicMock(
+            returncode=0,
+            stdout='{invalid json',
+        )
+        with self.assertRaises(RuntimeError) as ctx:
+            probe_frame_rate(Path("test.mp4"), "ffprobe")
+        self.assertIn("malformed JSON", str(ctx.exception))
+
+
+class TestParseFfprobeJson(unittest.TestCase):
+    @patch("media_tooling.ffprobe_utils.subprocess.run")
+    def test_probe_video_size_malformed_json_raises_runtime_error(self, mock_run: MagicMock) -> None:
+        """_parse_ffprobe_json wraps json.JSONDecodeError as RuntimeError."""
+        mock_run.return_value = MagicMock(
+            returncode=0,
+            stdout='{broken',
+        )
+        with self.assertRaises(RuntimeError) as ctx:
+            probe_video_size(Path("test.mp4"), "ffprobe")
+        self.assertIn("malformed JSON", str(ctx.exception))
+
+    @patch("media_tooling.ffprobe_utils.subprocess.run")
+    def test_probe_duration_malformed_json_raises_runtime_error(self, mock_run: MagicMock) -> None:
+        """_parse_ffprobe_json wraps json.JSONDecodeError as RuntimeError."""
+        mock_run.return_value = MagicMock(
+            returncode=0,
+            stdout='{broken',
+        )
+        with self.assertRaises(RuntimeError) as ctx:
+            probe_duration(Path("test.mp4"), "ffprobe")
+        self.assertIn("malformed JSON", str(ctx.exception))
+
+
 # ---------------------------------------------------------------------------
 # Output dimensions (integration-style test with mocked ffmpeg/ffprobe)
 # ---------------------------------------------------------------------------
@@ -331,7 +487,7 @@ class TestOutputDimensions(unittest.TestCase):
                 img.save(str(fp), "JPEG")
                 frame_paths.append(fp)
             mock_frames.return_value = frame_paths
-            mock_env.return_value = np.zeros(2000, dtype=np.float32)
+            mock_env.return_value = (np.zeros(2000, dtype=np.float32), 0.0)
 
             out_path = Path(tmp) / "output.png"
             generate_timeline(
@@ -360,7 +516,7 @@ class TestOutputDimensions(unittest.TestCase):
     ) -> None:
         """Exercise frame-loading-to-canvas pipeline via placeholder frames (ffmpeg-failure path)."""
         mock_run.return_value = MagicMock(returncode=1)
-        mock_env.return_value = np.zeros(2000, dtype=np.float32)
+        mock_env.return_value = (np.zeros(2000, dtype=np.float32), 0.0)
 
         with tempfile.TemporaryDirectory() as tmp:
             out_path = Path(tmp) / "output.png"
@@ -557,7 +713,7 @@ class TestNFramesZero(unittest.TestCase):
             img = Image.new("RGB", (320, 180), (40, 40, 44))
             img.save(str(fp), "JPEG")
             mock_frames.return_value = [fp]
-            mock_env.return_value = np.zeros(2000, dtype=np.float32)
+            mock_env.return_value = (np.zeros(2000, dtype=np.float32), 0.0)
 
             out_path = Path(tmp) / "output.png"
             generate_timeline(
@@ -599,7 +755,7 @@ class TestNFramesCapAlignment(unittest.TestCase):
                 img.save(str(fp), "JPEG")
                 frame_paths.append(fp)
             mock_frames.return_value = frame_paths
-            mock_env.return_value = np.zeros(2000, dtype=np.float32)
+            mock_env.return_value = (np.zeros(2000, dtype=np.float32), 0.0)
 
             out_path = Path(tmp) / "output.png"
             generate_timeline(
@@ -713,7 +869,7 @@ class TestTranscriptRendering(unittest.TestCase):
                 img.save(str(fp), "JPEG")
                 frame_paths.append(fp)
             mock_frames.return_value = frame_paths
-            mock_env.return_value = np.zeros(2000, dtype=np.float32)
+            mock_env.return_value = (np.zeros(2000, dtype=np.float32), 0.0)
 
             # Create a transcript JSON with a silence gap 3.0→7.0 (4s gap ≥ 400ms)
             transcript = {
@@ -784,7 +940,7 @@ class TestTranscriptRendering(unittest.TestCase):
                 img.save(str(fp), "JPEG")
                 frame_paths.append(fp)
             mock_frames.return_value = frame_paths
-            mock_env.return_value = np.zeros(2000, dtype=np.float32)
+            mock_env.return_value = (np.zeros(2000, dtype=np.float32), 0.0)
 
             out_path = Path(tmp) / "output.png"
             generate_timeline(
@@ -826,7 +982,7 @@ class TestTranscriptRendering(unittest.TestCase):
                 img.save(str(fp), "JPEG")
                 frame_paths.append(fp)
             mock_frames.return_value = frame_paths
-            mock_env.return_value = np.zeros(2000, dtype=np.float32)
+            mock_env.return_value = (np.zeros(2000, dtype=np.float32), 0.0)
 
             transcript = {
                 "words": [

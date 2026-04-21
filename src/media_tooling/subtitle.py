@@ -1006,6 +1006,7 @@ def maybe_correct_suspicious_timestamps(
     # Keys that are rebuilt by the scaling logic; everything else is forwarded
     # as-is so that fields like `speaker_id` are not silently dropped.
     _rebuilt_keys = {"start", "end", "text", "words"}
+    _word_rebuilt_keys = {"word", "start", "end"}
     scaled_segments = [
         {
             **{k: v for k, v in segment.items() if k not in _rebuilt_keys},
@@ -1014,6 +1015,7 @@ def maybe_correct_suspicious_timestamps(
             "text": segment["text"],
             "words": [
                 {
+                    **{k: v for k, v in word.items() if k not in _word_rebuilt_keys},
                     "word": word["word"],
                     "start": round(word["start"] * ratio, 3),
                     "end": round(word["end"] * ratio, 3),

@@ -126,6 +126,127 @@ class TimestampCorrectionTests(unittest.TestCase):
         self.assertTrue(correction["applied"])
         self.assertEqual(corrected[0]["speaker_id"], "speaker_0")
 
+    def test_no_spurious_speaker_id_when_absent(self) -> None:
+        segments = [
+            {
+                "start": 0.0,
+                "end": 28.6853,
+                "text": "hello",
+                "words": [{"word": "hello", "start": 0.0, "end": 28.6853}],
+            },
+        ]
+
+        corrected, correction = maybe_correct_suspicious_timestamps(
+            segments=segments,
+            media_duration=286.853,
+            backend="mlx",
+            enabled=True,
+        )
+
+        self.assertTrue(correction["applied"])
+        self.assertNotIn("speaker_id", corrected[0])
+
+    def test_forwards_arbitrary_extra_fields_during_mlx_correction(self) -> None:
+        segments = [
+            {
+                "start": 0.0,
+                "end": 28.6853,
+                "text": "hello",
+                "words": [{"word": "hello", "start": 0.0, "end": 28.6853}],
+                "speaker_id": "speaker_0",
+                "confidence": 0.95,
+            },
+        ]
+
+        corrected, correction = maybe_correct_suspicious_timestamps(
+            segments=segments,
+            media_duration=286.853,
+            backend="mlx",
+            enabled=True,
+        )
+
+        self.assertTrue(correction["applied"])
+        self.assertEqual(corrected[0]["speaker_id"], "speaker_0")
+        self.assertEqual(corrected[0]["confidence"], 0.95)
+
+    def test_forwards_word_level_speaker_id_during_mlx_correction(self) -> None:
+        segments = [
+            {
+                "start": 0.0,
+                "end": 28.6853,
+                "text": "hello",
+                "words": [
+                    {
+                        "word": "hello",
+                        "start": 0.0,
+                        "end": 28.6853,
+                        "speaker_id": "speaker_0",
+                    }
+                ],
+            },
+        ]
+
+        corrected, correction = maybe_correct_suspicious_timestamps(
+            segments=segments,
+            media_duration=286.853,
+            backend="mlx",
+            enabled=True,
+        )
+
+        self.assertTrue(correction["applied"])
+        self.assertEqual(corrected[0]["words"][0]["speaker_id"], "speaker_0")
+
+    def test_no_spurious_word_level_keys_when_absent(self) -> None:
+        segments = [
+            {
+                "start": 0.0,
+                "end": 28.6853,
+                "text": "hello",
+                "words": [{"word": "hello", "start": 0.0, "end": 28.6853}],
+            },
+        ]
+
+        corrected, correction = maybe_correct_suspicious_timestamps(
+            segments=segments,
+            media_duration=286.853,
+            backend="mlx",
+            enabled=True,
+        )
+
+        self.assertTrue(correction["applied"])
+        self.assertNotIn("speaker_id", corrected[0]["words"][0])
+
+    def test_forwards_arbitrary_word_level_extra_fields_during_mlx_correction(
+        self,
+    ) -> None:
+        segments = [
+            {
+                "start": 0.0,
+                "end": 28.6853,
+                "text": "hello",
+                "words": [
+                    {
+                        "word": "hello",
+                        "start": 0.0,
+                        "end": 28.6853,
+                        "speaker_id": "speaker_0",
+                        "confidence": 0.95,
+                    }
+                ],
+            },
+        ]
+
+        corrected, correction = maybe_correct_suspicious_timestamps(
+            segments=segments,
+            media_duration=286.853,
+            backend="mlx",
+            enabled=True,
+        )
+
+        self.assertTrue(correction["applied"])
+        self.assertEqual(corrected[0]["words"][0]["speaker_id"], "speaker_0")
+        self.assertEqual(corrected[0]["words"][0]["confidence"], 0.95)
+
 
 class SubtitleResegmentationTests(unittest.TestCase):
     def test_resegments_long_segment_with_word_timestamps(self) -> None:

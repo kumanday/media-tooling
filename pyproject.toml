@@ -15,6 +15,7 @@ dependencies = [
 
 [project.optional-dependencies]
 elevenlabs = ["requests>=2.31"]
+animations = ["manim>=0.20", "manim-voiceover>=0.3"]
 
 [dependency-groups]
 dev = [
@@ -43,6 +44,7 @@ media-loudnorm = "media_tooling.loudnorm:main"
 media-pack-transcript = "media_tooling.pack_transcript:main"
 media-translate-subtitles = "media_tooling.subtitle_translate:main"
 media-edl-render = "media_tooling.edl_render:main"
+media-verify = "media_tooling.verify:main"
 
 [tool.ruff]
 target-version = "py312"
