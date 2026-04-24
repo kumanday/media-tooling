@@ -3,7 +3,12 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from media_tooling.batch_utils import finish_batch, load_manifest_inputs
+from media_tooling.batch_utils import (
+    finish_batch,
+    guard_existing_output,
+    load_manifest_inputs,
+    record_failure,
+)
 from media_tooling.burn_subtitles import burn_subtitles
 
 
@@ -83,22 +88,18 @@ def main() -> int:
         output_path = output_dir / f"{stem}-burned.mp4"
 
         if not srt_path.exists():
-            failures.append(f"{item}: SRT not found at {srt_path}")
-            print(f"FAILED: {item}\nSRT not found at {srt_path}")
+            record_failure(failures, item, f"SRT not found at {srt_path}")
             continue
 
-        if output_path.exists():
-            if args.skip_existing:
-                print(f"Skipping existing burned subtitles for {item}")
-                continue
-            if not args.overwrite:
-                failures.append(
-                    f"{item}: output exists at {output_path} (use --overwrite or --skip-existing)"
-                )
-                print(
-                    f"FAILED: {item}\noutput exists at {output_path} (use --overwrite or --skip-existing)"
-                )
-                continue
+        if not guard_existing_output(
+            item=item,
+            output_path=output_path,
+            overwrite=args.overwrite,
+            skip_existing=args.skip_existing,
+            failures=failures,
+            label="burned subtitles",
+        ):
+            continue
 
         print(f"\n=== {item.name} ===")
         try:
@@ -114,8 +115,7 @@ def main() -> int:
             )
             print(f"Burned subtitles: {output_path}")
         except Exception as exc:  # noqa: BLE001
-            failures.append(f"{item}: {exc}")
-            print(f"FAILED: {item}\n{exc}")
+            record_failure(failures, item, str(exc))
 
     return finish_batch(failures)
 

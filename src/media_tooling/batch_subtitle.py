@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from media_tooling.batch_utils import finish_batch, load_manifest_inputs
+from media_tooling.batch_utils import finish_batch, load_manifest_inputs, record_failure
 from media_tooling.subtitle import run_transcription_job
 
 
@@ -101,6 +101,7 @@ def parse_args() -> argparse.Namespace:
     )
     return parser.parse_args()
 
+
 def main() -> int:
     args = parse_args()
     inputs_file = Path(args.inputs_file).expanduser().resolve()
@@ -140,8 +141,7 @@ def main() -> int:
                 api_key=args.api_key,
             )
         except Exception as exc:  # noqa: BLE001
-            failures.append(f"{item}: {exc}")
-            print(f"FAILED: {item}\n{exc}")
+            record_failure(failures, item, str(exc))
 
     return finish_batch(failures)
 

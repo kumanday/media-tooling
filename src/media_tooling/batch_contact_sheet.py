@@ -3,7 +3,12 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from media_tooling.batch_utils import finish_batch, load_manifest_inputs
+from media_tooling.batch_utils import (
+    finish_batch,
+    guard_existing_output,
+    load_manifest_inputs,
+    record_failure,
+)
 from media_tooling.contact_sheet import generate_contact_sheet
 
 
@@ -61,6 +66,7 @@ def parse_args() -> argparse.Namespace:
     )
     return parser.parse_args()
 
+
 def main() -> int:
     args = parse_args()
     inputs_file = Path(args.inputs_file).expanduser().resolve()
@@ -73,18 +79,15 @@ def main() -> int:
 
     for item in items:
         output_path = output_dir / f"{item.stem}-contact-sheet.png"
-        if output_path.exists():
-            if args.skip_existing:
-                print(f"Skipping existing contact sheet for {item}")
-                continue
-            if not args.overwrite:
-                failures.append(
-                    f"{item}: output exists at {output_path} (use --overwrite or --skip-existing)"
-                )
-                print(
-                    f"FAILED: {item}\noutput exists at {output_path} (use --overwrite or --skip-existing)"
-                )
-                continue
+        if not guard_existing_output(
+            item=item,
+            output_path=output_path,
+            overwrite=args.overwrite,
+            skip_existing=args.skip_existing,
+            failures=failures,
+            label="contact sheet",
+        ):
+            continue
 
         print(f"\n=== {item.name} ===")
         try:
@@ -99,8 +102,7 @@ def main() -> int:
             )
             print(f"Contact sheet: {output_path}")
         except Exception as exc:  # noqa: BLE001
-            failures.append(f"{item}: {exc}")
-            print(f"FAILED: {item}\n{exc}")
+            record_failure(failures, item, str(exc))
 
     return finish_batch(failures)
 
