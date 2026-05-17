@@ -72,6 +72,25 @@ When setting up a project workspace, prefer:
 6. Distill the corpus into editorial buckets in `analysis/`.
 7. Bubble up only the useful synthesis into the main thread.
 
+## Worker/subagent use
+
+If the harness supports workers, use them to isolate intermediate context for
+inventory or analysis passes over disjoint source groups. Workers are for
+context isolation, not throughput. Run media-heavy transcription and
+contact-sheet work sequentially to avoid RAM and I/O pressure.
+
+Give each worker a self-contained source list and output directory. Ask it to
+return only:
+
+- files created or modified
+- sources skipped or failed
+- short editorial findings worth preserving
+- follow-up commands needed by the main thread
+
+Keep raw transcripts, frame dumps, and scratch reasoning in project artifacts.
+The main thread should receive the manifest and distilled notes, not the
+intermediate processing context from every source.
+
 ## Operational rules
 
 - Prefer sequential processing for media-heavy workloads.

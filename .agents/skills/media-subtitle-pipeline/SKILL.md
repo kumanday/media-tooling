@@ -47,6 +47,26 @@ The packed transcript (`takes_packed.md`) is the **primary format for agent reas
 
 The timeline view is **not** a default output. Call it only at editing decision points where visual context (filmstrip frames, waveform, silence gaps) would change the agent's choice — for example, when deciding where to cut, checking pacing around a pause, or verifying speaker transitions.
 
+## Worker/subagent use
+
+If the harness supports workers, use them for large batches only when the work
+can be partitioned by source file or manifest shard. Each worker should run the
+same project-local commands, write artifacts under `$PROJECT_DIR`, and return a
+compact handoff:
+
+- source files processed
+- transcript/SRT/packed transcript paths created or reused
+- failures, retries, and sources skipped by `--skip-existing`
+- a short list of notable timestamp ranges or quality issues
+
+Run transcription, packing, and translation worker tasks sequentially. The goal
+is to keep raw transcript and translation scratch context out of the main
+thread, not to increase concurrent media processing.
+
+Keep raw transcript text and translation scratch work out of the main thread
+unless a downstream editing decision needs it. The main thread should reason
+from packed transcript paths, summaries, and targeted timestamp excerpts.
+
 ## Default output pattern
 
 Put project artifacts in folders such as:

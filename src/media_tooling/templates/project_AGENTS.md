@@ -61,7 +61,7 @@ These 12 production rules are enforced by code guardrails and must never be viol
 7. **Pad cut edges (30-200ms working window)** — Absorb 50-100ms timestamp drift by padding each cut edge with 30-200ms of surrounding context.
 8. **Word-level verbatim ASR only** — Never use phrase-mode SRT generation. Word-level timestamps are required for accurate cut-point selection.
 9. **Cache transcripts** — Never re-transcribe unless the source file has changed. Check modification timestamps before re-running.
-10. **Parallel sub-agents for animations** — Animation rendering must use parallel workers, never sequential processing.
+10. **Worker context isolation for animations** — When the harness supports workers, use them to isolate animation-slot scratch context and compact handoffs. Run media-heavy worker tasks sequentially.
 11. **Strategy confirmation before execution** — Present the editing strategy to the user for approval before making irreversible edits.
 12. **All outputs in project directory, never clobber source** — Write all generated files into `$PROJECT_DIR`. Never overwrite or modify source media files.
 
@@ -78,7 +78,7 @@ Avoid these 13 patterns — they have been proven to produce broken or low-quali
 7. **Linear animation easing** — Linear easing looks robotic and amateurish. Always use cubic easing (ease_out_cubic for reveals, ease_in_out_cubic for draws).
 8. **Hard audio cuts (no fade)** — Violates Hard Rule 3. Produces audible clicks/pops at every join point.
 9. **Typing text centered on partial string** — Centering should use the full string bounding box, not character-by-character positioning. Partial-string centering causes misalignment.
-10. **Sequential sub-agents for animations** — Violates Hard Rule 10. Animations must render in parallel to meet time budgets.
+10. **Using workers as parallel media processors** — Violates Hard Rule 10. Workers are for isolating intermediate context, not for increasing concurrent media processing.
 11. **Editing before confirming strategy with user** — Violates Hard Rule 11. Always get explicit approval of the editing plan before making cuts.
 12. **Cutting inside a word** — Violates Hard Rule 6. Always cut at word boundaries to preserve speech clarity.
 13. **Assuming content type** — Never assume a file is "podcast", "interview", etc. Always generalize processing to work for any spoken-media content.

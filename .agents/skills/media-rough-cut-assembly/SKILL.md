@@ -37,6 +37,20 @@ storyboard → EDL spec → media-edl-render → [media-verify] → iterate
 5. Run `media-verify` on the rendered output for self-evaluation at cut boundaries *(planned — not yet implemented; use manual review until available)*.
 6. Iterate: adjust cut points, grade settings, or segment order in the EDL, then re-render and re-verify.
 
+### Worker/subagent use
+
+If the harness supports workers, use them for independent source review,
+candidate select discovery, or verification windows. Keep EDL authorship and
+final render decisions in the main thread so the sequence remains coherent.
+Use workers to isolate intermediate scan/review context, not to run media-heavy
+processing concurrently.
+
+Assign each worker a disjoint transcript, source file, or output time window.
+Ask for a compact handoff containing selected timestamp ranges, reasons,
+quality risks, generated verification artifact paths, and any files changed.
+Do not pull full transcript scans, frame-by-frame notes, or exploratory
+reasoning into the main thread unless a cut decision depends on them.
+
 ## EDL JSON format
 
 An EDL JSON document describes which time ranges to extract from which source files and how to process each segment.

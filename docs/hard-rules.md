@@ -92,11 +92,12 @@ transcript timestamps before re-running transcription.
 **Enforcement:** `subtitle.py` — `--skip-existing` flag skips re-transcription
 when outputs already exist.
 
-### Rule 10: Parallel sub-agents for animations
+### Rule 10: Worker context isolation for animations
 
-**Rationale:** Sequential animation rendering is too slow for production
-workflows with multiple overlays. Animations must render in parallel to meet
-time budgets.
+**Rationale:** Animation slots can create a lot of scene-specific scratch
+reasoning and render artifacts. When the harness supports workers, use them to
+keep that intermediate context out of the main thread. Media rendering is
+RAM-heavy, so worker tasks should run sequentially.
 
 **Enforcement:** To be enforced in overlay/animation rendering modules when
 created.
@@ -202,12 +203,15 @@ displayed string.
 **Correct approach:** Compute centering using the complete string bounding box
 before rendering.
 
-### Anti-pattern 10: Sequential sub-agents for animations
+### Anti-pattern 10: Using workers as parallel media processors
 
-**Why it fails:** Violates Hard Rule 10. Rendering animations sequentially is
-too slow for production workflows.
+**Why it fails:** Violates Hard Rule 10. Parallel media or animation rendering
+can exhaust RAM and freeze the machine. Workers are for isolating intermediate
+context, not for increasing concurrent processing.
 
-**Correct approach:** Use parallel workers for animation rendering.
+**Correct approach:** Run resource-heavy worker tasks sequentially. Each worker
+returns a compact handoff with artifacts, commands, assumptions, and
+integration notes.
 
 ### Anti-pattern 11: Editing before confirming strategy with user
 
@@ -249,7 +253,7 @@ content. Let the content dictate the workflow, not labels.
 | 7 | Pad cut edges (30-200ms working window) | `edl_render.py` (future) |
 | 8 | Word-level verbatim ASR only | `subtitle.py` |
 | 9 | Cache transcripts | `subtitle.py` |
-| 10 | Parallel sub-agents for animations | overlay modules (future) |
+| 10 | Worker context isolation for animation slots | Agent orchestration |
 | 11 | Strategy confirmation before execution | AGENTS.md template |
 | 12 | All outputs in project directory, never clobber source | AGENTS.md template |
 
@@ -264,7 +268,7 @@ content. Let the content dictate the workflow, not labels.
 | 7 | Linear animation easing | — |
 | 8 | Hard audio cuts (no fade) | Rule 3 |
 | 9 | Typing text centered on partial string | — |
-| 10 | Sequential sub-agents for animations | Rule 10 |
+| 10 | Using workers as parallel media processors | Rule 10 |
 | 11 | Editing before confirming strategy with user | Rule 11 |
 | 12 | Cutting inside a word | Rule 6 |
 | 13 | Assuming content type | — |

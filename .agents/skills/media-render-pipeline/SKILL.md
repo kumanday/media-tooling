@@ -30,6 +30,32 @@ Delegate to the appropriate sub-skill when a step's work falls entirely within
 its scope. This skill adds the conversation, strategy, self-evaluation, and
 iteration layers that the sub-skills do not cover.
 
+## Worker/subagent protocol
+
+If the harness supports workers, use them for independent, bounded side work to
+isolate intermediate context:
+transcript/contact-sheet batches, candidate-select analysis by source, overlay
+animation slots, or verification samples. The main thread owns the strategy,
+EDL, user-facing decisions, and final integration.
+
+Workers are not a parallel-processing instruction. For RAM-heavy media work,
+run one worker task at a time and consume its compact handoff before starting
+the next one.
+
+Worker prompts must be self-contained and define a disjoint artifact scope
+such as one source file, one transcript shard, one animation slot, or one
+verification window. Ask workers to return only durable handoff data:
+
+- files created or modified
+- key timestamps, selected ranges, or verification findings
+- render commands run and output paths
+- blockers, assumptions, and follow-up commands
+
+Do not import raw transcripts, frame-by-frame notes, or exploratory reasoning
+into the main thread unless needed for a specific decision. Persist bulky
+intermediate context in `$PROJECT_DIR` artifacts and keep the main thread to
+the synthesis needed for strategy, EDL edits, and user review.
+
 ## Project workspace
 
 - `$PROJECT_DIR` — the current media project directory (set by the agent at
@@ -152,8 +178,11 @@ Produce the edit decision list and build the video.
      `reason`, and optional `grade`.
 2. **Drill into `media-timeline-view`** at ambiguous moments where visual
    context would change the editing decision.
-3. **Build animations in parallel** (if applicable) — spawn sub-agents
-   simultaneously, not sequentially (Hard Rule 10, Anti-pattern 10).
+3. **Build animations in isolated slots** (if applicable) — when the harness
+   supports workers, assign each worker exactly one
+   `$PROJECT_DIR/edit/animations/slot_<id>/` directory and run worker tasks
+   sequentially. Each worker reports the render path, duration, placement
+   assumptions, commands run, and files changed.
    **Note:** `media-edl-render` does not yet composite overlays. Animations
    must be composited manually via ffmpeg overlay filter after rendering, or
    omitted until renderer support is added.
@@ -284,7 +313,7 @@ not bundled when the skill is deployed standalone).
 | 7 | Pad cut edges (30–200ms working window) | `edl_render.py` |
 | 8 | Word-level verbatim ASR only (never phrase-mode SRT) | `subtitle.py` |
 | 9 | Cache transcripts (never re-transcribe unchanged sources) | `subtitle.py` |
-| 10 | Parallel sub-agents for animations | Agent orchestration |
+| 10 | Isolated worker handoffs for animation slots | Agent orchestration |
 | 11 | **Strategy confirmation before execution** | This skill (Step 4) |
 | 12 | All outputs in project directory, never clobber source | This skill |
 
@@ -309,7 +338,7 @@ the media-tooling repository; not bundled when the skill is deployed standalone)
 | 7 | Linear animation easing (always use cubic) | — |
 | 8 | Hard audio cuts with no fade | Rule 3 |
 | 9 | Typing text centered on partial string | — |
-| 10 | Sequential sub-agents for animations (must be parallel) | Rule 10 |
+| 10 | Using workers for parallel media processing instead of context isolation | Rule 10 |
 | 11 | Editing before confirming strategy with user | Rule 11 |
 | 12 | Cutting inside a word | Rule 6 |
 | 13 | Assuming content type (always generalize) | — |
@@ -423,9 +452,11 @@ When the user wants overlay animations, follow these principles:
   for draws). Never linear (Anti-pattern 7).
 - **Typing text:** Center on the FULL string's bounding box, not
   character-by-character (Anti-pattern 9).
-- **Parallel sub-agents:** Spawn all animation sub-agents simultaneously
-  (Hard Rule 10). Each prompt must be self-contained since sub-agents have
-  no parent context.
+- **Animation workers:** When supported by the harness, use workers to isolate
+  per-slot scratch context. Each prompt must be self-contained since workers
+  have no parent context. Run render-heavy worker tasks sequentially; the main
+  thread should receive the slot path, render path, duration, and integration
+  notes, not the worker's full exploratory reasoning.
 
 ## Subtitle styles
 

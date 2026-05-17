@@ -76,6 +76,28 @@ PLAN --> CODE --> RENDER --> STITCH --> AUDIO (optional) --> REVIEW
 5. **AUDIO** (optional) — Add voiceover (prefer `manim-voiceover` plugin, see `references/rendering.md`) and/or background music via ffmpeg.
 6. **REVIEW** — Render preview stills, verify against plan, adjust. See `references/production-quality.md` for checklists.
 
+## Worker/subagent use
+
+If the harness supports workers, use them after the global `plan.md` exists and
+only for disjoint scene or review work. The main thread owns the narrative arc,
+shared palette, typography constants, final `script.py` integration, stitching,
+and user-facing review.
+Use workers to isolate scene-specific scratch context and handoffs, not to
+increase concurrent rendering.
+
+Good worker scopes:
+
+- implement one named scene class from the plan
+- render/check one scene and report visual defects
+- prototype one optional animation motif in a scratch file
+
+Each worker prompt should include the relevant plan excerpt, shared constants,
+target scene name, output directory, and constraints from this skill. Ask the
+worker to return only files changed, render commands run, output paths,
+screenshots/stills produced, and integration notes. Keep failed experiments and
+long aesthetic reasoning out of the main thread unless they affect the final
+design.
+
 ## Project Structure
 
 ```
