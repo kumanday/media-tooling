@@ -1,0 +1,77 @@
+memory_root: .opensymphony/memory
+visibility: private
+index_path: .opensymphony/memory/memory.duckdb
+confidence_threshold: 75
+source_snapshots: hashes
+markdown_indexes: true
+docs:
+  public_root: docs
+  default_visibility: public
+  deny_private_links: true
+areas:
+  development:
+    title: Development
+    docs_target: docs/DEVELOPMENT.md
+    visibility: public
+    status: stable
+    confidence: 85
+    aliases:
+    - Development
+    source_refs:
+      docs:
+      - docs/DEVELOPMENT.md
+  exporting:
+    title: Exporting Media Tooling
+    docs_target: docs/EXPORTING.md
+    visibility: public
+    status: stable
+    confidence: 85
+    aliases:
+    - Exporting Media Tooling
+    source_refs:
+      docs:
+      - docs/EXPORTING.md
+  hard-rules:
+    title: Production Hard Rules and Anti-patterns
+    docs_target: docs/hard-rules.md
+    visibility: public
+    status: stable
+    confidence: 85
+    aliases:
+    - Production Hard Rules and Anti-patterns
+    source_refs:
+      docs:
+      - docs/hard-rules.md
+  setup:
+    title: Setup
+    docs_target: docs/SETUP.md
+    visibility: public
+    status: stable
+    confidence: 85
+    aliases:
+    - Setup
+    source_refs:
+      docs:
+      - docs/SETUP.md
+  video-use-integration-plan:
+    title: 'Media-Tooling × Video-Use: Integration Plan'
+    docs_target: docs/video-use-integration-plan.md
+    visibility: public
+    status: stable
+    confidence: 85
+    aliases:
+    - 'Media-Tooling × Video-Use: Integration Plan'
+    source_refs:
+      docs:
+      - docs/video-use-integration-plan.md
+  workflows:
+    title: Workflows
+    docs_target: docs/WORKFLOWS.md
+    visibility: public
+    status: stable
+    confidence: 85
+    aliases:
+    - Workflows
+    source_refs:
+      docs:
+      - docs/WORKFLOWS.md
