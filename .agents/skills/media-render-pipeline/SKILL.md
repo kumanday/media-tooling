@@ -418,11 +418,9 @@ Step 8: Iterate on feedback and persist session memory.
 - `grade`: top-level default grade preset or raw ffmpeg filter. Overridden by
   per-range `grade`.
 - `overlays`: rendered animation clips with placement in the output timeline.
-  Paths are resolved relative to `$PROJECT_DIR`. **Note:** overlay compositing
-  is not yet implemented in `media-edl-render`; animations built in Step 5.3
-  must be composited manually via ffmpeg overlay filter in a post-render step,
-  or omitted until renderer support is added. The `overlays` field in the EDL
-  is accepted but silently ignored by the current renderer.
+  Paths are resolved relative to `$PROJECT_DIR`. `media-edl-render` composites
+  overlays before burning subtitles (Hard Rule 1) and applies PTS shifts
+  (Hard Rule 4) automatically.
 - `subtitles`: string (path) or dict with optional keys `style`, `path`,
   `force_style`. `style` is the most common; `path` and `force_style` are
   only needed when overriding defaults.
