@@ -66,13 +66,13 @@ silence gaps (word boundaries).
 
 **Enforcement:** `edl_render.py` — `snap_to_word_boundary()` snaps every cut point to the nearest word boundary using the transcript JSON word-level timestamps.
 
-### Rule 7: Pad cut edges (30-200ms working window)
+### Rule 7: Pad cut edges (30 ms minimum)
 
 **Rationale:** ASR timestamps can drift by 50-100ms. Padding each cut edge
-with 30-200ms of surrounding context absorbs this drift and ensures clean
+with at least 30 ms of surrounding context absorbs this drift and ensures clean
 word boundaries are preserved.
 
-**Enforcement:** `edl_render.py` — `apply_padding()` pads every cut edge by 30 ms (minimum) before extraction, capped at source duration and clamped to the padded segment length.
+**Enforcement:** `edl_render.py` — `apply_padding()` pads every cut edge by `MIN_PAD` (30 ms) before extraction, capped at source duration and clamped to the padded segment length.
 
 ### Rule 8: Word-level verbatim ASR only
 
@@ -99,7 +99,7 @@ reasoning and render artifacts. When the harness supports workers, use them to
 keep that intermediate context out of the main thread. Media rendering is
 RAM-heavy, so worker tasks should run sequentially.
 
-**Enforcement:** `edl_render.py` — overlay compositing uses worker-isolated context via the `overlays` field in the EDL JSON spec.
+**Enforcement:** Not yet implemented in `edl_render.py` — `build_final_composite()` currently runs synchronously in the main thread.
 
 ### Rule 11: Strategy confirmation before execution
 
@@ -249,7 +249,7 @@ content. Let the content dictate the workflow, not labels.
 | 4 | Overlay PTS shift | `edl_render.py` |
 | 5 | Master SRT uses output-timeline offsets | `edl_render.py` |
 | 6 | Never cut inside a word | `edl_render.py` |
-| 7 | Pad cut edges (30-200ms working window) | `edl_render.py` |
+| 7 | Pad cut edges (30 ms minimum) | `edl_render.py` |
 | 8 | Word-level verbatim ASR only | `subtitle.py` |
 | 9 | Cache transcripts | `subtitle.py` |
 | 10 | Worker context isolation for animation slots | Agent orchestration |
