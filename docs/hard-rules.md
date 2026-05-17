@@ -38,7 +38,7 @@ filtergraph indicators (`-filter_complex`, `-lavfi`, `xfade`, `acrossfade`).
 and pops. A 30ms fade-in/fade-out at every boundary eliminates these
 artifacts without perceptibly affecting content.
 
-**Enforcement:** To be enforced in `edl_render.py` when created.
+**Enforcement:** `edl_render.py` — 30 ms `afade` filters are applied at both edges of every extracted segment.
 
 ### Rule 4: Overlay PTS shift
 
@@ -47,7 +47,7 @@ stream starts at PTS=0 from the container start. To make overlay frame 0 land
 at the intended time window, apply `setpts=PTS-STARTPTS+T/TB` to the overlay
 stream before the overlay filter.
 
-**Enforcement:** To be enforced in `edl_render.py` when created.
+**Enforcement:** `edl_render.py` — `build_final_composite()` applies `setpts=PTS-STARTPTS+T/TB` to overlay streams before compositing.
 
 ### Rule 5: Master SRT uses output-timeline offsets
 
@@ -56,7 +56,7 @@ a continuous output, subtitle timestamps must be recalculated relative to the
 output timeline: `output_time = word.start - segment_start + segment_offset`.
 Using source-timeline offsets produces subtitles that drift out of sync.
 
-**Enforcement:** To be enforced in `edl_render.py` when created.
+**Enforcement:** `edl_render.py` — `build_master_srt()` recalculates all subtitle timestamps relative to the output timeline during assembly.
 
 ### Rule 6: Never cut inside a word
 
@@ -64,15 +64,15 @@ Using source-timeline offsets produces subtitles that drift out of sync.
 that sounds broken to listeners. Cut points must always land on inter-word
 silence gaps (word boundaries).
 
-**Enforcement:** To be enforced in `edl_render.py` when created.
+**Enforcement:** `edl_render.py` — `snap_to_word_boundary()` snaps every cut point to the nearest word boundary using the transcript JSON word-level timestamps.
 
-### Rule 7: Pad cut edges (30-200ms working window)
+### Rule 7: Pad cut edges (30 ms minimum)
 
 **Rationale:** ASR timestamps can drift by 50-100ms. Padding each cut edge
-with 30-200ms of surrounding context absorbs this drift and ensures clean
+with at least 30 ms of surrounding context absorbs this drift and ensures clean
 word boundaries are preserved.
 
-**Enforcement:** To be enforced in `edl_render.py` when created.
+**Enforcement:** `edl_render.py` — `apply_padding()` pads every cut edge by `MIN_PAD` (30 ms) before extraction, capped at source duration and clamped to the padded segment length.
 
 ### Rule 8: Word-level verbatim ASR only
 
@@ -99,8 +99,7 @@ reasoning and render artifacts. When the harness supports workers, use them to
 keep that intermediate context out of the main thread. Media rendering is
 RAM-heavy, so worker tasks should run sequentially.
 
-**Enforcement:** To be enforced in overlay/animation rendering modules when
-created.
+**Enforcement:** Not yet implemented in `edl_render.py` — `build_final_composite()` currently runs synchronously in the main thread.
 
 ### Rule 11: Strategy confirmation before execution
 
@@ -246,11 +245,11 @@ content. Let the content dictate the workflow, not labels.
 |---|-----------|-------------------|
 | 1 | Subtitles applied last in filter chain | `burn_subtitles.py` |
 | 2 | Per-segment extract + lossless concat | `rough_cut.py` |
-| 3 | 30ms audio fades at every segment boundary | `edl_render.py` (future) |
-| 4 | Overlay PTS shift | `edl_render.py` (future) |
-| 5 | Master SRT uses output-timeline offsets | `edl_render.py` (future) |
-| 6 | Never cut inside a word | `edl_render.py` (future) |
-| 7 | Pad cut edges (30-200ms working window) | `edl_render.py` (future) |
+| 3 | 30ms audio fades at every segment boundary | `edl_render.py` |
+| 4 | Overlay PTS shift | `edl_render.py` |
+| 5 | Master SRT uses output-timeline offsets | `edl_render.py` |
+| 6 | Never cut inside a word | `edl_render.py` |
+| 7 | Pad cut edges (30 ms minimum) | `edl_render.py` |
 | 8 | Word-level verbatim ASR only | `subtitle.py` |
 | 9 | Cache transcripts | `subtitle.py` |
 | 10 | Worker context isolation for animation slots | Agent orchestration |

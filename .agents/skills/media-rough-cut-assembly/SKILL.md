@@ -34,7 +34,7 @@ storyboard → EDL spec → media-edl-render → [media-verify] → iterate
 2. Identify word-boundary cut points from transcripts (use `media-pack-transcript` to prepare packed transcripts for LLM-based selection).
 3. Write a project-local EDL JSON spec defining source files, time ranges, and per-segment options.
 4. Run `media-edl-render` against the EDL spec.
-5. Run `media-verify` on the rendered output for self-evaluation at cut boundaries *(planned — not yet implemented; use manual review until available)*.
+5. Run `media-verify` on the rendered output for self-evaluation at cut boundaries.
 6. Iterate: adjust cut points, grade settings, or segment order in the EDL, then re-render and re-verify.
 
 ### Worker/subagent use
@@ -361,6 +361,6 @@ See `docs/hard-rules.md` for the full list of 12 hard rules and 13 anti-patterns
 - Keep placeholder copy short enough to be readable on-screen.
 - Include explicit timing metadata on cards whenever a storyboard already defines chapter windows.
 - Prefer a reusable EDL JSON spec over a one-off shell script.
-- Run `media-verify` after rendering when available (currently planned, not yet implemented); otherwise rely on manual review.
+- Run `media-verify` after rendering to self-evaluate cut boundaries.
 - Never skip loudness normalization for social-media distribution targets.
 - Use `--draft` mode first to verify cut points, then `--preview` for QC, then full render for final output.

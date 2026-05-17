@@ -201,6 +201,8 @@ The main skills are:
   Uses the subtitle commands for spoken-media processing.
 - [`media-rough-cut-assembly`](./.agents/skills/media-rough-cut-assembly/SKILL.md)
   Uses a project-local JSON spec to assemble cards, image holds, extracted clips, manifests, and first-pass rough cuts.
+- [`media-render-pipeline`](./.agents/skills/media-render-pipeline/SKILL.md)
+  End-to-end orchestration skill for finished, broadcast-ready video production from raw source media.
 
 The underlying commands are:
 
@@ -216,13 +218,29 @@ The underlying commands are:
   Process a manifest of silent or visual-only videos sequentially.
 - `media-rough-cut`
   Build a first-pass rough cut from a project-local JSON spec of cards, image holds, and clip extracts.
+- `media-edl-render`
+  Render an assembled video from an EDL JSON spec with per-segment grading, audio fades, subtitle burning, and two-pass loudness normalization.
+- `media-grade`
+  Apply automatic or preset color grading to a video file.
+- `media-loudnorm`
+  Two-pass loudness normalization targeting −14 LUFS / −1 dBTP / LRA 11.
+- `media-burn-subtitles`
+  Burn SRT subtitles into a single video file (subtitles applied last in the filter chain).
+- `media-batch-burn-subtitles`
+  Batch-burn subtitles into a manifest of video files.
+- `media-pack-transcript`
+  Convert a verbose JSON transcript into a compact, phrase-level markdown file for agent reasoning.
+- `media-timeline-view`
+  Generate a filmstrip + waveform composite PNG for visual inspection at editing decision points.
+- `media-verify`
+  Self-evaluate a rendered video against its EDL spec, checking cut boundaries, duration, grade consistency, and audio pops.
 - `media-tooling-init`
   Create the standard project directories and write or refresh the managed `AGENTS.md` block for a media project workspace.
 
 Optional shell helpers for repo-checkout workflows:
 
-- `extract`
-- `subtitle`
+- `extract` — Extract audio track from a video as `.m4a`.
+- `subtitle` — Convenience wrapper for `media-subtitle` from a repo checkout.
 
 Both subtitle commands accept `--backend auto|mlx|faster-whisper`.
 

@@ -96,12 +96,13 @@ jobs:
 
       - name: Run OpenHands PR Review
         if: steps.llm.outputs.enabled == 'true'
-        uses: OpenHands/extensions/plugins/pr-review@9e5bb49dbe61bdb364c89c10c7307c38139e9532
+        uses: OpenHands/extensions/plugins/pr-review@7782172ec796216cea2091e3f20c4d2a8a67da31
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           llm-api-key: ${{ secrets.AI_REVIEW_API_KEY }}
           llm-model: ${{ steps.llm.outputs.model }}
           llm-base-url: ${{ steps.llm.outputs.base_url }}
-          extensions-version: 9e5bb49dbe61bdb364c89c10c7307c38139e9532
+          extensions-version: 7782172ec796216cea2091e3f20c4d2a8a67da31
+          openhands-sdk-package: openhands-sdk==1.22.1
           review-style: ${{ steps.llm.outputs.style }}
           require-evidence: ${{ steps.llm.outputs.require_evidence }}
