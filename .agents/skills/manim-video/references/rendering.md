@@ -135,6 +135,11 @@ This outputs separate video files per section — useful for long videos where y
 
 The official `manim-voiceover` plugin integrates TTS directly into scene code, auto-syncing animation duration to voiceover length. This is significantly cleaner than the manual ffmpeg muxing approach above.
 
+`media-tooling[animations]` does not bundle `manim-voiceover` because the
+current plugin release pins a vulnerable `python-dotenv` range. Install it
+separately only after confirming its dependency constraints are acceptable for
+the target project.
+
 ### Installation
 
 ```bash

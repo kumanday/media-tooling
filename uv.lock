@@ -476,11 +476,11 @@ wheels = [
 
 [[package]]
 name = "idna"
-version = "3.13"
+version = "3.15"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/ce/cc/762dfb036166873f0059f3b7de4565e1b5bc3d6f28a414c13da27e442f99/idna-3.13.tar.gz", hash = "sha256:585ea8fe5d69b9181ec1afba340451fba6ba764af97026f92a91d4eef164a242", size = 194210, upload-time = "2026-04-22T16:42:42.314Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/82/77/7b3966d0b9d1d31a36ddf1746926a11dface89a83409bf1483f0237aa758/idna-3.15.tar.gz", hash = "sha256:ca962446ea538f7092a95e057da437618e886f4d349216d2b1e294abfdb65fdc", size = 199245, upload-time = "2026-05-12T22:45:57.011Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/5d/13/ad7d7ca3808a898b4612b6fe93cde56b53f3034dcde235acb1f0e1df24c6/idna-3.13-py3-none-any.whl", hash = "sha256:892ea0cde124a99ce773decba204c5552b69c3c67ffd5f232eb7696135bc8bb3", size = 68629, upload-time = "2026-04-22T16:42:40.909Z" },
+    { url = "https://files.pythonhosted.org/packages/d2/23/408243171aa9aaba178d3e2559159c24c1171a641aa83b67bdd3394ead8e/idna-3.15-py3-none-any.whl", hash = "sha256:048adeaf8c2d788c40fee287673ccaa74c24ffd8dcf09ffa555a2fbb59f10ac8", size = 72340, upload-time = "2026-05-12T22:45:55.733Z" },
 ]
 
 [[package]]
@@ -637,24 +637,6 @@ wheels = [
 ]
 
 [[package]]
-name = "manim-voiceover"
-version = "0.3.7"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "manim" },
-    { name = "mutagen" },
-    { name = "pip" },
-    { name = "pydub" },
-    { name = "python-dotenv" },
-    { name = "python-slugify" },
-    { name = "sox" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/3a/38/8b86f066158d3d1b3e334ac0cdf38b54f5ebcb138c0ea010972cb4155d4f/manim_voiceover-0.3.7.tar.gz", hash = "sha256:9913aa97a725339b5c7c6c93b6b26ad6169dbecf6973f61b1e48df5f732a8f4c", size = 27109, upload-time = "2024-09-29T20:33:31.649Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/b9/8d/aa6cd3cc25ca08fd520ab5c1be2295b9225df9fd2fb583f3e7854d0e5d2c/manim_voiceover-0.3.7-py3-none-any.whl", hash = "sha256:f5a8ca626131f063ffda2d8cd690c7bba05571f07357d168ea31ba4322cf8f08", size = 36233, upload-time = "2024-09-29T20:33:30.687Z" },
-]
-
-[[package]]
 name = "manimpango"
 version = "0.6.1"
 source = { registry = "https://pypi.org/simple" }
@@ -770,7 +752,6 @@ dependencies = [
 [package.optional-dependencies]
 animations = [
     { name = "manim" },
-    { name = "manim-voiceover" },
 ]
 elevenlabs = [
     { name = "requests" },
@@ -787,7 +768,6 @@ requires-dist = [
     { name = "faster-whisper", marker = "platform_machine != 'arm64' or sys_platform != 'darwin'", specifier = ">=1.1.0" },
     { name = "lightning-whisper-mlx", marker = "platform_machine == 'arm64' and sys_platform == 'darwin'", specifier = ">=0.0.10" },
     { name = "manim", marker = "extra == 'animations'", specifier = ">=0.20" },
-    { name = "manim-voiceover", marker = "extra == 'animations'", specifier = ">=0.3" },
     { name = "mlx", marker = "platform_machine == 'arm64' and sys_platform == 'darwin'", specifier = "<0.29.5" },
     { name = "numpy", specifier = ">=1.26" },
     { name = "onnxruntime", marker = "platform_machine == 'x86_64' and sys_platform == 'darwin'", specifier = "<1.24" },
@@ -885,15 +865,6 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/e0/47/dd32fa426cc72114383ac549964eecb20ecfd886d1e5ccf5340b55b02f57/mpmath-1.3.0.tar.gz", hash = "sha256:7a28eb2a9774d00c7bc92411c19a89209d5da7c4c9a9e227be8330a23a25b91f", size = 508106, upload-time = "2023-03-07T16:47:11.061Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/43/e3/7d92a15f894aa0c9c4b49b8ee9ac9850d6e63b03c9c32c0367a13ae62209/mpmath-1.3.0-py3-none-any.whl", hash = "sha256:a0b2b9fe80bbcd81a6647ff13108738cfb482d481d826cc0e02f5b35e5c88d2c", size = 536198, upload-time = "2023-03-07T16:47:09.197Z" },
-]
-
-[[package]]
-name = "mutagen"
-version = "1.47.0"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/81/e6/64bc71b74eef4b68e61eb921dcf72dabd9e4ec4af1e11891bbd312ccbb77/mutagen-1.47.0.tar.gz", hash = "sha256:719fadef0a978c31b4cf3c956261b3c58b6948b32023078a2117b1de09f0fc99", size = 1274186, upload-time = "2023-09-03T16:33:33.411Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/b0/7a/620f945b96be1f6ee357d211d5bf74ab1b7fe72a9f1525aafbfe3aee6875/mutagen-1.47.0-py3-none-any.whl", hash = "sha256:edd96f50c5907a9539d8e5bba7245f62c9f520aef333d13392a79a4f70aca719", size = 194391, upload-time = "2023-09-03T16:33:29.955Z" },
 ]
 
 [[package]]
@@ -1149,15 +1120,6 @@ wheels = [
 ]
 
 [[package]]
-name = "pip"
-version = "26.0.1"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/48/83/0d7d4e9efe3344b8e2fe25d93be44f64b65364d3c8d7bc6dc90198d5422e/pip-26.0.1.tar.gz", hash = "sha256:c4037d8a277c89b320abe636d59f91e6d0922d08a05b60e85e53b296613346d8", size = 1812747, upload-time = "2026-02-05T02:20:18.702Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/de/f0/c81e05b613866b76d2d1066490adf1a3dbc4ee9d9c839961c3fc8a6997af/pip-26.0.1-py3-none-any.whl", hash = "sha256:bdb1b08f4274833d62c1aa29e20907365a2ceb950410df15fc9521bad440122b", size = 1787723, upload-time = "2026-02-05T02:20:16.416Z" },
-]
-
-[[package]]
 name = "protobuf"
 version = "7.34.1"
 source = { registry = "https://pypi.org/simple" }
@@ -1302,27 +1264,6 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/0f/49/4cea918a08f02817aabae639e3d0ac046fef9f9180518a3ad394e22da148/pyreadline3-3.5.4.tar.gz", hash = "sha256:8d57d53039a1c75adba8e50dd3d992b28143480816187ea5efbd5c78e6c885b7", size = 99839, upload-time = "2024-09-19T02:40:10.062Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/5a/dc/491b7661614ab97483abf2056be1deee4dc2490ecbf7bff9ab5cdbac86e1/pyreadline3-3.5.4-py3-none-any.whl", hash = "sha256:eaf8e6cc3c49bcccf145fc6067ba8643d1df34d604a1ec0eccbf7a18e6d3fae6", size = 83178, upload-time = "2024-09-19T02:40:08.598Z" },
-]
-
-[[package]]
-name = "python-dotenv"
-version = "0.21.1"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/f5/d7/d548e0d5a68b328a8d69af833a861be415a17cb15ce3d8f0cd850073d2e1/python-dotenv-0.21.1.tar.gz", hash = "sha256:1c93de8f636cde3ce377292818d0e440b6e45a82f215c3744979151fa8151c49", size = 35930, upload-time = "2023-01-21T10:22:47.277Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/64/62/f19d1e9023aacb47241de3ab5a5d5fedf32c78a71a9e365bb2153378c141/python_dotenv-0.21.1-py3-none-any.whl", hash = "sha256:41e12e0318bebc859fcc4d97d4db8d20ad21721a6aa5047dd59f090391cb549a", size = 19284, upload-time = "2023-01-21T10:22:45.958Z" },
-]
-
-[[package]]
-name = "python-slugify"
-version = "8.0.4"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "text-unidecode" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/87/c7/5e1547c44e31da50a460df93af11a535ace568ef89d7a811069ead340c4a/python-slugify-8.0.4.tar.gz", hash = "sha256:59202371d1d05b54a9e7720c5e038f928f45daaffe41dd10822f3907b937c856", size = 10921, upload-time = "2024-02-08T18:32:45.488Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/a4/62/02da182e544a51a5c3ccf4b03ab79df279f9c60c5e82d5e8bec7ca26ac11/python_slugify-8.0.4-py2.py3-none-any.whl", hash = "sha256:276540b79961052b66b7d116620b36518847f52d5fd9e3a70164fc8c50faa6b8", size = 10051, upload-time = "2024-02-08T18:32:43.911Z" },
 ]
 
 [[package]]
@@ -1559,16 +1500,6 @@ wheels = [
 ]
 
 [[package]]
-name = "sox"
-version = "1.5.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "numpy" },
-    { name = "typing-extensions" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/3d/a2/d8e0d8fd7abf509ead4a2cb0fb24e5758b5330166bf9223d5cb9f98a7e8d/sox-1.5.0.tar.gz", hash = "sha256:12c7be5bb1f548d891fe11e82c08cf5f1a1d74e225298f60082e5aeb2469ada0", size = 63905, upload-time = "2024-03-20T16:59:37.385Z" }
-
-[[package]]
 name = "srt"
 version = "3.5.3"
 source = { registry = "https://pypi.org/simple" }
@@ -1593,15 +1524,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/83/d3/803453b36afefb7c2bb238361cd4ae6125a569b4db67cd9e79846ba2d68c/sympy-1.14.0.tar.gz", hash = "sha256:d3d3fe8df1e5a0b42f0e7bdf50541697dbe7d23746e894990c030e2b05e72517", size = 7793921, upload-time = "2025-04-27T18:05:01.611Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/a2/09/77d55d46fd61b4a135c444fc97158ef34a095e5681d0a6c10b75bf356191/sympy-1.14.0-py3-none-any.whl", hash = "sha256:e091cc3e99d2141a0ba2847328f5479b05d94a6635cb96148ccb3f34671bd8f5", size = 6299353, upload-time = "2025-04-27T18:04:59.103Z" },
-]
-
-[[package]]
-name = "text-unidecode"
-version = "1.3"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/ab/e2/e9a00f0ccb71718418230718b3d900e71a5d16e701a3dae079a21e9cd8f8/text-unidecode-1.3.tar.gz", hash = "sha256:bad6603bb14d279193107714b288be206cac565dfa49aa5b105294dd5c4aab93", size = 76885, upload-time = "2019-08-30T21:36:45.405Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/a6/a5/c0b6468d3824fe3fde30dbb5e1f687b291608f9473681bbf7dabbf5a87d7/text_unidecode-1.3-py2.py3-none-any.whl", hash = "sha256:1311f10e8b895935241623731c2ba64f4c455287888b18189350b67134a822e8", size = 78154, upload-time = "2019-08-30T21:37:03.543Z" },
 ]
 
 [[package]]
@@ -1699,11 +1621,11 @@ wheels = [
 
 [[package]]
 name = "urllib3"
-version = "2.6.3"
+version = "2.7.0"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/c7/24/5f1b3bdffd70275f6661c76461e25f024d5a38a46f04aaca912426a2b1d3/urllib3-2.6.3.tar.gz", hash = "sha256:1b62b6884944a57dbe321509ab94fd4d3b307075e0c2eae991ac71ee15ad38ed", size = 435556, upload-time = "2026-01-07T16:24:43.925Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/53/0c/06f8b233b8fd13b9e5ee11424ef85419ba0d8ba0b3138bf360be2ff56953/urllib3-2.7.0.tar.gz", hash = "sha256:231e0ec3b63ceb14667c67be60f2f2c40a518cb38b03af60abc813da26505f4c", size = 433602, upload-time = "2026-05-07T16:13:18.596Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/39/08/aaaad47bc4e9dc8c725e68f9d04865dbcb2052843ff09c97b08904852d84/urllib3-2.6.3-py3-none-any.whl", hash = "sha256:bf272323e553dfb2e87d9bfd225ca7b0f467b919d7bbd355436d3fd37cb0acd4", size = 131584, upload-time = "2026-01-07T16:24:42.685Z" },
+    { url = "https://files.pythonhosted.org/packages/7f/3e/5db95bcf282c52709639744ca2a8b149baccf648e39c8cc87553df9eae0c/urllib3-2.7.0-py3-none-any.whl", hash = "sha256:9fb4c81ebbb1ce9531cce37674bbc6f1360472bc18ca9a553ede278ef7276897", size = 131087, upload-time = "2026-05-07T16:13:17.151Z" },
 ]
 
 [[package]]
