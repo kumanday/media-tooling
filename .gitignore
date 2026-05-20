@@ -15,4 +15,6 @@ __pycache__/
 .opensymphony/*
 !.opensymphony/memory/
 .opensymphony/memory/*
-!.opensymphony/memory/memory.yaml
+
+# Checkout-local agent guidance and scratch context.
+.local/

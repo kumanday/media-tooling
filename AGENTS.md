@@ -111,3 +111,6 @@ This `AGENTS.md` is only for developing `media-tooling` itself.
 - Keep user-facing execution guidance out of this file. Project workspaces should get their managed `AGENTS.md` block from [src/media_tooling/templates/project_AGENTS.md](src/media_tooling/templates/project_AGENTS.md) via `media-tooling-init`.
 - When execution posture changes, update the packaged `.agents/skills/`, the project `AGENTS.md` template, and the user docs together.
 - Run `bash scripts/check.sh` from the repo root before committing.
+- If `.local/` exists, read any Markdown files there before substantive
+  documentation or prose edits. These files are checkout-local and optional;
+  do not reference them from committed docs unless the user asks.
