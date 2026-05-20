@@ -61,7 +61,7 @@ Single Python script per project. No browser, no Node.js, no GPU required.
 | Core | Manim Community Edition | Scene rendering, animation engine |
 | Math | LaTeX (texlive/MiKTeX) | Equation rendering via `MathTex` |
 | Video I/O | ffmpeg | Scene stitching, format conversion, audio muxing |
-| TTS | ElevenLabs (optional) | Narration voiceover |
+| TTS | Provider-specific TTS (optional) | Narration audio generated outside Manim |
 
 ## Pipeline
 
@@ -73,7 +73,7 @@ PLAN --> CODE --> RENDER --> STITCH --> AUDIO (optional) --> REVIEW
 2. **CODE** — Write `script.py` with one class per scene, each independently renderable.
 3. **RENDER** — `manim -ql script.py Scene1 Scene2 ...` for draft, `-qh` for production. See `references/rendering.md` for CLI reference and quality presets.
 4. **STITCH** — ffmpeg concat of scene clips into `final.mp4`.
-5. **AUDIO** (optional) — Add voiceover (prefer `manim-voiceover` plugin, see `references/rendering.md`) and/or background music via ffmpeg.
+5. **AUDIO** (optional) — Add pre-rendered narration and/or background music via ffmpeg. See `references/rendering.md`.
 6. **REVIEW** — Render preview stills, verify against plan, adjust. See `references/production-quality.md` for checklists.
 
 ## Worker/subagent use

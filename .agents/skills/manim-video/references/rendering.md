@@ -131,61 +131,20 @@ class LongVideo(Scene):
 Render individual sections: `manim --save_sections script.py LongVideo`
 This outputs separate video files per section — useful for long videos where you want to re-render only one part.
 
-## manim-voiceover Plugin (Recommended for Narrated Videos)
+## Narration Audio
 
-The official `manim-voiceover` plugin integrates TTS directly into scene code, auto-syncing animation duration to voiceover length. This is significantly cleaner than the manual ffmpeg muxing approach above.
+Keep Manim rendering separate from TTS. Generate narration with the project's
+chosen TTS path, then mux the rendered audio with ffmpeg. This keeps `script.py`
+deterministic, avoids network credentials in scene code, and leaves narration
+generation reusable across Manim, rough cuts, and other video workflows.
 
-`media-tooling[animations]` does not bundle `manim-voiceover` because the
-current plugin release pins a vulnerable `python-dotenv` range. Install it
-separately only after confirming its dependency constraints are acceptable for
-the target project.
+Recommended flow:
 
-### Installation
+1. Put the narration script in `plan.md` with scene or beat timestamps.
+2. Generate audio outside Manim through the project-standard TTS workflow.
+3. Render Manim scenes without TTS calls.
+4. Use ffmpeg to mix narration, music, and rendered scene clips.
 
-```bash
-pip install "manim-voiceover[elevenlabs]"
-# Or for free/local TTS:
-pip install "manim-voiceover[gtts]"    # Google TTS (free, lower quality)
-pip install "manim-voiceover[azure]"   # Azure Cognitive Services
-```
-
-### Usage
-
-```python
-from manim import *
-from manim_voiceover import VoiceoverScene
-from manim_voiceover.services.elevenlabs import ElevenLabsService
-
-class NarratedScene(VoiceoverScene):
-    def construct(self):
-        self.set_speech_service(ElevenLabsService(
-            voice_name="Alice",
-            model_id="eleven_multilingual_v2"
-        ))
-
-        # Voiceover auto-controls scene duration
-        circle = Circle()
-        with self.voiceover(text="Here is a circle being drawn.") as tracker:
-            self.play(Create(circle), run_time=tracker.duration)
-
-        with self.voiceover(text="Now let's transform it into a square.") as tracker:
-            self.play(Transform(circle, Square()), run_time=tracker.duration)
-```
-
-### Key Features
-
-- `tracker.duration` — total voiceover duration in seconds
-- `tracker.time_until_bookmark("mark1")` — sync specific animations to specific words
-- Auto-generates subtitle `.srt` files
-- Caches audio locally — re-renders don't re-generate TTS
-- Works with: ElevenLabs, Azure, Google TTS, pyttsx3 (offline), and custom services
-
-### Bookmarks for Precise Sync
-
-```python
-with self.voiceover(text='This is a <bookmark mark="circle"/>circle.') as tracker:
-    self.wait_until_bookmark("circle")
-    self.play(Create(Circle()), run_time=tracker.time_until_bookmark("circle", limit=1))
-```
-
-This is the recommended approach for any video with narration. The manual ffmpeg muxing workflow above is still useful for adding background music or post-production audio mixing.
+`media-tooling[animations]` does not bundle `manim-voiceover`. The current
+plugin release pins a vulnerable `python-dotenv` range, and future voiceover
+work should live in a shared TTS skill rather than a Manim-specific dependency.
