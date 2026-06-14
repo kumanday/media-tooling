@@ -12,6 +12,7 @@ last_memory_sync: 2026-06-14T19:02:42.455381+00:00
 ## Current model
 
 - COE-339 contributed: PR #8: feat: add media-burn-subtitles command (merge `6534dcc`)
+- COE-340 contributed: PR #11: feat(grade): add media-grade command with auto-grade, presets, and custom filter (merge `0d18336`)
 - COE-341 contributed: PR #14: feat(rough-cut): add 30ms audio fades at segment boundaries (merge `03d04b5`)
 - COE-342 contributed: No merged PR source was matched during capture.
 - COE-346 contributed: PR #15: feat: add media-batch-burn-subtitles command (merge `9de05ac`)
@@ -32,6 +33,7 @@ last_memory_sync: 2026-06-14T19:02:42.455381+00:00
 ## Recent changes
 
 - COE-339: Add subtitle burning command
+- COE-340: Add color grading command
 - COE-341: Add 30ms audio fades to rough-cut assembly
 - COE-342: Add loudness normalization command
 - COE-346: Add batch subtitle burning wrapper
@@ -39,6 +41,7 @@ last_memory_sync: 2026-06-14T19:02:42.455381+00:00
 ## Source refs
 
 - COE-339
+- COE-340
 - COE-341
 - COE-342
 - COE-346

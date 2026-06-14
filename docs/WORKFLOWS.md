@@ -272,8 +272,12 @@ media-rough-cut \
 
 ## Current model
 
+- COE-339 contributed: PR #8: feat: add media-burn-subtitles command (merge `6534dcc`)
 - COE-340 contributed: PR #11: feat(grade): add media-grade command with auto-grade, presets, and custom filter (merge `0d18336`)
-- COE-351 contributed: PR #20: docs(skill): update rough-cut-assembly for EDL + grading + fades + loudnorm + self-eval (merge `a744bfd`)
+- COE-341 contributed: PR #14: feat(rough-cut): add 30ms audio fades at segment boundaries (merge `03d04b5`)
+- COE-342 contributed: No merged PR source was matched during capture.
+- COE-343 contributed: No merged PR source was matched during capture.
+- COE-344 contributed: No merged PR source was matched during capture.
 
 ## Important invariants
 
@@ -290,12 +294,30 @@ media-rough-cut \
 
 ## Recent changes
 
+- COE-339: Add subtitle burning command
 - COE-340: Add color grading command
+- COE-341: Add 30ms audio fades to rough-cut assembly
+- COE-342: Add loudness normalization command
+- COE-343: Add session memory convention to project template
+- COE-344: Codify hard rules and anti-patterns into project template and code
+- COE-346: Add batch subtitle burning wrapper
+- COE-348: Add EDL-based word-boundary editing renderer
+- COE-349: Add self-evaluation (verify) command
 - COE-351: Update rough-cut-assembly skill for EDL + grading + fades + loudnorm + self-eval
+- COE-352: Add media-render-pipeline skill
 
 ## Source refs
 
+- COE-339
 - COE-340
+- COE-341
+- COE-342
+- COE-343
+- COE-344
+- COE-346
+- COE-348
+- COE-349
 - COE-351
+- COE-352
 
 <!-- END OPENSYMPHONY MANAGED MEMORY SYNC -->

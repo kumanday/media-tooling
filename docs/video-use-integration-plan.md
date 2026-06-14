@@ -378,7 +378,10 @@ animations = ["manim>=0.20"]
 ## Current model
 
 - COE-337 contributed: PR #5: feat: add media-pack-transcript command (COE-337) (merge `d4c9b19`)
+- COE-338 contributed: PR #6: feat: codify 12 hard rules and 13 anti-patterns as guardrails (merge `3639c98`)
+- COE-343 contributed: No merged PR source was matched during capture.
 - COE-344 contributed: No merged PR source was matched during capture.
+- COE-345 contributed: PR #17: feat(skill): add packed transcript and timeline view to subtitle-pipeline skill (COE-345) (merge `61f2f2c`)
 - COE-348 contributed: PR #16: feat(edl-render): add EDL-based word-boundary editing renderer (merge `ee2d994`)
 
 ## Important invariants
@@ -397,13 +400,25 @@ animations = ["manim>=0.20"]
 ## Recent changes
 
 - COE-337: Add packed transcript format
+- COE-338: Add filmstrip + waveform visual composite (timeline view)
+- COE-343: Add session memory convention to project template
 - COE-344: Codify hard rules and anti-patterns into project template and code
+- COE-345: Update subtitle-pipeline skill for packing + timeline view
 - COE-348: Add EDL-based word-boundary editing renderer
+- COE-349: Add self-evaluation (verify) command
+- COE-351: Update rough-cut-assembly skill for EDL + grading + fades + loudnorm + self-eval
+- COE-352: Add media-render-pipeline skill
 
 ## Source refs
 
 - COE-337
+- COE-338
+- COE-343
 - COE-344
+- COE-345
 - COE-348
+- COE-349
+- COE-351
+- COE-352
 
 <!-- END OPENSYMPHONY MANAGED MEMORY SYNC -->
