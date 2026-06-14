@@ -276,7 +276,12 @@ content. Let the content dictate the workflow, not labels.
 
 ## Current model
 
-- COE-433 contributed: PR #29: docs: scan and polish pass (merge `e0414ca`)
+- COE-338 contributed: PR #6: feat: codify 12 hard rules and 13 anti-patterns as guardrails (merge `3639c98`)
+- COE-343 contributed: No merged PR source was matched during capture.
+- COE-344 contributed: No merged PR source was matched during capture.
+- COE-348 contributed: PR #16: feat(edl-render): add EDL-based word-boundary editing renderer (merge `ee2d994`)
+- COE-351 contributed: PR #20: docs(skill): update rough-cut-assembly for EDL + grading + fades + loudnorm + self-eval (merge `a744bfd`)
+- COE-352 contributed: No merged PR source was matched during capture.
 
 ## Important invariants
 
@@ -293,10 +298,20 @@ content. Let the content dictate the workflow, not labels.
 
 ## Recent changes
 
-- COE-433: Documentation scan and polish pass
+- COE-338: Add filmstrip + waveform visual composite (timeline view)
+- COE-343: Add session memory convention to project template
+- COE-344: Codify hard rules and anti-patterns into project template and code
+- COE-348: Add EDL-based word-boundary editing renderer
+- COE-351: Update rough-cut-assembly skill for EDL + grading + fades + loudnorm + self-eval
+- COE-352: Add media-render-pipeline skill
 
 ## Source refs
 
-- COE-433
+- COE-338
+- COE-343
+- COE-344
+- COE-348
+- COE-351
+- COE-352
 
 <!-- END OPENSYMPHONY MANAGED MEMORY SYNC -->

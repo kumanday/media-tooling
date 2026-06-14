@@ -372,3 +372,38 @@ Optional (ElevenLabs backend):
 elevenlabs = ["requests>=2.31"]
 animations = ["manim>=0.20"]
 ```
+
+<!-- BEGIN OPENSYMPHONY MANAGED MEMORY SYNC -->
+
+## Current model
+
+- COE-337 contributed: PR #5: feat: add media-pack-transcript command (COE-337) (merge `d4c9b19`)
+- COE-344 contributed: No merged PR source was matched during capture.
+- COE-348 contributed: PR #16: feat(edl-render): add EDL-based word-boundary editing renderer (merge `ee2d994`)
+
+## Important invariants
+
+- Preserve the behavior described in the recent captured changes unless current code and tests show it has changed.
+- Use capsule source refs to inspect the original PR or Linear issue when context is ambiguous.
+
+## Operational flow
+
+- No generated diagram requested for this sync.
+
+## Known gotchas
+
+- No area-specific gotchas were inferred from the selected memory.
+
+## Recent changes
+
+- COE-337: Add packed transcript format
+- COE-344: Codify hard rules and anti-patterns into project template and code
+- COE-348: Add EDL-based word-boundary editing renderer
+
+## Source refs
+
+- COE-337
+- COE-344
+- COE-348
+
+<!-- END OPENSYMPHONY MANAGED MEMORY SYNC -->

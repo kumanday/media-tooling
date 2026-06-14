@@ -267,3 +267,35 @@ media-batch-contact-sheet \
 media-rough-cut \
   --spec "$PROJECT_DIR/rough-cuts/specs/episode-v1.json"
 ```
+
+<!-- BEGIN OPENSYMPHONY MANAGED MEMORY SYNC -->
+
+## Current model
+
+- COE-340 contributed: PR #11: feat(grade): add media-grade command with auto-grade, presets, and custom filter (merge `0d18336`)
+- COE-351 contributed: PR #20: docs(skill): update rough-cut-assembly for EDL + grading + fades + loudnorm + self-eval (merge `a744bfd`)
+
+## Important invariants
+
+- Preserve the behavior described in the recent captured changes unless current code and tests show it has changed.
+- Use capsule source refs to inspect the original PR or Linear issue when context is ambiguous.
+
+## Operational flow
+
+- No generated diagram requested for this sync.
+
+## Known gotchas
+
+- No area-specific gotchas were inferred from the selected memory.
+
+## Recent changes
+
+- COE-340: Add color grading command
+- COE-351: Update rough-cut-assembly skill for EDL + grading + fades + loudnorm + self-eval
+
+## Source refs
+
+- COE-340
+- COE-351
+
+<!-- END OPENSYMPHONY MANAGED MEMORY SYNC -->
