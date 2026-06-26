@@ -18,11 +18,21 @@ Use installed toolkit commands from this project directory:
 - color grading: `media-grade`
 - loudness normalization: `media-loudnorm`
 - output verification: `media-verify`
+- optional HTML-rendered video and motion overlays: `hyperframes`
 
 Operational defaults:
 - use sequential processing to reduce resource contention. Have patience for long media jobs
 - use `--skip-existing` for resumable batches
 - re-run `media-tooling-init` after reinstalling or relocating the toolkit so these skill paths stay current
+
+Optional Hyperframes workflow:
+- use `hyperframes` for HTML-rendered video, animated overlays, title cards, kinetic captions, website/UI captures, GIFs, PNG sequences, batch variants, or standalone graphic segments
+- keep composition source and renders under `$PROJECT_DIR/edit/hyperframes/<slot>/`
+- validate with `hyperframes lint .` and `hyperframes inspect . --at-transitions` before using the render
+- render alpha-capable overlays with `hyperframes render . --format webm` or `--format mov`
+- add rendered overlays to EDL specs with `overlays[].source`; `media-edl-render` composites overlays before burning subtitles
+- keep using media-tooling commands for ASR, contact sheets, packed transcripts, EDL assembly, grading, loudness normalization, subtitle burning, and `media-verify`
+- do not use Hyperframes for ordinary cuts, static cards that the EDL renderer can generate, transcript work, or final verification
 
 ## Session Memory Protocol
 

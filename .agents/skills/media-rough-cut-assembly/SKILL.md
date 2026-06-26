@@ -81,6 +81,7 @@ An EDL JSON document describes which time ranges to extract from which source fi
 |------|------|-------------|
 | `grade` | `str` | Default grade for ranges that omit `grade`. Same values as per-range `grade`. |
 | `subtitles` | `str` or `dict` | SRT path (string) or dict with `path`, `style`, `force_style`. |
+| `overlays` | `list[dict]` | Optional rendered overlays or generated cards to composite before subtitle burning. |
 
 ### Example EDL JSON
 
@@ -96,6 +97,16 @@ An EDL JSON document describes which time ranges to extract from which source fi
     "style": "bold-overlay",
     "path": "subs/master.srt"
   },
+  "overlays": [
+    {
+      "source": "hyperframes/lower-third/render.webm",
+      "start": 0.8,
+      "end": 6.8,
+      "position": {"x": 0, "y": 0},
+      "z_order": 10,
+      "duration_type": "sync"
+    }
+  ],
   "ranges": [
     {
       "source": "interview",
@@ -148,16 +159,46 @@ media-edl-render edl.json -o final.mp4
 
 `--preview` and `--draft` are mutually exclusive. `--build-subtitles` and `--no-subtitles` are mutually exclusive.
 
-**Pipeline stages (obeys Hard Rules 1, 2, 3, 5, 6, 7):**
+`overlays[].source` paths resolve relative to the EDL directory. Overlay specs
+must include `start` and `end` in output-timeline seconds. Optional keys:
+`position`, `z_order`, and `duration_type` (`sync` or `beat`). Use `card`
+instead of `source` for simple PIL-generated text or counter cards.
+
+**Pipeline stages (obeys Hard Rules 1, 2, 3, 4, 5, 6, 7):**
 
 1. Validate EDL JSON schema.
 2. Per-segment extract with word-boundary padding (30–200 ms), per-segment color grade, and 30 ms audio fades at both edges.
 3. Lossless concat via ffmpeg concat demuxer.
 4. Build master SRT with output-timeline offsets (if `--build-subtitles`).
-5. Burn subtitles LAST in filter chain (Hard Rule 1).
-6. Two-pass loudness normalization (−14 LUFS / −1 dBTP / LRA 11).
+5. Composite overlays with PTS shift and enable-between windows (Hard Rule 4).
+6. Burn subtitles LAST in filter chain (Hard Rule 1).
+7. Two-pass loudness normalization (−14 LUFS / −1 dBTP / LRA 11).
 
-> **Note:** Hard Rule 4 (overlay PTS shift) is not yet exercised by the EDL renderer since overlay compositing is not in the current pipeline scope.
+### Hyperframes overlays
+
+Use Hyperframes when an overlay or graphic segment needs browser-native layout
+or motion: animated lower thirds, title cards, kinetic captions, UI/website
+captures, GIFs, PNG sequences, batch variants, or standalone HTML-rendered
+segments.
+
+Keep each composition in the project workspace:
+
+```bash
+mkdir -p "$PROJECT_DIR/edit/hyperframes"
+hyperframes init "$PROJECT_DIR/edit/hyperframes/lower-third" \
+  --example blank \
+  --resolution landscape \
+  --non-interactive
+hyperframes lint "$PROJECT_DIR/edit/hyperframes/lower-third"
+hyperframes inspect "$PROJECT_DIR/edit/hyperframes/lower-third" --at-transitions
+hyperframes render "$PROJECT_DIR/edit/hyperframes/lower-third" \
+  --format webm \
+  --output "$PROJECT_DIR/edit/hyperframes/lower-third/render.webm"
+```
+
+Then reference the render from `overlays[].source`, usually as
+`"hyperframes/lower-third/render.webm"` when `edl.json` lives in
+`$PROJECT_DIR/edit/edl.json`.
 
 ### `media-grade` — Apply color grade
 
@@ -229,17 +270,13 @@ The EDL renderer runs loudnorm automatically as the final pipeline stage. Use `m
 | `--ffmpeg-bin` | Path to ffmpeg binary. Default: `ffmpeg`. |
 | `--ffprobe-bin` | Path to ffprobe binary. Default: `ffprobe`. |
 
-### `media-verify` — Self-evaluation at cut boundaries *(planned)*
-
-> **Status:** `media-verify` is a planned command (task 010). It does not yet have a CLI entry point or implementation. The checks and interface described below reflect the intended design. Until it is implemented, skip the verify step and rely on manual review of rendered output.
+### `media-verify` — Self-evaluation at cut boundaries
 
 Inspects rendered video output at every cut boundary, checking for production errors before presenting the result. Catches visual discontinuities, audio pops, hidden subtitles, overlay misalignment, and duration mismatches.
 
 ```bash
 media-verify final.mp4 --edl edl.json
 ```
-
-> **Note:** The flags below are part of the intended design and may change when `media-verify` is implemented (task 010).
 
 **Flags:**
 
@@ -264,7 +301,7 @@ media-verify final.mp4 --edl edl.json
 - Reports structured findings: pass/fail per check with details
 - After max passes, flags remaining issues for manual review
 
-Run `media-verify` after `media-edl-render` when available. If verification fails, adjust the EDL spec and re-render rather than presenting broken output.
+Run `media-verify` after `media-edl-render`. If verification fails, adjust the EDL spec and re-render rather than presenting broken output.
 
 **Typical verify-and-iterate loop:**
 
@@ -353,7 +390,7 @@ All production hard rules and anti-patterns are codified in `docs/hard-rules.md`
 - Cutting inside a spoken word (Anti-pattern 12, violates Rule 6)
 - Hierarchical pre-computed codec formats (Anti-pattern 1) — use concat demuxer instead
 
-See `docs/hard-rules.md` for the full list of 12 hard rules and 13 anti-patterns. Rules 4, 8–11 are not directly enforced by rough-cut assembly commands (overlay compositing, codec constraints, and delivery specs fall outside the assembly scope).
+See `docs/hard-rules.md` for the full list of 12 hard rules and 13 anti-patterns. Rules 8–11 are enforced by transcription, agent workflow, or delivery constraints outside the assembly command itself.
 
 ## Guardrails
 

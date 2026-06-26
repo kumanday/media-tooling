@@ -57,6 +57,21 @@ Inventory these directly and use them in:
 - chapter cards
 - storyboards
 
+### HTML-rendered motion
+
+Use Hyperframes for browser-native motion that media-tooling should composite
+or package: animated lower thirds, title cards, kinetic captions, website/UI
+captures, GIFs, PNG sequences, batch variants, and standalone graphic segments.
+
+Typical outputs:
+
+- `edit/hyperframes/<slot>/`
+- `edit/hyperframes/<slot>/render.webm`
+- EDL `overlays[].source` entries that point at the rendered asset
+
+See [`docs/HYPERFRAMES.md`](HYPERFRAMES.md) for install, validation, and EDL
+integration commands.
+
 ## Prompt patterns for an agent harness
 
 Prompts work best when they include:
@@ -166,6 +181,12 @@ Please help me prepare this for upload:
 
 ```text
 Please translate the subtitles into Spanish, but do not translate cue-by-cue from the English SRT. Use the translation-aware workflow so the Spanish cues are re-segmented naturally within the source timing windows.
+```
+
+## Example 9. Add HTML-rendered overlays
+
+```text
+Please build a first-pass rough cut from the approved EDL and add an animated lower third for the opening hook. Use Hyperframes for the lower third, validate it, render an alpha overlay, add it to the EDL overlays list, then render and verify the preview.
 ```
 
 ## Command examples

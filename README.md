@@ -91,6 +91,15 @@ uvx --from git+https://github.com/kumanday/media-tooling media-tooling-init "$PR
 
 For private access or SSH-based installs, use `git+ssh://git@github.com/kumanday/media-tooling`.
 
+Hyperframes is optional. Install it when a project needs HTML-rendered motion graphics, animated overlays, website/UI captures, GIFs, or batch-rendered variants:
+
+```bash
+npm install -g hyperframes@latest
+hyperframes doctor
+```
+
+See [`docs/HYPERFRAMES.md`](./docs/HYPERFRAMES.md) for explicit commands and the prompts that trigger it inside broader workflows.
+
 ## Primary workflow
 
 The usual workflow is prompt-driven. Install the toolkit once, create a project workspace, and keep the agent harness focused on `$PROJECT_DIR`. The generated project `AGENTS.md` points the harness at the centrally installed skills and commands while project artifacts stay local to the workspace.
@@ -236,6 +245,8 @@ The underlying commands are:
   Self-evaluate a rendered video against its EDL spec, checking cut boundaries, duration, grade consistency, and audio pops.
 - `media-tooling-init`
   Create the standard project directories and write or refresh the managed `AGENTS.md` block for a media project workspace.
+- `hyperframes` (optional)
+  Render HTML/CSS/JS compositions for animated overlays, title cards, UI captures, GIFs, PNG sequences, batch variants, or standalone graphic segments.
 
 Optional shell helpers for repo-checkout workflows:
 
@@ -270,6 +281,7 @@ Those directories are generated on demand, safe to delete, and ignored by Git.
 
 - [`docs/SETUP.md`](./docs/SETUP.md)
 - [`docs/WORKFLOWS.md`](./docs/WORKFLOWS.md)
+- [`docs/HYPERFRAMES.md`](./docs/HYPERFRAMES.md)
 - [`docs/EXPORTING.md`](./docs/EXPORTING.md)
 
 ## Toolkit skills

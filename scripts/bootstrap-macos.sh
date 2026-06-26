@@ -8,7 +8,7 @@ if ! command -v brew >/dev/null 2>&1; then
   exit 1
 fi
 
-brew install uv ffmpeg
+brew install uv ffmpeg node
 
 if command -v uv >/dev/null 2>&1; then
   uv python install 3.12
@@ -17,8 +17,9 @@ fi
 cd "$tool_root"
 uv sync
 "$tool_root/scripts/install-shell-helpers.sh"
+"$tool_root/scripts/install-hyperframes.sh"
 
 echo
 echo "Media Tooling bootstrap completed."
 echo "Toolkit root: $tool_root"
-echo "Next step: source ~/.zshrc and run 'subtitle <media-file>' or 'uv run media-subtitle --help'"
+echo "Next step: source ~/.zshrc and run 'subtitle <media-file>', 'uv run media-subtitle --help', or 'hyperframes doctor'"

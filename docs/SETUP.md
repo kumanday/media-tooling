@@ -22,6 +22,28 @@ The transcription backend depends on the workstation:
 - Apple Silicon macOS installs `lightning-whisper-mlx`
 - other systems install `faster-whisper`
 
+## Optional Hyperframes install
+
+Install Hyperframes when project workflows need HTML-rendered video, animated overlays, website/UI captures, GIFs, or batch-rendered motion graphics.
+
+From a media-tooling checkout:
+
+```bash
+./scripts/install-hyperframes.sh
+hyperframes doctor
+```
+
+Manual install:
+
+```bash
+brew install node ffmpeg
+npm install -g hyperframes@latest
+hyperframes telemetry disable
+hyperframes doctor
+```
+
+Hyperframes requires Node.js 22 or newer plus FFmpeg and FFprobe. See [docs/HYPERFRAMES.md](HYPERFRAMES.md) for the project workflow.
+
 ## Initialize a project workspace
 
 Create one workspace per production:
@@ -84,7 +106,7 @@ cd "$HOME/dev/media-tooling"
 ./scripts/bootstrap-macos.sh
 ```
 
-The bootstrap script installs `uv`, `ffmpeg`, Python 3.12, the local environment, and the shell helpers.
+The bootstrap script installs `uv`, `ffmpeg`, Node.js, Hyperframes, Python 3.12, the local environment, and the shell helpers.
 
 ## Operational notes
 

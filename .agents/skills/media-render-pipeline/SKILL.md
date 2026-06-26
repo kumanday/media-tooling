@@ -77,6 +77,7 @@ $PROJECT_DIR/
 │   ├── project.md            ← session memory (append each session)
 │   ├── edl.json              ← edit decision list
 │   ├── animations/slot_<id>/ ← per-animation source + render + reasoning
+│   ├── hyperframes/slot_<id>/ ← HTML-rendered composition source + renders
 │   ├── clips_preview/       ← preview-grade extracts (created by EDL renderer with --preview)
 │   ├── clips_graded/         ← full-grade extracts (populated by EDL renderer on final render; do not create manually)
 │   ├── master.srt            ← output-timeline subtitles
@@ -178,14 +179,23 @@ Produce the edit decision list and build the video.
      `reason`, and optional `grade`.
 2. **Drill into `media-timeline-view`** at ambiguous moments where visual
    context would change the editing decision.
-3. **Build animations in isolated slots** (if applicable) — when the harness
-   supports workers, assign each worker exactly one
-   `$PROJECT_DIR/edit/animations/slot_<id>/` directory and run worker tasks
-   sequentially. Each worker reports the render path, duration, placement
-   assumptions, commands run, and files changed.
-   **Note:** `media-edl-render` does not yet composite overlays. Animations
-   must be composited manually via ffmpeg overlay filter after rendering, or
-   omitted until renderer support is added.
+3. **Build animations or overlays in isolated slots** (if applicable) — use
+   `$PROJECT_DIR/edit/hyperframes/slot_<id>/` for HTML-rendered motion and
+   `$PROJECT_DIR/edit/animations/slot_<id>/` for other animation sources.
+   Hyperframes is the preferred path for kinetic typography, animated lower
+   thirds, UI motion, website captures, GIFs, PNG sequences, batch variants,
+   and alpha overlays. Run:
+   ```bash
+   hyperframes lint "$PROJECT_DIR/edit/hyperframes/slot_<id>"
+   hyperframes inspect "$PROJECT_DIR/edit/hyperframes/slot_<id>" --at-transitions
+   hyperframes render "$PROJECT_DIR/edit/hyperframes/slot_<id>" \
+     --format webm \
+     --output "$PROJECT_DIR/edit/hyperframes/slot_<id>/render.webm"
+   ```
+   Add rendered overlays to `edl.json` with `overlays[].source`,
+   `start`, `end`, optional `position`, `z_order`, and `duration_type`.
+   `media-edl-render` composites overlays before burning subtitles and applies
+   the required overlay PTS shift.
 4. **Specify grade per-segment in the EDL** — add `grade` on ranges or
    top-level so the renderer applies it during extraction, never post-concat
    (Anti-pattern 1, Anti-pattern 6). No manual grading step is needed;
@@ -215,26 +225,31 @@ Produce the edit decision list and build the video.
 
 Before presenting the output to the user, verify your own work.
 
-1. **Run `media-timeline-view` on the rendered output** (not the sources) at
-   every cut boundary (±1.5s window). Save images to `$PROJECT_DIR/edit/verify/`.
-   `media-timeline-view` works on any MP4 — source files and rendered output
-   alike.
-2. **Check each boundary image for:**
+1. **Run `media-verify` on the rendered output:**
+   ```bash
+   media-verify "$PROJECT_DIR/edit/preview.mp4" \
+     --edl "$PROJECT_DIR/edit/edl.json"
+   ```
+   `media-verify` generates timeline PNGs at cut boundaries and reports
+   duration, visual discontinuity, grade consistency, and audio-pop findings.
+2. **If manual review is needed, run `media-timeline-view` on the rendered
+   output** (not the sources) at suspect cut boundaries (±1.5s window). Save
+   images to `$PROJECT_DIR/edit/verify/`. `media-timeline-view` works on any
+   MP4, including rendered output.
+3. **Check each boundary image for:**
    - Visual discontinuity / flash / jump at the cut
    - Waveform spike at the boundary (audio pop that slipped past the 30ms fade)
-   - Subtitle hidden behind an overlay (Hard Rule 1 violation; only applicable
-     if overlays were manually composited post-render)
-   - Overlay misaligned or showing wrong frames (Hard Rule 4; only applicable
-     if overlays were manually composited post-render)
-3. **Sample additional points:** first 2s, last 2s, and 2–3 mid-points — check
+   - Subtitle hidden behind an overlay (Hard Rule 1 violation)
+   - Overlay misaligned or showing wrong frames (Hard Rule 4 violation)
+4. **Sample additional points:** first 2s, last 2s, and 2–3 mid-points — check
    grade consistency, subtitle readability, and overall coherence.
-4. **Verify duration** matches the EDL expectation:
+5. **Verify duration** matches the EDL expectation:
    ```bash
    ffprobe -v error -show_entries format=duration \
      -of csv=p=0 "$PROJECT_DIR/edit/preview.mp4"
    ```
-5. **If anything fails:** fix the EDL → re-render (`--preview`) → re-eval.
-6. **Cap at 3 self-eval passes.** If issues remain after 3 passes, flag them
+6. **If anything fails:** fix the EDL → re-render (`--preview`) → re-eval.
+7. **Cap at 3 self-eval passes.** If issues remain after 3 passes, flag them
    explicitly to the user instead of continuing to iterate.
 
 Only present the preview to the user once self-eval passes, or after 3 passes
@@ -307,7 +322,7 @@ not bundled when the skill is deployed standalone).
 | 1 | Subtitles applied **last** in filter chain | `burn_subtitles.py` |
 | 2 | Per-segment extract + lossless concat (never single-pass filtergraph) | `rough_cut.py` |
 | 3 | 30ms audio fades at every segment boundary | `edl_render.py` |
-| 4 | Overlay PTS shift (`setpts=PTS-STARTPTS+T/TB`) | Not yet enforced |
+| 4 | Overlay PTS shift (`setpts=PTS-STARTPTS+T/TB`) | `edl_render.py` |
 | 5 | Master SRT uses output-timeline offsets | `edl_render.py` |
 | 6 | Never cut inside a word | `edl_render.py` |
 | 7 | Pad cut edges (30–200ms working window) | `edl_render.py` |
@@ -370,6 +385,7 @@ Step 8: Iterate on feedback and persist session memory.
 | `media-grade` | Step 5 (standalone grading outside EDL workflow; not needed when using `media-edl-render`) |
 | `media-loudnorm` | Step 5 (standalone normalization outside EDL workflow; not needed when using `media-edl-render`) |
 | `media-rough-cut` | Step 5 (alternative: card/image/clip assembly) |
+| `hyperframes` | Step 5 (optional HTML-rendered overlays, title cards, UI motion, GIFs, PNG sequences, batch variants) |
 
 ## EDL JSON format
 
@@ -398,7 +414,14 @@ Step 8: Iterate on feedback and persist session memory.
   ],
   "grade": "warm_cinematic",
   "overlays": [
-    {"file": "edit/animations/slot_1/render.mp4", "start_in_output": 0.0, "duration": 5.0}
+    {
+      "source": "hyperframes/slot_1/render.webm",
+      "start": 0.0,
+      "end": 5.0,
+      "position": {"x": 0, "y": 0},
+      "z_order": 10,
+      "duration_type": "sync"
+    }
   ],
   "subtitles": {"style": "bold-overlay"},
   "total_duration_s": 87.4
@@ -437,6 +460,9 @@ When the user wants overlay animations, follow these principles:
   defaults. If the user hasn't specified, propose a palette in Step 4 and
   wait for confirmation.
 - **Tool options:**
+  - Hyperframes — HTML/CSS/JS-native motion, kinetic captions, lower thirds,
+    title cards, website/UI captures, alpha overlays, GIFs, PNG sequences, and
+    batch variants.
   - PIL + PNG sequence + ffmpeg — simple overlay cards, counters, typewriter
     text, bar reveals. Fast to iterate.
   - Manim — formal diagrams, state machines, equations, graph morphs.
