@@ -44,6 +44,7 @@ media-loudnorm = "media_tooling.loudnorm:main"
 media-pack-transcript = "media_tooling.pack_transcript:main"
 media-translate-subtitles = "media_tooling.subtitle_translate:main"
 media-edl-render = "media_tooling.edl_render:main"
+media-fcpxml-export = "media_tooling.fcpxml_export:main"
 media-verify = "media_tooling.verify:main"
 
 [tool.ruff]

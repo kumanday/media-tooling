@@ -15,6 +15,7 @@ Use installed toolkit commands from this project directory:
 - pack transcript for reasoning: `media-pack-transcript`
 - timeline visual drill-down: `media-timeline-view`
 - EDL-driven render: `media-edl-render`
+- Resolve/FCPXML layer export: `media-fcpxml-export`
 - color grading: `media-grade`
 - loudness normalization: `media-loudnorm`
 - output verification: `media-verify`

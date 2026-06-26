@@ -315,6 +315,32 @@ media-verify rough-cut.mp4 --edl edl.json
 # If issues found → fix EDL, re-render, re-verify (up to 3 passes)
 ```
 
+### `media-fcpxml-export` — Resolve layer handoff
+
+When a project needs a DaVinci Resolve timeline with separate plates, render
+project-specific media layers in the project workspace and export a manifest:
+
+```bash
+media-fcpxml-export "$PROJECT_DIR/edit/resolve/layer-manifest.json" \
+  -o "$PROJECT_DIR/edit/resolve/project.fcpxml"
+```
+
+Minimal manifest shape:
+
+```json
+{
+  "project": "Layered Resolve Export",
+  "sequence": {"width": 1920, "height": 1080, "fps": 30, "duration_frames": 767},
+  "layers": [
+    {"name": "Background", "path": "assets/background.mov", "kind": "video", "lane": 0, "duration_frames": 767},
+    {"name": "Voice", "path": "assets/voice.wav", "kind": "audio", "lane": -1, "role": "dialogue", "duration_frames": 767}
+  ]
+}
+```
+
+Use this for the FCPXML packaging step only. The alpha plates, stems, and
+graphics are still project-specific artifacts.
+
 ### `media-rough-cut` — Card/image/clip assembly (simpler alternative)
 
 For assemblies that don't need word-boundary editing, grading, or loudnorm, the simpler `media-rough-cut` command builds a rough cut from a JSON spec of placeholder cards, image holds, and clip extractions.

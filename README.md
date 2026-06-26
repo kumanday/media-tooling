@@ -229,6 +229,8 @@ The underlying commands are:
   Build a first-pass rough cut from a project-local JSON spec of cards, image holds, and clip extracts.
 - `media-edl-render`
   Render an assembled video from an EDL JSON spec with per-segment grading, audio fades, subtitle burning, and two-pass loudness normalization.
+- `media-fcpxml-export`
+  Export a layered media manifest as FCPXML for DaVinci Resolve import.
 - `media-grade`
   Apply automatic or preset color grading to a video file.
 - `media-loudnorm`

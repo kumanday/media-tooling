@@ -107,6 +107,33 @@ Each production should live in its own workspace outside the repository. Example
 
 That keeps transcripts, subtitles, inventories, and rough cuts out of the toolkit repo.
 
+## DaVinci Resolve layer export
+
+For layered handoff, keep project-specific alpha plates and WAV stems in the
+project workspace, then write a small manifest and export FCPXML:
+
+```bash
+media-fcpxml-export "$PROJECT_DIR/edit/resolve/layer-manifest.json" \
+  -o "$PROJECT_DIR/edit/resolve/project.fcpxml"
+```
+
+Minimal manifest:
+
+```json
+{
+  "project": "Layered Resolve Export",
+  "sequence": {"width": 1920, "height": 1080, "fps": 30, "duration_frames": 767},
+  "layers": [
+    {"name": "Background", "path": "assets/background.mov", "kind": "video", "lane": 0, "duration_frames": 767},
+    {"name": "Keyword Text", "path": "assets/keyword_text.mov", "kind": "video", "lane": 5, "offset_frames": 42, "duration_frames": 725},
+    {"name": "Voice", "path": "assets/voice.wav", "kind": "audio", "lane": -1, "role": "dialogue", "duration_frames": 767}
+  ]
+}
+```
+
+`track`/`file` manifests are also accepted (`V1`, `V2`, `A1`, etc.). Media
+paths resolve relative to the manifest.
+
 ## Recommended next step
 
 After the repository exists, test it on a second machine with a small sample project. That is the fastest way to catch path assumptions, missing dependencies, or shell setup issues.

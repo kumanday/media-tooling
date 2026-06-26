@@ -276,7 +276,14 @@ After the user reviews the preview:
      --ffmpeg-bin "$(command -v ffmpeg)" \
      --ffprobe-bin "$(command -v ffprobe)"
    ```
-3. **Persist session memory** — append to `$PROJECT_DIR/edit/project.md`:
+3. **Optional Resolve handoff** — if an editor needs layered import, render
+   project-specific alpha plates/WAV stems in `$PROJECT_DIR`, write a layer
+   manifest, then export FCPXML:
+   ```bash
+   media-fcpxml-export "$PROJECT_DIR/edit/resolve/layer-manifest.json" \
+     -o "$PROJECT_DIR/edit/resolve/project.fcpxml"
+   ```
+4. **Persist session memory** — append to `$PROJECT_DIR/edit/project.md`:
 
    ```markdown
    ## Session YYYY-MM-DD
@@ -381,6 +388,7 @@ Step 8: Iterate on feedback and persist session memory.
 | `media-pack-transcript` | Step 1 (pack) |
 | `media-timeline-view` | Steps 1, 5, 6 (on-demand visual drill-down) |
 | `media-edl-render` | Steps 5, 8 (render with EDL) |
+| `media-fcpxml-export` | Step 8 (optional Resolve layer handoff) |
 | `media-burn-subtitles` | Step 5 (subtitle burning, usually via EDL render) |
 | `media-grade` | Step 5 (standalone grading outside EDL workflow; not needed when using `media-edl-render`) |
 | `media-loudnorm` | Step 5 (standalone normalization outside EDL workflow; not needed when using `media-edl-render`) |
