@@ -374,6 +374,15 @@ Step 8: Iterate on feedback and persist session memory.
 
 ## Toolkit commands
 
+For TTV-generated scenes, use `media-generated` to author an approved-storyboard
+request, review the provider plan, record exact variant approval, and import the
+terminal result. Keep scene IDs and explicit order stable. `media-generated select`
+freezes reviewed takes, trims and an ordinary EDL. `media-generated render` checks
+source hashes, calls the existing renderer, and records `media-verify` findings.
+Use `regenerate` for selected scene subsets and `inspect` for stale continuity.
+Documents stay under `rough-cuts/manifests/`. The file/HTTP workflow is documented
+in `docs/generated-media.md` in the toolkit repository.
+
 | Command | Pipeline step |
 |---------|--------------|
 | `media-subtitle` | Step 1 (transcribe) |
@@ -381,6 +390,7 @@ Step 8: Iterate on feedback and persist session memory.
 | `media-pack-transcript` | Step 1 (pack) |
 | `media-timeline-view` | Steps 1, 5, 6 (on-demand visual drill-down) |
 | `media-edl-render` | Steps 5, 8 (render with EDL) |
+| `media-generated` | Steps 4–8 (TTV review, imports, selections and verified EDL renders) |
 | `media-burn-subtitles` | Step 5 (subtitle burning, usually via EDL render) |
 | `media-grade` | Step 5 (standalone grading outside EDL workflow; not needed when using `media-edl-render`) |
 | `media-loudnorm` | Step 5 (standalone normalization outside EDL workflow; not needed when using `media-edl-render`) |
