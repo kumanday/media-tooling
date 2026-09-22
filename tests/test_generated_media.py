@@ -120,6 +120,8 @@ class AssemblyTest(unittest.TestCase):
         for i, plan_scene in enumerate(self.plan["scenes"], 1):
             template = plan_scene["variants"][0]["shots"][0]
             plan_scene["variants"][0]["shots"] = [{**copy.deepcopy(template), "shot_id": f"shot-{i}-{j}", "order": j} for j in range(2 if i == 2 else 1)]
+        self.plan["scenes"][0]["variants"][0]["provider"] = "fal"
+        self.plan["scenes"][2]["variants"][0]["provider"] = "fallback"
         self.plan = gm.seal(self.plan)
         self.approval = gm.approve_plan(self.project, self.plan, [f"variant-{i}" for i in (1, 2, 3)], approval_id="approval-1", allow_unknown_cost=True)
         self.result = fixture("result")
@@ -136,6 +138,8 @@ class AssemblyTest(unittest.TestCase):
                 result_scene["actual_shots"].append({"shot_id": shot_id, "order": j, "nominal_duration_s": 2, "continuity_mode": "cut"})
                 attempt = copy.deepcopy(fixture("result")["scenes"][0]["attempts"][0])
                 attempt.update({"attempt_id": attempt_id, "shot_id": shot_id, "reference_asset_ids": []})
+                if i == 1:
+                    attempt["provider"] = "fal.ai"
                 attempt["billing"] = {"raw_unit_name": "credits", "raw_units": "99", "estimated_usd": 0 if i == 1 else None, "actual_usd": None, "currency": "USD"}
                 if i == 3:
                     attempt["reference_asset_ids"] = ["consumed-boundary"]
@@ -173,6 +177,11 @@ class AssemblyTest(unittest.TestCase):
         self.assertEqual(cost["all_attempts"]["estimated_usd"]["unknown_attempts"], 4)
         self.assertEqual(cost["attempts"][0]["raw_units"], "99")
 
+    def test_fal_plan_alias_matches_recorded_provider(self) -> None:
+        self.assertEqual(self.plan["scenes"][0]["variants"][0]["provider"], "fal")
+        self.assertEqual(self.result["scenes"][0]["attempts"][0]["provider"], "fal.ai")
+        gm.write_selection(self.project, self.draft)
+
     def test_unsafe_edits_fail_before_ffmpeg_and_hash_tamper(self) -> None:
         for field, value in (("trim_out_s", 10), ("trim_in_s", 1.5)):
             draft = copy.deepcopy(self.draft)
@@ -200,6 +209,34 @@ class AssemblyTest(unittest.TestCase):
         with self.assertRaises(gm.IntegrationError):
             gm.write_selection(self.project, self.draft)
 
+    def test_selected_attempt_must_match_approved_variant(self) -> None:
+        plan = copy.deepcopy(self.plan)
+        plan["plan_id"] = "plan-variants"
+        primary = plan["scenes"][0]["variants"][0]
+        for field, value in (("provider", "other-provider"), ("model", "other-model"), ("prompt_snapshot", "other-prompt")):
+            variant = copy.deepcopy(primary)
+            variant["variant_id"] = f"unapproved-{field}"
+            if field == "prompt_snapshot":
+                variant["shots"][0][field] = value
+            else:
+                variant[field] = value
+            plan["scenes"][0]["variants"].append(variant)
+        plan = gm.seal(plan)
+        approval = gm.approve_plan(self.project, plan, ["variant-1", "variant-2", "variant-3"],
+                                   approval_id="approval-variants", allow_unknown_cost=True)
+        for field, value in (("provider", "other-provider"), ("model", "other-model"), ("prompt_snapshot", "other-prompt")):
+            with self.subTest(field=field):
+                result = copy.deepcopy(self.result)
+                result.update({"result_id": f"result-{field}", "plan_id": plan["plan_id"], "approval_id": approval["approval_id"]})
+                result["scenes"][0]["attempts"][0][field] = value
+                result = gm.seal(result)
+                gm.import_result(self.project, result, asset_root=self.asset_root)
+                draft = copy.deepcopy(self.draft)
+                draft["source_results"] = [{"result_id": result["result_id"], "sha256": result["document_sha256"]}]
+                with patch.object(gm, "_audio_source") as audio, self.assertRaisesRegex(gm.IntegrationError, "approved shot variant"):
+                    gm.write_selection(self.project, draft)
+                audio.assert_not_called()
+
     def test_asset_roots_symlinks_hash_and_probe(self) -> None:
         asset = self.result["scenes"][0]["clips"][0]["asset"]
         with self.assertRaises(gm.IntegrationError):
@@ -218,6 +255,10 @@ class AssemblyTest(unittest.TestCase):
         request = gm.regenerate(self.project, self.board, selection, ["scene-2"], reason="New middle", request_id="request-2", revision=2)
         self.assertEqual([scene["scene_id"] for scene in request["scenes"]], ["scene-2"])
         self.assertEqual(request["regeneration"]["supersedes_take_ids"], ["take-2"])
+        foreign_board = {**self.board, "project_id": "another-project"}
+        with patch.object(gm, "build_request") as build, self.assertRaisesRegex(gm.IntegrationError, "different project"):
+            gm.regenerate(self.project, foreign_board, selection, ["scene-2"], reason="Foreign storyboard")
+        build.assert_not_called()
         replacement = copy.deepcopy(self.result)
         replacement["result_id"] = "result-2"
         replacement["scenes"] = [replacement["scenes"][1]]

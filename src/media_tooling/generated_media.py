@@ -561,15 +561,19 @@ def compile_selection(project: Path, selection: dict[str, Any], *, prepare_audio
             reference_assets.update({frame["asset"]["asset_id"]: frame["asset"] for frame in source_scene["keyframes"]})
             reference_assets.update({clip["asset"]["asset_id"]: clip["asset"] for clip in source_scene["clips"]})
         attempts = {attempt["attempt_id"]: attempt for attempt in result_scene["attempts"]}
-        approved_shots = {shot["shot_id"] for plan_scene in entry["plan"]["scenes"]
-                          if plan_scene["scene_id"] == scene["scene_id"]
+        provider_aliases = {"fal": "fal.ai"}
+        approved_shots = {(shot["shot_id"], provider_aliases.get(variant["provider"], variant["provider"]),
+                           variant["model"], shot["prompt_snapshot"])
+                          for plan_scene in entry["plan"]["scenes"] if plan_scene["scene_id"] == scene["scene_id"]
                           for variant in plan_scene["variants"]
                           if variant["variant_id"] in entry["approval"]["approved_variant_ids"]
                           for shot in variant["shots"]}
         for edit in sorted(edits.values(), key=lambda value: value["order"]):
             clip = clips[edit["clip_id"]]
-            if attempts[clip["attempt_id"]]["shot_id"] not in approved_shots:
-                raise IntegrationError("Selected clip was not produced by an approved shot")
+            attempt = attempts[clip["attempt_id"]]
+            if (attempt["shot_id"], provider_aliases.get(attempt["provider"], attempt["provider"]),
+                    attempt["model"], attempt["prompt_snapshot"]) not in approved_shots:
+                raise IntegrationError("Selected clip does not match an approved shot variant")
             imported = imports.get(clip["clip_id"])
             if not imported or imported["sha256"] != clip["asset"]["sha256"] or imported["source_uri"] != clip["asset"]["uri"]:
                 raise IntegrationError("Missing or mismatched clip import")
@@ -825,6 +829,8 @@ def regenerate(
     *, reason: str, request_id: str | None = None, revision: int = 1,
 ) -> dict[str, Any]:
     validate_document("selection", selection)
+    if storyboard.get("project_id") != selection["project_id"]:
+        raise IntegrationError("Regeneration storyboard belongs to a different project")
     inputs = _selection_inputs(project, selection)
     selected = {scene["scene_id"]: scene["take_id"] for scene in selection["scenes"]}
     if not scene_ids or set(scene_ids) - selected.keys():
