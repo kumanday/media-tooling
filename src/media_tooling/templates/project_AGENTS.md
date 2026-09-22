@@ -18,12 +18,21 @@ Use installed toolkit commands from this project directory:
 - color grading: `media-grade`
 - loudness normalization: `media-loudnorm`
 - output verification: `media-verify`
+- generated-media requests, review and import: `media-generated`
 - optional HTML-rendered video and motion overlays: `hyperframes`
 
 Operational defaults:
 - use sequential processing to reduce resource contention. Have patience for long media jobs
 - use `--skip-existing` for resumable batches
 - re-run `media-tooling-init` after reinstalling or relocating the toolkit so these skill paths stay current
+
+TTV generated-media workflow:
+- keep approved editorial storyboards and stable scene IDs in `storyboards/`
+- use `media-generated request`, review the returned plan, and record exact approved variants with `approve` before submitting paid work
+- exchange immutable documents through `send --server` or `send --handoff`; import results with an explicit asset root or allowed delivery origins
+- use `select` to freeze takes, trims and EDL, then `render` to run the existing renderer and verifier with provenance records
+- use new revisions for edits, regenerate only affected scenes, and explicitly resolve stale continuity decisions
+- keep transient signed delivery URLs separate from durable manifests and credentials out of documents
 
 Optional Hyperframes workflow:
 - use `hyperframes` for HTML-rendered video, animated overlays, title cards, kinetic captions, website/UI captures, GIFs, PNG sequences, batch variants, or standalone graphic segments
