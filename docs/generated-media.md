@@ -104,9 +104,11 @@ uv run python scripts/ttv_offline_acceptance.py \
 
 ### Live validation status (2026-09-22)
 
-The primary provider profile is MiniMax H3 Max through TTV's production `FalGenerator`, using `minimax/h3-max/image-to-video`: a supplied first frame, 5 seconds, `768P`, seed 42, safety checking enabled, prompt expansion disabled, one attempt and no fallback. The live submission returned HTTP 403 because the Fal account balance was exhausted. It produced no provider request ID or clip. Media Tooling validated and imported the immutable failed request/plan/approval/result chain; H3 Max rendering remains unverified until a funded account produces a clip.
+The primary live provider check passed with MiniMax H3 Max through TTV's production `FalGenerator`, using `minimax/h3-max/image-to-video`: a supplied first frame, 5 seconds, `768P`, seed 42, safety checking enabled, prompt expansion disabled, one attempt and no fallback. One provider submission produced a clip that the shipped CLI imported, selected, rendered and verified without consumer code changes. Manual comparison matched the successful attempt to the approved variant's provider alias, model, shot and exact prompt.
 
-Two separate acceptance checks passed:
+The H3 source measured 1344×768 at 24 fps, with 5.166667 seconds of video and a 5.184-second container. Its stereo AAC track used 32 kHz and contained non-silent audio. The existing renderer produced a 1920×1098, 24 fps preview with 5.166667 seconds of video, a 5.205-second container and stereo AAC at 48 kHz. Normal loudness normalization remained enabled; `media-verify` passed with no blocking findings. The cost ledger retained `8.0` raw `X-Fal-Billable-Units`; estimated and actual USD amounts remain unknown.
+
+Additional acceptance checks passed:
 
 - A local Hypercorn API, Redis and RQ SpawnWorker executed the shipped `media-generated` HTTP client with deterministic providers. Three scenes produced 1, 3 and 1 clips, including a recorded failure and approved fallback. Duplicate approvals before and after completion returned the same job. Both the original edit and a middle-scene replacement rendered and passed verification. Unchanged outer takes retained their IDs and hashes; the stale downstream dependency blocked compilation until explicitly accepted.
 - A secondary real Google `veo-3.1-generate-preview` submission produced one 4-second, 1280×720, 24 fps clip. Its complete producer chain imported without provider-specific consumer changes. The existing EDL renderer produced a 1920×1080, 24 fps preview with 4 seconds of video; `media-verify` passed with no blocking findings. The silent audio track required the documented `--no-loudnorm` option.
@@ -124,9 +126,9 @@ media-generated --project /path/to/project import result \
   --asset-root /path/to/ttv/output
 media-generated --project /path/to/project select /path/to/selection-draft.json
 media-generated --project /path/to/project render \
-  /path/to/project/rough-cuts/manifests/selections/edit-1.json --preview --no-loudnorm
+  /path/to/project/rough-cuts/manifests/selections/edit-1.json --preview
 media-verify /path/to/project/edit/edit-1-preview.mp4 \
   --edl /path/to/project/edit/edl-edit-1.json --no-timelines --max-passes 1 --json
 ```
 
-Use `--no-loudnorm` for silent media; omit it when normalization is desired. The blocked H3 result has no selectable take and cannot substantiate a render check.
+Add `--no-loudnorm` when the media is silent.
