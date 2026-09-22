@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import json
 import shutil
 import subprocess
 import tempfile
@@ -49,6 +50,14 @@ class ContractTest(unittest.TestCase):
         for secret in ({"apiKey": "x"}, "a https://example.com/file?signature=x", "Bearer xyz", "https://x/#secret"):
             with self.assertRaises(gm.IntegrationError):
                 gm.reject_secrets(secret)
+
+    def test_selection_trim_order(self) -> None:
+        selection = fixture("selection")
+        edit = selection["scenes"][0]["clip_edits"][0]
+        for start, end in ((1, 1), (1, 0.5)):
+            edit["trim_in_s"], edit["trim_out_s"] = start, end
+            with self.assertRaisesRegex(gm.IntegrationError, "trim_out_s must exceed"):
+                gm.validate_document("selection", gm.seal(selection))
 
     def test_file_and_http_use_identical_canonical_bytes(self) -> None:
         document = fixture("request")
@@ -119,7 +128,8 @@ class AssemblyTest(unittest.TestCase):
                                 "variants": [{**copy.deepcopy(self.plan["scenes"][0]["variants"][0]), "variant_id": f"variant-{i}"}]} for i in (1, 2, 3)]
         for i, plan_scene in enumerate(self.plan["scenes"], 1):
             template = plan_scene["variants"][0]["shots"][0]
-            plan_scene["variants"][0]["shots"] = [{**copy.deepcopy(template), "shot_id": f"shot-{i}-{j}", "order": j} for j in range(2 if i == 2 else 1)]
+            plan_scene["variants"][0]["shots"] = [{**copy.deepcopy(template), "shot_id": f"shot-{i}-{j}", "order": j,
+                                                    "reference_asset_ids": []} for j in range(2 if i == 2 else 1)]
         self.plan["scenes"][0]["variants"][0]["provider"] = "fal"
         self.plan["scenes"][2]["variants"][0]["provider"] = "fallback"
         self.plan = gm.seal(self.plan)
@@ -236,6 +246,119 @@ class AssemblyTest(unittest.TestCase):
                 with patch.object(gm, "_audio_source") as audio, self.assertRaisesRegex(gm.IntegrationError, "approved shot variant"):
                     gm.write_selection(self.project, draft)
                 audio.assert_not_called()
+
+    def test_selected_reference_requires_approved_lineage(self) -> None:
+        result = copy.deepcopy(self.result)
+        result["result_id"] = "unapproved-reference-result"
+        result["scenes"][0]["attempts"][0]["reference_asset_ids"] = ["consumed-boundary"]
+        result = gm.seal(result)
+        gm.import_result(self.project, result, asset_root=self.asset_root)
+        draft = copy.deepcopy(self.draft)
+        draft["source_results"] = [{"result_id": result["result_id"], "sha256": result["document_sha256"]}]
+        with self.assertRaisesRegex(gm.IntegrationError, "unapproved reference assets"):
+            gm.write_selection(self.project, draft)
+
+        frame_asset = {**self.result["reference_assets"][0], "asset_id": "approved-keyframe",
+                       "role": "keyframe", "source_take_id": None}
+        frame = {"shot_id": "shot-1-0", "order": 0, "position": "first", "attempt_id": None,
+                 "asset": frame_asset, "media": {"measured_duration_s": None, "width": 320, "height": 180,
+                                          "fps": None, "has_audio": None}}
+        generated = copy.deepcopy(self.result)
+        generated["result_id"] = "generated-reference-result"
+        generated["scenes"][0]["keyframes"] = [frame]
+        generated["scenes"][0]["attempts"][0]["reference_asset_ids"] = ["approved-keyframe"]
+        generated = gm.seal(generated)
+        gm.import_result(self.project, generated, asset_root=self.asset_root)
+        draft["edit_revision_id"] = "edit-generated-reference"
+        draft["source_results"] = [{"result_id": generated["result_id"], "sha256": generated["document_sha256"]}]
+        gm.write_selection(self.project, draft)
+
+        cross_scene = copy.deepcopy(generated)
+        cross_scene["result_id"] = "cross-scene-reference-result"
+        cross_scene["scenes"][1]["attempts"][0]["reference_asset_ids"] = ["approved-keyframe"]
+        cross_scene = gm.seal(cross_scene)
+        gm.import_result(self.project, cross_scene, asset_root=self.asset_root)
+        draft["source_results"] = [{"result_id": cross_scene["result_id"], "sha256": cross_scene["document_sha256"]}]
+        with self.assertRaisesRegex(gm.IntegrationError, "unapproved reference assets"):
+            gm.write_selection(self.project, draft)
+        dependent = copy.deepcopy(cross_scene)
+        dependent["result_id"] = "dependent-reference-result"
+        dependent["scenes"][1]["takes"][0]["depends_on_take_ids"] = ["take-1"]
+        dependent = gm.seal(dependent)
+        gm.import_result(self.project, dependent, asset_root=self.asset_root)
+        draft["edit_revision_id"] = "edit-dependent-reference"
+        draft["source_results"] = [{"result_id": dependent["result_id"], "sha256": dependent["document_sha256"]}]
+        gm.write_selection(self.project, draft)
+
+        future = copy.deepcopy(generated)
+        future["result_id"] = "future-reference-result"
+        future["scenes"][0]["keyframes"] = []
+        frame["shot_id"] = "shot-3-0"
+        future["scenes"][2]["keyframes"] = [frame]
+        future = gm.seal(future)
+        gm.import_result(self.project, future, asset_root=self.asset_root)
+        draft["source_results"] = [{"result_id": future["result_id"], "sha256": future["document_sha256"]}]
+        with self.assertRaisesRegex(gm.IntegrationError, "unapproved reference assets"):
+            gm.write_selection(self.project, draft)
+
+        prepared_path = self.asset_root / "prepared.png"
+        Image.new("RGB", (320, 180), "white").save(prepared_path)
+        prepared = copy.deepcopy(generated)
+        prepared["result_id"] = "prepared-reference-result"
+        prepared["reference_assets"].append({"asset_id": "prepared-reference", "uri": prepared_path.as_uri(),
+                                             "sha256": gm.file_hash(prepared_path), "mime_type": "image/png",
+                                             "role": "provider_reference", "rights_note": "Synthetic", "source_take_id": None})
+        attempt = prepared["scenes"][0]["attempts"][0]
+        attempt["reference_asset_ids"] = ["prepared-reference"]
+        attempt["generation_parameters"]["prepared_reference_sources"] = json.dumps({"prepared-reference": "approved-keyframe"})
+        prepared = gm.seal(prepared)
+        gm.import_result(self.project, prepared, asset_root=self.asset_root)
+        draft["edit_revision_id"] = "edit-prepared-reference"
+        draft["source_results"] = [{"result_id": prepared["result_id"], "sha256": prepared["document_sha256"]}]
+        gm.write_selection(self.project, draft)
+
+        wrong_source = copy.deepcopy(prepared)
+        wrong_source["result_id"] = "wrong-prepared-reference-result"
+        wrong_source["scenes"][0]["attempts"][0]["generation_parameters"]["prepared_reference_sources"] = json.dumps(
+            {"prepared-reference": "consumed-boundary"})
+        wrong_source = gm.seal(wrong_source)
+        gm.import_result(self.project, wrong_source, asset_root=self.asset_root)
+        draft["source_results"] = [{"result_id": wrong_source["result_id"], "sha256": wrong_source["document_sha256"]}]
+        with self.assertRaisesRegex(gm.IntegrationError, "unapproved reference assets"):
+            gm.write_selection(self.project, draft)
+
+    def test_video_take_requires_video_approval(self) -> None:
+        approval = gm.approve_plan(self.project, self.plan, ["variant-1", "variant-2", "variant-3"],
+                                   execution_mode="keyframes", approval_id="keyframe-approval", allow_unknown_cost=True)
+        result = copy.deepcopy(self.result)
+        result.update({"result_id": "result-keyframe-approval", "approval_id": approval["approval_id"]})
+        result = gm.seal(result)
+        gm.import_result(self.project, result, asset_root=self.asset_root)
+        draft = copy.deepcopy(self.draft)
+        draft["source_results"] = [{"result_id": result["result_id"], "sha256": result["document_sha256"]}]
+        with self.assertRaisesRegex(gm.IntegrationError, "execution mode"):
+            gm.write_selection(self.project, draft)
+
+    def test_cost_selection_uses_referenced_result_and_project(self) -> None:
+        selection = gm.write_selection(self.project, self.draft)
+        historical = copy.deepcopy(self.result)
+        historical["result_id"] = "historical-result"
+        for scene in historical["scenes"]:
+            ids = {attempt["attempt_id"]: "historical-" + attempt["attempt_id"] for attempt in scene["attempts"]}
+            for attempt in scene["attempts"]:
+                attempt["attempt_id"] = ids[attempt["attempt_id"]]
+                if attempt["fallback_from_attempt_id"]:
+                    attempt["fallback_from_attempt_id"] = ids[attempt["fallback_from_attempt_id"]]
+            for clip in scene["clips"]:
+                clip["attempt_id"] = ids[clip["attempt_id"]]
+        historical = gm.seal(historical)
+        gm.import_result(self.project, historical, asset_root=self.asset_root)
+        rows = gm.cost_rollup(self.project, selection)["attempts"]
+        self.assertTrue(any(row["selected_output"] for row in rows if row["result_id"] == self.result["result_id"]))
+        self.assertFalse(any(row["selected_output"] for row in rows if row["result_id"] == historical["result_id"]))
+        foreign = gm.seal({**selection, "project_id": "another-project"})
+        with self.assertRaisesRegex(gm.IntegrationError, "different project"):
+            gm.cost_rollup(self.project, foreign)
 
     def test_asset_roots_symlinks_hash_and_probe(self) -> None:
         asset = self.result["scenes"][0]["clips"][0]["asset"]

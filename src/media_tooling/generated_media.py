@@ -197,6 +197,11 @@ def validate_document(kind: str, document: dict[str, Any]) -> None:
                     raise IntegrationError("Take refers to missing clip")
                 if set(take["clip_order"]) != set(take["clip_ids"]) or len(set(take["clip_order"].values())) != len(take["clip_ids"]):
                     raise IntegrationError("Take requires explicit unique clip order")
+    if kind == "selection":
+        for scene in scenes:
+            for edit in scene["clip_edits"]:
+                if edit["trim_out_s"] <= edit["trim_in_s"]:
+                    raise IntegrationError("Clip trim_out_s must exceed trim_in_s")
 
 
 def _component(identifier: str) -> str:
@@ -489,6 +494,8 @@ def _selection_inputs(project: Path, selection: dict[str, Any]) -> dict[str, dic
         request = load_document(project, "request", result["request_id"])
         plan = load_document(project, "plan", result["plan_id"])
         approval = load_document(project, "approval", result["approval_id"])
+        if approval["execution_mode"] != result["result_kind"]:
+            raise IntegrationError("Result kind does not match approval execution mode")
         if request["project_id"] != selection["project_id"]:
             raise IntegrationError("Result belongs to a different project")
         if (plan["request_id"] != request["request_id"] or approval["request_id"] != request["request_id"]
@@ -562,18 +569,60 @@ def compile_selection(project: Path, selection: dict[str, Any], *, prepare_audio
             reference_assets.update({clip["asset"]["asset_id"]: clip["asset"] for clip in source_scene["clips"]})
         attempts = {attempt["attempt_id"]: attempt for attempt in result_scene["attempts"]}
         provider_aliases = {"fal": "fal.ai"}
-        approved_shots = {(shot["shot_id"], provider_aliases.get(variant["provider"], variant["provider"]),
-                           variant["model"], shot["prompt_snapshot"])
-                          for plan_scene in entry["plan"]["scenes"] if plan_scene["scene_id"] == scene["scene_id"]
-                          for variant in plan_scene["variants"]
+        approved_shots = [(plan_scene["scene_id"], plan_scene["order"], variant, shot)
+                          for plan_scene in entry["plan"]["scenes"] for variant in plan_scene["variants"]
                           if variant["variant_id"] in entry["approval"]["approved_variant_ids"]
-                          for shot in variant["shots"]}
+                          for shot in variant["shots"]]
+        approved_positions = {(scene_id, shot["shot_id"]): (scene_order, shot["order"])
+                              for scene_id, scene_order, _, shot in approved_shots}
+        frames = [(source_scene["scene_id"], frame) for source_scene in entry["result"]["scenes"]
+                  for frame in source_scene["keyframes"]]
+        predecessor_ids = {identifier for identifier in take["depends_on_take_ids"]
+                           if identifier in takes and takes[identifier][1]["order"] < result_scene["order"]}
+        predecessor_scenes = {takes[identifier][1]["scene_id"] for identifier in predecessor_ids}
+        first_frame_hashes = {(asset.get("source_take_id"), asset["sha256"])
+                              for asset in entry["result"]["reference_assets"] if asset["role"] == "first_frame"}
+        continuity_refs = {asset["asset_id"] for asset in entry["result"]["reference_assets"]
+                           if asset.get("source_take_id") in predecessor_ids and
+                           (asset["role"] == "first_frame" or
+                            (asset["role"] == "provider_reference" and
+                             (asset["source_take_id"], asset["sha256"]) in first_frame_hashes))}
         for edit in sorted(edits.values(), key=lambda value: value["order"]):
             clip = clips[edit["clip_id"]]
             attempt = attempts[clip["attempt_id"]]
-            if (attempt["shot_id"], provider_aliases.get(attempt["provider"], attempt["provider"]),
-                    attempt["model"], attempt["prompt_snapshot"]) not in approved_shots:
+            approved_refs = [set(shot["reference_asset_ids"]) for scene_id, _, variant, shot in approved_shots
+                             if scene_id == scene["scene_id"] and shot["shot_id"] == attempt["shot_id"]
+                             and provider_aliases.get(variant["provider"], variant["provider"]) ==
+                             provider_aliases.get(attempt["provider"], attempt["provider"])
+                             and variant["model"] == attempt["model"] and shot["prompt_snapshot"] == attempt["prompt_snapshot"]]
+            if not approved_refs:
                 raise IntegrationError("Selected clip does not match an approved shot variant")
+            shot_position = approved_positions[(scene["scene_id"], attempt["shot_id"])]
+            approved_keyframes = {frame["asset"]["asset_id"] for source_scene_id, frame in frames
+                                  if frame["asset"]["role"] == "keyframe"
+                                  and (source_scene_id == scene["scene_id"] or source_scene_id in predecessor_scenes)
+                                  and (frame_position := approved_positions.get((source_scene_id, frame["shot_id"]))) is not None
+                                  and frame_position <= shot_position}
+            prepared = attempt["generation_parameters"].get("prepared_reference_sources", "{}")
+            try:
+                prepared_sources = json.loads(prepared)
+            except (TypeError, ValueError):
+                raise IntegrationError("Invalid prepared reference provenance") from None
+            if (not isinstance(prepared_sources, dict) or
+                    any(not isinstance(key, str) or not isinstance(value, str) for key, value in prepared_sources.items()) or
+                    set(prepared_sources) - set(attempt["reference_asset_ids"])):
+                raise IntegrationError("Invalid prepared reference provenance")
+            authorized = False
+            for refs in approved_refs:
+                allowed = refs | approved_keyframes | continuity_refs
+                allowed |= {identifier for identifier, source in prepared_sources.items()
+                            if source in allowed and source in reference_assets
+                            and reference_assets.get(identifier, {}).get("role") == "provider_reference"}
+                if set(attempt["reference_asset_ids"]) <= allowed:
+                    authorized = True
+                    break
+            if not authorized:
+                raise IntegrationError("Selected clip used unapproved reference assets")
             imported = imports.get(clip["clip_id"])
             if not imported or imported["sha256"] != clip["asset"]["sha256"] or imported["source_uri"] != clip["asset"]["uri"]:
                 raise IntegrationError("Missing or mismatched clip import")
@@ -791,16 +840,23 @@ def render_selection(project: Path, selection: dict[str, Any], *, preview: bool 
 
 
 def cost_rollup(project: Path, selection: dict[str, Any] | None = None) -> dict[str, Any]:
-    selected: set[str] = set()
-    if selection:
+    selected: set[tuple[str, str]] = set()
+    if selection is not None:
         validate_document("selection", selection)
-        selected = {scene["take_id"] for scene in selection["scenes"]}
+        inputs = _selection_inputs(project, selection)
+        for scene in selection["scenes"]:
+            matches = [(result_id, take["take_id"]) for result_id, entry in inputs.items()
+                       for result_scene in entry["result"]["scenes"] if result_scene["scene_id"] == scene["scene_id"]
+                       for take in result_scene["takes"] if take["take_id"] == scene["take_id"]]
+            if len(matches) != 1:
+                raise IntegrationError("Selected take is missing or ambiguous in referenced results")
+            selected.add(matches[0])
     observations: dict[str, dict[str, Any]] = {}
     for path in sorted(project_path(project, "rough-cuts/manifests/results").glob("*.json")):
         result = read_json(path)
         validate_document("result", result)
         for scene in result["scenes"]:
-            selected_clips = {clip_id for take in scene["takes"] if take["take_id"] in selected for clip_id in take["clip_ids"]}
+            selected_clips = {clip_id for take in scene["takes"] if (result["result_id"], take["take_id"]) in selected for clip_id in take["clip_ids"]}
             selected_attempts = {clip["attempt_id"] for clip in scene["clips"] if clip["clip_id"] in selected_clips}
             for attempt in scene["attempts"]:
                 row = {"attempt_id": attempt["attempt_id"], "result_id": result["result_id"],
