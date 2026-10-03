@@ -308,6 +308,54 @@ class SubtitleResegmentationTests(unittest.TestCase):
         self.assertEqual(refined[0]["start"], 0.0)
         self.assertEqual(refined[-1]["end"], 12.0)
 
+    def test_resegment_preserves_word_timestamps_in_cues(self) -> None:
+        segment = {
+            "start": 0.0,
+            "end": 4.0,
+            "text": "Hello everyone, thanks for joining us.",
+            "words": [
+                {"word": "Hello", "start": 0.0, "end": 0.5},
+                {"word": " everyone,", "start": 0.5, "end": 1.0},
+                {"word": " thanks", "start": 1.0, "end": 1.5},
+                {"word": " for", "start": 1.5, "end": 2.0},
+                {"word": " joining", "start": 2.0, "end": 2.5},
+                {"word": " us.", "start": 2.5, "end": 3.0},
+            ],
+            "speaker_id": "speaker_0",
+        }
+
+        refined, metadata = resegment_for_subtitles([segment])
+
+        self.assertTrue(metadata["used_word_timestamps"])
+        self.assertTrue(refined)
+        self.assertTrue(all("words" in cue and cue["words"] for cue in refined))
+        flattened = [w for cue in refined for w in cue["words"]]
+        expected = [dict(w, speaker="speaker_0") for w in segment["words"]]
+        self.assertEqual(flattened, expected)
+
+    def test_merge_tiny_blocks_preserves_words(self) -> None:
+        blocks = [
+            {
+                "start": 0.0,
+                "end": 0.3,
+                "text": "Hi",
+                "speaker_id": "speaker_0",
+                "words": [{"word": "Hi", "start": 0.0, "end": 0.3}],
+            },
+            {
+                "start": 0.3,
+                "end": 0.6,
+                "text": "there",
+                "speaker_id": "speaker_0",
+                "words": [{"word": " there", "start": 0.3, "end": 0.6}],
+            },
+        ]
+
+        merged = merge_tiny_adjacent_blocks(blocks)
+
+        self.assertEqual(len(merged), 1)
+        self.assertEqual([w["word"] for w in merged[0]["words"]], ["Hi", " there"])
+
 
 class BackendDispatchTests(unittest.TestCase):
     def test_whisper_resolves_like_auto(self) -> None:
@@ -1154,11 +1202,11 @@ class SpeakerLabelOutputTests(unittest.TestCase):
 
 
 class ModelNameOverrideTests(unittest.TestCase):
-    """Verify that ElevenLabs runs report 'scribe_v1' as the model name."""
+    """Verify that ElevenLabs runs report 'scribe_v2' as the model name."""
 
     def test_elevenlabs_model_name_overrides_input(self) -> None:
-        """For ElevenLabs, resolve_model_name should return 'scribe_v1'."""
-        self.assertEqual(resolve_model_name("elevenlabs", "small"), "scribe_v1")
+        """For ElevenLabs, resolve_model_name should return 'scribe_v2'."""
+        self.assertEqual(resolve_model_name("elevenlabs", "small"), "scribe_v2")
 
     def test_whisper_model_name_unchanged(self) -> None:
         """For Whisper backends, model name should pass through unchanged."""

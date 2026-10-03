@@ -440,10 +440,10 @@ def resolve_backend(requested_backend: str, *, api_key: str | None = None) -> st
 def resolve_model_name(backend: str, model_name: str) -> str:
     """Return the effective model name for a given backend.
 
-    ElevenLabs uses 'scribe_v1' regardless of the --model argument;
+    ElevenLabs uses 'scribe_v2' regardless of the --model argument;
     Whisper backends pass through the user-supplied model name.
     """
-    return "scribe_v1" if backend == "elevenlabs" else model_name
+    return "scribe_v2" if backend == "elevenlabs" else model_name
 
 
 def mlx_backend_available() -> bool:
@@ -521,7 +521,7 @@ def transcribe_media(
             initial_prompt=initial_prompt,
         )
     if backend == "elevenlabs":
-        # model_name is intentionally not forwarded — ElevenLabs always uses scribe_v1
+        # model_name is intentionally not forwarded — ElevenLabs always uses scribe_v2
         return transcribe_with_elevenlabs(
             audio_path=audio_path,
             language=language,
@@ -615,7 +615,7 @@ def call_scribe_api(
     if _requests_module is None:  # pragma: no cover — defense in depth
         raise RuntimeError("requests library is required for ElevenLabs transcription")
     data: dict[str, str] = {
-        "model_id": "scribe_v1",
+        "model_id": "scribe_v2",
         "diarize": "true",
         "tag_audio_events": "true",
         "timestamps_granularity": "word",
@@ -1130,10 +1130,12 @@ def resegment_for_subtitles(
 
 
 def split_segment_for_subtitles(segment: dict[str, Any]) -> list[dict[str, Any]]:
+    # Pseudo words (evenly stretched) are timing aids only; never persist them.
+    real_words = segment.get("words") or None
     words = segment.get("words") or build_pseudo_words(segment)
     speaker_id = segment.get("speaker_id")
     if len(words) <= 1:
-        return [minimal_segment(segment["start"], segment["end"], segment["text"], speaker_id=speaker_id)]
+        return [minimal_segment(segment["start"], segment["end"], segment["text"], speaker_id=speaker_id, words=real_words)]
 
     blocks: list[dict[str, Any]] = []
     block_start_index = 0
@@ -1165,7 +1167,7 @@ def split_segment_for_subtitles(segment: dict[str, Any]) -> list[dict[str, Any]]
                     candidate_duration >= SUBTITLE_TARGET_DURATION_SECONDS
                     and is_preferred_break(words, current_index)
                 ):
-                    blocks.append(minimal_segment(candidate_start, candidate_end, candidate_text, speaker_id=speaker_id))
+                    blocks.append(minimal_segment(candidate_start, candidate_end, candidate_text, speaker_id=speaker_id, words=candidate_words if real_words else None))
                     block_start_index = current_index + 1
                     committed_block = True
                     break
@@ -1189,6 +1191,7 @@ def split_segment_for_subtitles(segment: dict[str, Any]) -> list[dict[str, Any]]
                     chosen_words[-1]["end"],
                     join_words(chosen_words),
                     speaker_id=speaker_id,
+                    words=chosen_words if real_words else None,
                 )
             )
             block_start_index = split_index + 1
@@ -1205,6 +1208,7 @@ def split_segment_for_subtitles(segment: dict[str, Any]) -> list[dict[str, Any]]
                 trailing_words[-1]["end"],
                 join_words(trailing_words),
                 speaker_id=speaker_id,
+                words=trailing_words if real_words else None,
             )
         )
         break
@@ -1241,6 +1245,7 @@ def minimal_segment(
     end: float,
     text: str,
     speaker_id: str | None = None,
+    words: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     segment: dict[str, Any] = {
         "start": round(start, 3),
@@ -1249,6 +1254,16 @@ def minimal_segment(
     }
     if speaker_id is not None:
         segment["speaker_id"] = speaker_id
+    if words:
+        segment["words"] = [
+            {
+                "word": w["word"],
+                "start": round(float(w["start"]), 3),
+                "end": round(float(w["end"]), 3),
+                "speaker": speaker_id,
+            }
+            for w in words
+        ]
     return segment
 
 
@@ -1300,9 +1315,13 @@ def merge_tiny_adjacent_blocks(blocks: list[dict[str, Any]]) -> list[dict[str, A
             and combined_duration <= SUBTITLE_MAX_DURATION_SECONDS
             and combined_word_count <= SUBTITLE_MAX_WORDS
         ):
+            merged_words = None
+            if merged[-1].get("words") and block.get("words"):
+                merged_words = merged[-1]["words"] + block["words"]
             merged[-1] = minimal_segment(
                 merged[-1]["start"], block["end"], combined_text,
                 speaker_id=merged[-1].get("speaker_id"),
+                words=merged_words,
             )
             continue
 
