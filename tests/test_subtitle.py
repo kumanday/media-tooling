@@ -5,6 +5,7 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 from media_tooling.subtitle import (
@@ -309,7 +310,7 @@ class SubtitleResegmentationTests(unittest.TestCase):
         self.assertEqual(refined[-1]["end"], 12.0)
 
     def test_resegment_preserves_word_timestamps_in_cues(self) -> None:
-        segment = {
+        segment: dict[str, Any] = {
             "start": 0.0,
             "end": 4.0,
             "text": "Hello everyone, thanks for joining us.",
