@@ -8,6 +8,7 @@ Read these central media-tooling skills before routing media-processing work:
 
 Use installed toolkit commands from this project directory:
 - spoken media: `media-subtitle` or `media-batch-subtitle`
+- narration/TTS: `media-tts`
 - silent or visual-first video: `media-contact-sheet` or `media-batch-contact-sheet`
 - rough-cut assembly: `media-rough-cut`
 - burn subtitles: `media-burn-subtitles` or `media-batch-burn-subtitles`
@@ -24,6 +25,7 @@ Use installed toolkit commands from this project directory:
 Operational defaults:
 - use sequential processing to reduce resource contention. Have patience for long media jobs
 - use `--skip-existing` for resumable batches
+- keep `ELEVENLABS_API_KEY` and `ELEVENLABS_VOICE_ID_EN` in the environment, never in project files
 - re-run `media-tooling-init` after reinstalling or relocating the toolkit so these skill paths stay current
 
 Optional Hyperframes workflow:

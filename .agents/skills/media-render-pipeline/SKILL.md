@@ -177,9 +177,19 @@ Produce the edit decision list and build the video.
    - Pad every cut edge with 30–200ms working window (Hard Rule 7).
    - Each range entry includes `source`, `start`, `end`, `beat`, `quote`,
      `reason`, and optional `grade`.
-2. **Drill into `media-timeline-view`** at ambiguous moments where visual
+2. **Generate narration when needed** — Keep the script in the project
+   workspace and use `media-tts` before rendering:
+   ```bash
+   media-tts "$PROJECT_DIR/script.md" \
+     --backend elevenlabs \
+     --output "$PROJECT_DIR/assets/audio/narration.mp3"
+   ```
+   Set `ELEVENLABS_API_KEY` and `ELEVENLABS_VOICE_ID_EN` in the environment;
+   never put credentials or voice IDs in project files. Use `media-loudnorm`
+   afterward when delivery-level normalization is required.
+3. **Drill into `media-timeline-view`** at ambiguous moments where visual
    context would change the editing decision.
-3. **Build animations or overlays in isolated slots** (if applicable) — use
+4. **Build animations or overlays in isolated slots** (if applicable) — use
    `$PROJECT_DIR/edit/hyperframes/slot_<id>/` for HTML-rendered motion and
    `$PROJECT_DIR/edit/animations/slot_<id>/` for other animation sources.
    Hyperframes is the preferred path for kinetic typography, animated lower
@@ -196,11 +206,11 @@ Produce the edit decision list and build the video.
    `start`, `end`, optional `position`, `z_order`, and `duration_type`.
    `media-edl-render` composites overlays before burning subtitles and applies
    the required overlay PTS shift.
-4. **Specify grade per-segment in the EDL** — add `grade` on ranges or
+5. **Specify grade per-segment in the EDL** — add `grade` on ranges or
    top-level so the renderer applies it during extraction, never post-concat
    (Anti-pattern 1, Anti-pattern 6). No manual grading step is needed;
    the EDL renderer handles grading automatically when it reads `edl.json`.
-5. **Render a preview** via `media-edl-render --preview`:
+6. **Render a preview** via `media-edl-render --preview`:
    ```bash
    media-edl-render "$PROJECT_DIR/edit/edl.json" \
      -o "$PROJECT_DIR/edit/preview.mp4" \
@@ -386,6 +396,7 @@ Step 8: Iterate on feedback and persist session memory.
 | `media-subtitle` | Step 1 (transcribe) |
 | `media-batch-subtitle` | Step 1 (batch transcribe) |
 | `media-pack-transcript` | Step 1 (pack) |
+| `media-tts` | Step 5 (narration) |
 | `media-timeline-view` | Steps 1, 5, 6 (on-demand visual drill-down) |
 | `media-edl-render` | Steps 5, 8 (render with EDL) |
 | `media-fcpxml-export` | Step 8 (optional Resolve layer handoff) |
