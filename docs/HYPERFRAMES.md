@@ -5,6 +5,10 @@ Use it when a video needs browser-native motion graphics: animated captions, low
 
 Keep using media-tooling for transcription, contact sheets, packed transcripts, EDL assembly, grading, loudness normalization, subtitle burning, and output verification.
 
+For a copyable prompt that selects a spoken clip and packages it with the
+upstream `talking-head-recut` skill, see
+[Create a short from your own video](WORKFLOWS.md#example-13-create-a-short-from-your-own-video).
+
 ## Install
 
 From a media-tooling checkout:

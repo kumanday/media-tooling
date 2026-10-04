@@ -224,6 +224,60 @@ encode for scene visibility and layout, then render and verify the deliverable.
 Keep the work local; publication is a separate step.
 ```
 
+## Example 13. Create a short from your own video
+
+Replace the bracketed fields before sharing this prompt with an agent. Use
+media-tooling to select and extract the short, then HyperFrames' upstream
+`talking-head-recut` skill to package that clip with transcript-timed graphics.
+The selected clip is the skill's input; it plays in full beneath the graphics.
+
+```text
+Create one short from my long-form video using media-tooling's motion-graphics workflow.
+
+Materials:
+- Source video: [YouTube URL or local file]
+- Goal and audience: [what the short should communicate, and to whom]
+- Brand assets or supporting visuals: [paths, links, or none]
+- Style references: [optional video links]
+- Output language(s): [languages]
+
+Read the workspace's AGENTS.md and the toolkit's docs/HYPERFRAMES.md, then use
+the media-render-pipeline, media-motion-graphics, and subtitle skills. Read the
+upstream /hyperframes router and use its talking-head-recut skill to package
+the selected spoken clip with timed graphics. Verify installed commands and
+skill availability before using them.
+
+Find a strong, self-contained spoken moment of roughly 30-60 seconds, unless
+I supply a specific cut. Select and extract that clip with media-tooling before
+passing it to talking-head-recut. Preserve the speaker's meaning and develop
+your own creative direction. Use motion graphics to explain or reinforce the
+content, with the speaker's face unobstructed and subtitles readable.
+
+Produce a vertical 1080x1920 short with burned subtitles and normalized audio.
+Use a fresh composition slot and keep its brief, storyboard, review, and
+decisions there. Keep using media-tooling for final EDL assembly, subtitle
+burning, loudness normalization, and verification.
+
+Use review-mode: auto. Visually review the storyboard with multimodal feedback
+before animating, apply bounded corrections, and review frames and boundary
+clips from the assembled encode. Run media-verify and separately check subtitle
+readability, graphics placement, endpoint coverage, speaker handoffs, and
+loudness. Report any unresolved findings.
+
+Deliver a local preview, composition and EDL paths, verification results, and
+any workflow friction. Nothing gets published.
+```
+
+For human creative review, replace the `review-mode: auto` paragraph with:
+
+```text
+Use review-mode: revision. Get my approval on the creative direction and
+storyboard before animating, then show me the final preview. Review frames and
+boundary clips from the assembled encode. Run media-verify and separately check
+subtitle readability, graphics placement, endpoint coverage, speaker handoffs,
+and loudness. Report any unresolved findings.
+```
+
 ## Command examples
 
 These commands are the building blocks that the prompt patterns usually trigger. They assume you installed `media-tooling` with `uv tool install` and are running from the project workspace.
