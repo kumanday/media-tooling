@@ -16,10 +16,17 @@ from media_tooling.subtitle_translate import (
     main,
     parse_srt_file,
     resegment_translated_window,
+    split_text_into_clauses,
 )
 
 
 class SubtitleTranslationTests(unittest.TestCase):
+    def test_numeric_punctuation_stays_inside_clauses(self) -> None:
+        for text in ["Usa Seedance 2.0. Fin.", "El resultado se mantiene en 2,5 segundos. Fin.", "Versión 3.1.2 lista! Fin."]:
+            with self.subTest(text=text):
+                self.assertEqual(split_text_into_clauses(text), [text[:-5], "Fin."])
+
+
     def run_cli(self, *argv: str) -> tuple[int, str]:
         stream = io.StringIO()
         with contextlib.redirect_stdout(stream), mock.patch.object(sys, "argv", ["media-translate-subtitles", *argv]):

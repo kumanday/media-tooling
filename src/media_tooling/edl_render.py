@@ -409,6 +409,25 @@ def _words_in_range(
     return out
 
 
+def _source_is_portrait(source: Path, ffprobe_bin: str = "ffprobe") -> bool:
+    """Return True if *source* is taller than it is wide."""
+    try:
+        result = subprocess.run(
+            [ffprobe_bin, "-v", "error",
+             "-select_streams", "v:0",
+             "-show_entries", "stream=width,height",
+             "-of", "csv=p=0", str(source)],
+            capture_output=True, text=True, timeout=10,
+        )
+        dims = result.stdout.strip().split(",")
+        if len(dims) < 2:
+            return False
+        return int(dims[1]) > int(dims[0])
+    except (FileNotFoundError, subprocess.TimeoutExpired, ValueError):
+        # If probing fails, assume landscape to preserve the historic default.
+        return False
+
+
 def _source_has_audio(source: Path, ffprobe_bin: str = "ffprobe") -> bool:
     """Return True if *source* has at least one audio stream."""
     try:
@@ -445,10 +464,12 @@ def extract_segment(
     """
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
-    if draft:
-        scale = "scale=1280:-2"
+    if _source_is_portrait(source, ffprobe_bin):
+        # Portrait sources anchor the tall side; scale=1920:-2 would blow a
+        # 1080x1920 cut up to 1920x3414.
+        scale = "scale=-2:1280" if draft else "scale=-2:1920"
     else:
-        scale = "scale=1920:-2"
+        scale = "scale=1280:-2" if draft else "scale=1920:-2"
 
     vf_parts: list[str] = [scale]
     if grade_filter:
@@ -891,7 +912,8 @@ def _validate_overlay(ov: dict[str, Any], index: int) -> None:
 
     An overlay must have ``source`` (file path) OR ``card`` (PIL-generated),
     plus ``start`` and ``end`` times.  Optional: ``position`` (dict with
-    ``x``, ``y``), ``z_order`` (int), ``duration_type`` (``sync`` or ``beat``).
+    ``x``, ``y``), ``z_order`` (int), ``duration_type`` (``sync`` or ``beat``),
+    and ``source_start`` (non-negative source offset in seconds).
     """
     if not isinstance(ov, dict):
         raise EDLSchemaError(
@@ -914,6 +936,21 @@ def _validate_overlay(ov: dict[str, Any], index: int) -> None:
             f"overlay[{index}] 'source' must be a string, "
             f"got {type(ov['source']).__name__}"
         )
+
+    if "source_start" in ov:
+        offset = ov["source_start"]
+        if (
+            not has_source
+            or isinstance(offset, bool)
+            or not isinstance(offset, (int, float))
+            or not math.isfinite(offset)
+            or offset < 0
+        ):
+            raise EDLSchemaError(
+                f"overlay[{index}] 'source_start' requires a source and a finite non-negative number"
+            )
+        if offset and _is_image_path(ov["source"]):
+            raise EDLSchemaError(f"overlay[{index}] image source cannot have a non-zero 'source_start'")
 
     if has_card:
         card = ov["card"]
@@ -1104,8 +1141,9 @@ def build_overlay_filter_parts(
 ) -> list[str]:
     """Build PTS-shift filter parts for each overlay input.
 
-    Hard Rule 4: Apply ``setpts=PTS-STARTPTS+T/TB`` so that overlay
-    frame 0 lands at the intended time window start.
+    Hard Rule 4: Apply ``setpts=PTS-STARTPTS+T/TB`` so that
+    the first selected overlay source frame lands at the intended time window start.
+    ``source_start`` selects a source-side offset in seconds, defaulting to zero.
 
     For image overlays (PNG, JPG, etc.), an ``fps`` filter is prepended
     to generate continuous frames from the static image.  Without this,
@@ -1136,6 +1174,10 @@ def build_overlay_filter_parts(
             )
         resolved = str(ov["_resolved_path"])
         filters: list[str] = []
+        source_start = float(ov.get("source_start", 0))
+        if source_start:
+            source_end = source_start + float(ov["end"]) - t
+            filters.append(f"trim=start={source_start:.6f}:end={source_end:.6f}")
         if _is_image_path(resolved):
             filters.append(f"fps={base_fps}")
         if base_size is not None:

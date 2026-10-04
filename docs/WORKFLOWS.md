@@ -189,6 +189,41 @@ Please translate the subtitles into Spanish, but do not translate cue-by-cue fro
 Please build a first-pass rough cut from the approved EDL and add an animated lower third for the opening hook. Use Hyperframes for the lower third, validate it, render an alpha overlay, add it to the EDL overlays list, then render and verify the preview.
 ```
 
+## Example 10. Plan a product motion video
+
+```text
+Use media-motion-graphics and the current upstream HyperFrames skills to plan a
+30-second product video. Our brand assets and screenshots are in assets/reference/.
+Analyze the two reference clips listed in inventory/motion-references.txt for
+pacing, typography, camera movement, and transitions. Propose three distinct
+storyboard directions, then show a branded still for every scene of the selected
+direction before animating. Keep the composition under edit/hyperframes/product/.
+```
+
+## Example 11. Revise motion with director notes
+
+```text
+In the existing product composition, slow scene S03's zoom to 0.7x speed, using
+its hold time to keep the next beat fixed. Hard cut into S04 and push in on the
+actual product button. Preserve the approved copy and layout. Update the existing
+source, inspect snapshots of those scenes and their seams, run HyperFrames check,
+and show the revised preview.
+```
+
+See [Hyperframes](HYPERFRAMES.md#reference-led-motion-workflow) for the upstream
+capabilities and artifact paths used by these prompts.
+
+## Example 12. Produce an autonomous motion pilot
+
+```text
+Produce one short under our agreed brief using media-motion-graphics in auto
+review mode. Choose the storyboard direction, send images of every storyboard
+scene to a multimodal model for feedback, and apply blocking corrections with at
+most two review passes. Record feedback in review.md. Check the actual draft
+encode for scene visibility and layout, then render and verify the deliverable.
+Keep the work local; publication is a separate step.
+```
+
 ## Command examples
 
 These commands are the building blocks that the prompt patterns usually trigger. They assume you installed `media-tooling` with `uv tool install` and are running from the project workspace.

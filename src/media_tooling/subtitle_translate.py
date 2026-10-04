@@ -367,9 +367,18 @@ def split_translated_text_into_blocks(text: str) -> list[str]:
 def split_text_into_clauses(text: str) -> list[str]:
     clauses: list[str] = []
     buffer = []
-    for character in text:
+    for index, character in enumerate(text):
         buffer.append(character)
         current = "".join(buffer)
+        numeric_separator = (
+            character in ".,"
+            and index > 0
+            and index + 1 < len(text)
+            and text[index - 1].isdigit()
+            and text[index + 1].isdigit()
+        )
+        if numeric_separator:
+            continue
         if character in HARD_SENTENCE_PUNCTUATION:
             clauses.append(collapse_whitespace(current))
             buffer = []

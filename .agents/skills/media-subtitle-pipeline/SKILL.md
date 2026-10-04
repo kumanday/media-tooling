@@ -35,6 +35,19 @@ Shell helpers expected after setup:
 7. Use `--skip-existing` when resuming an interrupted batch.
 8. After transcription, pack the transcript with `media-pack-transcript` before reasoning over it.
 
+### Project glossary and transcript review
+
+Keep a per-show glossary at `$PROJECT_DIR/transcripts/glossary.txt`, listing
+proper nouns and expected spellings. Use its text as `--initial-prompt` where the
+backend supports it; a prompt is a hint, so still inspect the cached transcript
+before packing, translating, or burning subtitles. Check named entities against
+the recording and authoritative project context. Preserve the raw transcript and
+save an edited copy with verified corrections, real word timestamps, and speaker
+labels intact; point downstream work at the edited copy and regenerate its SRT.
+Do not merely patch a burned subtitle or fabricate word timings. Skip
+whitespace-only spacer words when checking content-word adjacency (Scribe can
+insert them). Record changed terms and evidence timestamps in project notes.
+
 ### Core pipeline: transcribe → pack → inspect (on demand)
 
 After transcription, always pack the transcript before reasoning over it:
