@@ -533,3 +533,29 @@ class CLIValidationTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PreserveCuesTests(unittest.TestCase):
+    def test_styling_preserves_reviewed_copy_and_timing(self) -> None:
+        import re
+        from unittest.mock import patch
+
+        from media_tooling.burn_subtitles import burn_subtitles
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            original = "1\n00:00:00,100 --> 00:00:01,700\nFal.ai works as expected.\n"
+            srt = root / "reviewed.srt"
+            srt.write_text(original)
+            captured: list[str] = []
+
+            def inspect(**kwargs: object) -> None:
+                match = re.search(r"subtitles='([^']+)'", str(kwargs["video_filter"]))
+                assert match is not None
+                captured.append(Path(match[1]).read_text())
+
+            with patch("media_tooling.burn_subtitles.run_ffmpeg", side_effect=inspect):
+                for style in ["bold-overlay", "natural-sentence"]:
+                    burn_subtitles(input_path=root / "base.mp4", srt_path=srt,
+                                   output_path=root / "out.mp4", style=style, rechunk=False)
+            self.assertEqual(captured, [original, original])

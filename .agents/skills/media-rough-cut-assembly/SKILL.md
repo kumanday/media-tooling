@@ -454,3 +454,34 @@ See `docs/hard-rules.md` for the full list of 12 hard rules and 13 anti-patterns
 - Run `media-verify` after rendering to self-evaluate cut boundaries.
 - Never skip loudness normalization for social-media distribution targets.
 - Use `--draft` mode first to verify cut points, then `--preview` for QC, then full render for final output.
+
+## Reframing and reviewed subtitles
+
+Optional top-level `reframe` and per-range `reframe` accept FFmpeg video filter
+strings. A range value overrides the top-level value; an empty string disables
+it for that range. Geometry runs in source pixels before the renderer scales the
+result's longer side to 1920 (1280 with `--draft`), then applies `grade`. All
+segments must produce compatible dimensions for concatenation.
+
+```json
+{
+  "version": 1,
+  "sources": {"episode": "/path/to/episode.mp4"},
+  "transcripts": {"episode": "/path/to/library/transcripts/episode.json"},
+  "reframe": "crop=540:960:700:60",
+  "ranges": [{"source": "episode", "start": 89.54, "end": 149.30}],
+  "subtitles": {"path": "reviewed.srt", "style": "natural-sentence", "rechunk": false}
+}
+```
+
+`transcripts` maps source names to JSON files; relative paths resolve beside the
+EDL. Without a mapping, the renderer uses `transcripts/<source-name>.json` beside
+the EDL. Flat `words` and `segments[].words` are supported, with `text` or `word`
+text fields. Existing word times drive both cut snapping and master-SRT offsets;
+whitespace spacers and non-word events are omitted. Segment-only transcripts
+without word times cannot supply word alignment.
+
+`subtitles.rechunk` defaults to `true`. Set it to `false` to preserve an existing
+SRT's cue text and timing in both overlay and subtitle-only renders. Styling still
+applies. Sentence-style re-chunking distributes time across merged text; it does
+not recover spoken word timing. Review translated cue timing separately.

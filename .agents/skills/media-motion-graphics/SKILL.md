@@ -10,8 +10,10 @@ those workflows to project assets, reference analysis, and media-tooling assembl
 
 ## Start with upstream capabilities
 
-1. Read existing `edit/project.md` and the composition's `BRIEF.md`,
-   `STORYBOARD.md`, and design spec before asking for information.
+1. Read the composition's `BRIEF.md`, `STORYBOARD.md`, `DECISIONS.md`, and
+   design spec before asking for information. Read `edit/project.md` for shared
+   project context when the user's scope permits it. An independent pilot uses
+   only its own slot's records and the current toolkit guidance.
 2. Check `hyperframes --version` and command help. Use the current upstream
    `/hyperframes` router and its selected workflow. For standalone skill installs,
    `hyperframes skills update` installs the core set; the router loads creation
@@ -38,7 +40,7 @@ repeat intake or approvals for settled decisions.
 Record `review-mode: revision` or `review-mode: auto` in the composition's
 `BRIEF.md` as a media-tooling extension. Default to `revision`. An explicit request
 to operate autonomously selects `auto`; record the request and agreed scope in
-`edit/project.md`. This setting changes the review process, not the authoring
+`DECISIONS.md` in the composition slot. This setting changes the review process, not the authoring
 workflow. Use upstream's autonomous/skip-checkpoint configuration where supported
 and keep this review step alongside its authoring contracts.
 
@@ -77,7 +79,7 @@ real product screenshots or source components, and 1-2 style references when
 available. Reuse supplied information. A missing reference is not a blocker:
 record a proposed visual direction using upstream design guidance.
 
-Write `$PROJECT_DIR/analysis/motion-references.md` with each reference's URL or
+Write `<composition-root>/motion-references.md` with each reference's URL or
 local path and timecoded observations. Separate observed features from proposed
 adaptations. Record shot/hold lengths, type scale and hierarchy, entry/exit motion,
 easing, zoom or crop behavior, transition continuity, and sound cues where relevant.
@@ -96,7 +98,7 @@ hand-authoring them. Keep references as direction; use project assets in the fil
 ## Choose a direction and review stills
 
 When creative direction is open, propose 2-3 meaningfully different storyboard
-options in `$PROJECT_DIR/storyboards/motion-directions.md`: vary the narrative,
+options in `<composition-root>/motion-directions.md`: vary the narrative,
 layout, or pacing, with beat durations and asset choices. A selected direction or
 a targeted edit can go straight to its existing storyboard.
 
@@ -175,4 +177,21 @@ brief with `ffprobe`. For overlays, hand off source/render paths, actual duratio
 alpha format, and placement to `media-rough-cut-assembly`; for standalone videos,
 handoff the MP4 directly. Run `media-verify` after EDL integration and inspect its
 findings. Persist the chosen direction and significant revision decisions in
-`edit/project.md`; maintain current canonical copy in the working artifacts.
+the slot's `DECISIONS.md`; maintain current canonical copy in the working artifacts.
+
+Keep runtime dependencies such as GSAP in the composition's assets directory
+when reproducible offline rendering is required. Follow the installed upstream
+contract for dependency loading and language variants; check current CLI help
+instead of guessing option syntax. Evaluate lint's sub-composition suggestions
+against the project's size and reuse needs.
+
+A contrast result with zero measured elements is missing coverage. Review
+transparent graphics on the actual assembled footage, including source labels
+and subtitles. Inspect the first and last encoded frames of the assembly and
+short clips at both ends. Match overlay coverage to the padded base duration,
+allowing for frame rounding. Review the next speaker's first word against the
+cut and padding; audio fades do not establish speaker isolation.
+
+ProRes overlays can be large. Retain source and approved renders. Record which
+iteration files are superseded and their sizes in the handoff; clean them up
+only under the project's retention policy or the user's instruction.

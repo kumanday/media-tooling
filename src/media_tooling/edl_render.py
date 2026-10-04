@@ -187,19 +187,31 @@ def validate_edl(edl: dict[str, Any]) -> None:
                     f"'auto', or a raw ffmpeg filter string"
                 )
 
+    for owner in [edl, *ranges]:
+        if "reframe" in owner and not isinstance(owner["reframe"], str):
+            raise EDLSchemaError("reframe must be an FFmpeg video filter string")
+    transcripts = edl.get("transcripts", {})
+    if not isinstance(transcripts, dict) or any(
+        key not in source_names or not isinstance(value, str)
+        for key, value in transcripts.items()
+    ):
+        raise EDLSchemaError("transcripts must map source names to JSON paths")
+
     # Validate subtitles field if present
     subtitles = edl.get("subtitles")
     if subtitles is not None:
         if isinstance(subtitles, str):
             pass  # path string — valid
         elif isinstance(subtitles, dict):
-            allowed = {"style", "path", "force_style"}
+            allowed = {"style", "path", "force_style", "rechunk"}
             invalid = set(subtitles.keys()) - allowed
             if invalid:
                 raise EDLSchemaError(
                     f"subtitles dict contains unknown keys: {invalid}. "
                     f"Allowed: {allowed}"
                 )
+            if "rechunk" in subtitles and not isinstance(subtitles["rechunk"], bool):
+                raise EDLSchemaError("subtitles rechunk must be a boolean")
             if "path" in subtitles and not isinstance(subtitles["path"], str):
                 raise EDLSchemaError(
                     f"subtitles 'path' must be a string, got {type(subtitles['path']).__name__}"
@@ -396,8 +408,13 @@ def _words_in_range(
 ) -> list[dict[str, Any]]:
     """Return word-level entries from *transcript* that overlap [t_start, t_end]."""
     out: list[dict[str, Any]] = []
-    for w in transcript.get("words", []):
-        if w.get("type") != "word":
+    raw_words = transcript.get("words")
+    if raw_words is None:
+        raw_words = [word for segment in transcript.get("segments", [])
+                     for word in segment.get("words", [])]
+    for raw in raw_words:
+        w = {**raw, "text": raw.get("text", raw.get("word", ""))}
+        if w.get("type", "word") != "word" or not str(w["text"]).strip():
             continue
         ws = w.get("start")
         we = w.get("end")
@@ -456,6 +473,7 @@ def extract_segment(
     ffmpeg_bin: str = "ffmpeg",
     ffprobe_bin: str = "ffprobe",
     has_audio: bool | None = None,
+    reframe: str = "",
 ) -> None:
     """Extract a cut range as its own MP4 with grade + 30 ms audio fades.
 
@@ -471,7 +489,10 @@ def extract_segment(
     else:
         scale = "scale=1280:-2" if draft else "scale=1920:-2"
 
-    vf_parts: list[str] = [scale]
+    if reframe:
+        target = 1280 if draft else 1920
+        scale = f"scale=w='if(gte(iw,ih),{target},-2)':h='if(gte(iw,ih),-2,{target})'"
+    vf_parts: list[str] = [reframe, scale] if reframe else [scale]
     if grade_filter:
         vf_parts.append(grade_filter)
     vf = ",".join(vf_parts)
@@ -515,6 +536,11 @@ def extract_segment(
         raise RuntimeError(f"ffmpeg extract failed for {source}: {detail}") from exc
 
 
+def _transcript_path(edl: dict[str, Any], source: str, base: Path) -> Path | None:
+    value = edl.get("transcripts", {}).get(source)
+    return resolve_path(value, base) if value is not None else None
+
+
 def _resolve_segment_bounds(
     start: float,
     end: float,
@@ -522,6 +548,7 @@ def _resolve_segment_bounds(
     edit_dir: Path,
     source_durations: dict[str, float],
     warn_label: str = "using raw cut points",
+    transcript_path: Path | None = None,
 ) -> tuple[float, float, list[dict[str, Any]]]:
     """Load transcript, snap to word boundary, apply padding.
 
@@ -530,8 +557,10 @@ def _resolve_segment_bounds(
 
     Returns ``(padded_start, padded_end, words)``.
     """
-    tr_path = edit_dir / "transcripts" / f"{src_name}.json"
+    tr_path = transcript_path or edit_dir / "transcripts" / f"{src_name}.json"
     words: list[dict[str, Any]] = []
+    if transcript_path is not None and not tr_path.exists():
+        raise RuntimeError(f"configured transcript not found: {tr_path}")
     if tr_path.exists():
         try:
             transcript = json.loads(tr_path.read_text(encoding="utf-8"))
@@ -683,6 +712,7 @@ def extract_all_segments(
 
         padded_start, padded_end, _ = _resolve_segment_bounds(
             start, end, src_name, edit_dir, source_durations,
+            transcript_path=_transcript_path(edl, src_name, edit_dir),
         )
         duration = padded_end - padded_start
 
@@ -718,6 +748,7 @@ def extract_all_segments(
             src_path, padded_start, duration, seg_filter, out_path,
             preview=preview, draft=draft, ffmpeg_bin=ffmpeg_bin,
             ffprobe_bin=ffprobe_bin, has_audio=has_audio,
+            reframe=r.get("reframe", edl.get("reframe", "")),
         )
         seg_paths.append(out_path)
 
@@ -814,6 +845,7 @@ def build_master_srt(
         padded_start, padded_end, words_in_seg = _resolve_segment_bounds(
             seg_start, seg_end, src_name, edit_dir, source_durations,
             warn_label="skipping captions for this segment",
+            transcript_path=_transcript_path(edl, src_name, edit_dir),
         )
         seg_duration = padded_end - padded_start
         if seg_duration <= 0:
@@ -882,6 +914,7 @@ def burn_subtitles_last(
     *,
     style: str = "bold-overlay",
     style_args: str | None = None,
+    rechunk: bool = True,
     ffmpeg_bin: str = "ffmpeg",
 ) -> None:
     """Burn subtitles into *base_path* with subtitles applied LAST.
@@ -900,6 +933,7 @@ def burn_subtitles_last(
         output_path=out_path,
         style=style,
         style_args=style_args,
+        rechunk=rechunk,
         ffmpeg_bin=ffmpeg_bin,
     )
 
@@ -1250,6 +1284,7 @@ def build_final_composite(
     sub_style_args: str | None = None,
     ffmpeg_bin: str = "ffmpeg",
     ffprobe_bin: str = "ffprobe",
+    rechunk: bool = True,
 ) -> None:
     """Final pass: base → overlays (PTS-shifted) → subtitles LAST → out.
 
@@ -1276,7 +1311,7 @@ def build_final_composite(
         # No overlays — delegate to the existing subtitle-only path
         burn_subtitles_last(
             base_path, subtitles_path, out_path,  # type: ignore[arg-type]
-            style=sub_style, style_args=sub_style_args,
+            style=sub_style, style_args=sub_style_args, rechunk=rechunk,
             ffmpeg_bin=ffmpeg_bin,
         )
         return
@@ -1381,7 +1416,9 @@ def build_final_composite(
             force_style = sub_style_args or NATURAL_SENTENCE_FORCE_STYLE
         else:
             raise ValueError(f"Unknown subtitle style: {sub_style}")
-        if sub_style == "bold-overlay":
+        if not rechunk:
+            rechunked = [{"start": cue.start, "end": cue.end, "text": cue.text} for cue in cues]
+        elif sub_style == "bold-overlay":
             rechunked = rechunk_bold_overlay(cues)
         else:
             rechunked = rechunk_natural_sentence(cues)
@@ -1662,10 +1699,12 @@ def render_edl(
     # Determine subtitle style
     sub_style = "bold-overlay"
     sub_style_args: str | None = None
+    rechunk = True
     sub_cfg = edl.get("subtitles")
     if isinstance(sub_cfg, dict):
         sub_style = sub_cfg.get("style", sub_style)
         sub_style_args = sub_cfg.get("force_style")
+        rechunk = sub_cfg.get("rechunk", True)
 
     # 4. Resolve overlays and composite (overlays first, subtitles last — Hard Rule 1)
     raw_overlays = edl.get("overlays") or []
@@ -1686,7 +1725,7 @@ def render_edl(
         try:
             build_final_composite(
                 base_path, resolved_overlays, subs_path, composite_output,
-                sub_style=sub_style, sub_style_args=sub_style_args,
+                sub_style=sub_style, sub_style_args=sub_style_args, rechunk=rechunk,
                 ffmpeg_bin=ffmpeg_bin, ffprobe_bin=ffprobe_bin,
             )
         except (ValueError, RuntimeError, FileNotFoundError) as exc:
@@ -1704,7 +1743,7 @@ def render_edl(
         try:
             burn_subtitles_last(
                 current_path, subs_path, sub_output,
-                style=sub_style, style_args=sub_style_args,
+                style=sub_style, style_args=sub_style_args, rechunk=rechunk,
                 ffmpeg_bin=ffmpeg_bin,
             )
         except (ValueError, RuntimeError, FileNotFoundError) as exc:

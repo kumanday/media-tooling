@@ -80,6 +80,10 @@ def parse_args() -> argparse.Namespace:
         help="Subtitle style preset. Default: bold-overlay.",
     )
     parser.add_argument(
+        "--preserve-cues", action="store_true",
+        help="Preserve the SRT cue text and timing while applying the selected style.",
+    )
+    parser.add_argument(
         "--style-args",
         default=None,
         help=(
@@ -148,6 +152,7 @@ def main() -> int:
             style=args.style,
             style_args=args.style_args,
             pre_filters=args.pre_filters,
+            rechunk=not args.preserve_cues,
             ffmpeg_bin=args.ffmpeg_bin,
             overwrite=args.overwrite,
         )
@@ -213,10 +218,11 @@ def burn_subtitles(
     pre_filters: str | None = None,
     ffmpeg_bin: str = "ffmpeg",
     overwrite: bool = False,
+    rechunk: bool = True,
 ) -> None:
     """Burn SRT subtitles into video with customizable styles.
 
-    Rechunks subtitles according to the chosen style, builds a filter chain
+    Optionally rechunks subtitles according to the chosen style, builds a filter chain
     with subtitles always LAST (Hard Rule 1), and runs ffmpeg.
     """
     cues = parse_srt_file(srt_path)
@@ -232,6 +238,8 @@ def burn_subtitles(
     else:
         raise ValueError(f"Unknown style: {style}")
 
+    if not rechunk:
+        rechunked = [{"start": cue.start, "end": cue.end, "text": cue.text} for cue in cues]
     rechunked_srt = build_srt(rechunked)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)

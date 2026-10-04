@@ -296,7 +296,8 @@ After the user reviews the preview:
    media-fcpxml-export "$PROJECT_DIR/edit/resolve/layer-manifest.json" \
      -o "$PROJECT_DIR/edit/resolve/project.fcpxml"
    ```
-4. **Persist session memory** — append to `$PROJECT_DIR/edit/project.md`:
+4. **Persist session memory** in `$PROJECT_DIR/edit/project.md`, or in the
+   composition slot's `DECISIONS.md` for an independent motion-graphics run:
 
    ```markdown
    ## Session YYYY-MM-DD
@@ -314,15 +315,15 @@ After the user reviews the preview:
    Unfinished work, open questions, or next actions.
    ```
 
-4. On the next session startup, read `edit/project.md` and summarize the last
+4. On the next session startup, read the permitted project or slot record and summarize the last
    session in one sentence to re-establish context.
 
 ## Session memory protocol
 
-All strategy, decisions, and reasoning must persist across sessions in
-`$PROJECT_DIR/edit/project.md`.
+Shared strategy, decisions, and reasoning persist in `$PROJECT_DIR/edit/project.md`.
+Independent motion-graphics runs use their composition slot's `DECISIONS.md`.
 
-- **On startup:** Read `project.md` if it exists. Summarize the last session
+- **On startup:** Read the permitted project or slot record if it exists. Summarize the last session
   in one sentence before asking whether to continue.
 - **After each session:** Append a timestamped entry with strategy, decisions,
   reasoning log, and outstanding items.
@@ -541,4 +542,14 @@ Hard rules for subtitles: applied LAST (Rule 1), output-timeline offsets
 - Use `media-timeline-view` only at decision points — not as a default scan
   step.
 - Cache transcripts; never re-transcribe unless the source changed (Hard Rule 9).
-- Persist session memory in `$PROJECT_DIR/edit/project.md` after every session.
+- Persist session memory in the permitted project or composition-slot record after every session.
+
+Independent motion-graphics runs keep their session and creative decisions in the
+composition slot's `DECISIONS.md`; honor user exclusions of `edit/project.md`.
+Use EDL `reframe` for geometry before draft scaling, `transcripts` for existing
+word-level JSON paths, and `subtitles.rechunk: false` to preserve reviewed cues.
+See `media-rough-cut-assembly` for schema and timing behavior. `media-verify` does
+not automate subtitle readability, overlay placement, face obstruction, or
+loudness verification. Record these separately, including first/last encoded
+frames and speaker handoff clips. Zero measured contrast elements need visual
+review on the assembled footage.

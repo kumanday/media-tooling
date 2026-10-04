@@ -43,9 +43,12 @@ Optional Hyperframes workflow:
 
 ## Session Memory Protocol
 
-Persist strategy, decisions, and reasoning across sessions in `edit/project.md`.
+Persist shared strategy, decisions, and reasoning across sessions in `edit/project.md`.
+For independent motion-graphics pilots, keep references, directions, review scope,
+and decisions in the composition slot (`DECISIONS.md`). Honor exclusions of prior
+project context and read only that slot's records on resume.
 
-On startup, read `edit/project.md` and summarize the last session in one sentence to re-establish context.
+On startup, within the permitted context scope, read `edit/project.md` and summarize the last session in one sentence to re-establish context.
 
 After each session, append a timestamped entry to `edit/project.md` using this format:
 
@@ -100,3 +103,10 @@ Avoid these 13 patterns — they have been proven to produce broken or low-quali
 12. **Cutting inside a word** — Violates Hard Rule 6. Always cut at word boundaries to preserve speech clarity.
 13. **Assuming content type** — Never assume a file is "podcast", "interview", etc. Always generalize processing to work for any spoken-media content.
 {{MANAGED_BLOCK_END}}
+
+For vertical edits, use EDL `reframe` for source-pixel geometry before draft scaling
+and `transcripts` to map source names to existing JSON transcripts. Preserve
+reviewed SRT copy and timing with `subtitles.rechunk: false`.
+`media-verify` covers duration, internal cut discontinuities/audio pops, and grade.
+Record separate subtitle/overlay visual review and loudness measurements. Contrast
+checks with zero measurements need assembled-frame review, including endpoints.

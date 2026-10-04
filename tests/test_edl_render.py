@@ -3321,3 +3321,71 @@ class E2EOverlayCompositingTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class PilotTranscriptTests(unittest.TestCase):
+    def test_nested_library_transcript_drives_master_srt(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            transcript = root / 'library.json'
+            transcript.write_text(json.dumps({'segments': [{'words': [
+                {'word': 'Fal.ai', 'start': 1.1, 'end': 1.3},
+                {'word': ' ', 'start': 1.3, 'end': 1.4},
+                {'word': 'works.', 'start': 1.4, 'end': 1.7},
+            ]}]}))
+            edl = {'version': 1, 'sources': {'episode': 'episode.mp4'},
+                   'transcripts': {'episode': 'library.json'},
+                   'ranges': [{'source': 'episode', 'start': 1, 'end': 2}]}
+            validate_edl(edl)
+            out = root / 'master.srt'
+            build_master_srt(edl, root, out, source_durations={'episode': 3})
+            self.assertIn('FAL.AI WORKS.', out.read_text())
+            self.assertIn('00:00:00,130 --> 00:00:00,730', out.read_text())
+
+    def test_rejects_invalid_new_fields(self) -> None:
+        for field, value in [('reframe', {}), ('transcripts', {'unknown': 'file.json'}),
+                             ('subtitles', {'rechunk': 'false'})]:
+            with self.subTest(field=field):
+                edl = _minimal_edl()
+                edl[field] = value
+                with self.assertRaises(EDLSchemaError):
+                    validate_edl(edl)
+
+    def test_composite_preserves_reviewed_cues(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            srt = root / 'reviewed.srt'
+            original = '1\n00:00:00,100 --> 00:00:01,700\nFal.ai works as expected.\n\n'
+            srt.write_text(original)
+            captured: list[str] = []
+            def run(cmd: list[str], **kwargs: object) -> MagicMock:
+                import re
+                graph = cmd[cmd.index('-filter_complex') + 1]
+                match = re.search(r"subtitles='([^']+)'", graph)
+                assert match is not None
+                captured.append(Path(match[1]).read_text())
+                return MagicMock(returncode=0)
+            with patch('media_tooling.edl_render.subprocess.run', side_effect=run), \
+                 patch('media_tooling.edl_render.probe_duration', return_value=2), \
+                 patch('media_tooling.edl_render.probe_frame_rate', return_value=30), \
+                 patch('media_tooling.edl_render.probe_video_size', return_value=(1080, 1920)), \
+                 patch('media_tooling.edl_render._source_has_audio', return_value=False):
+                build_final_composite(root / 'base.mp4', [{'_resolved_path': str(root / 'ov.mov'),
+                    'source': 'ov.mov', 'start': 0, 'end': 2}], srt, root / 'out.mp4', rechunk=False)
+            self.assertEqual(captured[0].strip(), original.strip())
+
+
+@unittest.skipUnless(_FFMPEG_AVAILABLE, 'ffmpeg/ffprobe not available')
+class ReframeIntegrationTests(unittest.TestCase):
+    def test_source_pixel_crop_before_draft_scale(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / 'landscape.mp4'
+            _create_test_video(source, duration=0.3, size='1920x1080')
+            for draft, expected in [(False, '1080,1920'), (True, '720,1280')]:
+                out = root / f'{draft}.mp4'
+                extract_segment(source, 0, 0.2, '', out, draft=draft,
+                                reframe='crop=540:960:700:60', has_audio=False)
+                result = subprocess.run(['ffprobe', '-v', 'error', '-select_streams', 'v:0',
+                    '-show_entries', 'stream=width,height', '-of', 'csv=p=0', str(out)],
+                    check=True, capture_output=True, text=True)
+                self.assertEqual(result.stdout.strip(), expected)

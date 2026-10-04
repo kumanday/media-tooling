@@ -14,10 +14,8 @@ from media_tooling.subtitle import (
     write_text,
 )
 
-TRANSLATION_WINDOW_TARGET_DURATION_SECONDS = 12.0
 TRANSLATION_WINDOW_MAX_DURATION_SECONDS = 18.0
-TRANSLATION_WINDOW_MAX_CUES = 6
-TRANSLATION_WINDOW_MIN_SENTENCE_DURATION_SECONDS = 6.0
+TRANSLATION_WINDOW_MAX_CUES = 60
 TRANSLATION_MIN_CUE_DURATION_SECONDS = 1.0
 TRANSLATION_MAX_CHARACTERS_SPACED = 84
 TRANSLATION_MAX_CHARACTERS_UNSPACED = 24
@@ -215,11 +213,7 @@ def should_close_translation_window(
         return True
     if len(cues) >= TRANSLATION_WINDOW_MAX_CUES:
         return True
-    if duration < TRANSLATION_WINDOW_MIN_SENTENCE_DURATION_SECONDS:
-        return False
-    if ends_with_sentence_boundary(combined_text):
-        return True
-    return duration >= TRANSLATION_WINDOW_TARGET_DURATION_SECONDS
+    return ends_with_sentence_boundary(combined_text)
 
 
 def ends_with_sentence_boundary(text: str) -> bool:
@@ -249,7 +243,7 @@ def build_translation_template_payload(
         "source_language": source_language,
         "target_language": target_language,
         "strategy": {
-            "window_target_duration_seconds": TRANSLATION_WINDOW_TARGET_DURATION_SECONDS,
+            "window_boundary": "sentence_or_safety_limit",
             "window_max_duration_seconds": TRANSLATION_WINDOW_MAX_DURATION_SECONDS,
             "window_max_cues": TRANSLATION_WINDOW_MAX_CUES,
             "notes": [
@@ -377,7 +371,11 @@ def split_text_into_clauses(text: str) -> list[str]:
             and text[index - 1].isdigit()
             and text[index + 1].isdigit()
         )
-        if numeric_separator:
+        internal_period = (
+            character == "." and index > 0 and index + 1 < len(text)
+            and text[index - 1].isalnum() and text[index + 1].isalnum()
+        )
+        if numeric_separator or internal_period:
             continue
         if character in HARD_SENTENCE_PUNCTUATION:
             clauses.append(collapse_whitespace(current))

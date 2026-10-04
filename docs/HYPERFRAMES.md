@@ -157,14 +157,16 @@ director notes. It connects the project to upstream HyperFrames authoring:
 
 The toolkit keeps the following artifacts in the project:
 
-- `analysis/motion-references.md`: reference URLs/paths, timecoded observations,
+- `edit/hyperframes/<slot>/motion-references.md`: reference URLs/paths, timecoded observations,
   and the proposed pacing, type, camera, transition, and sound adaptations.
-- `storyboards/motion-directions.md`: 2-3 distinct options when direction is open.
+- `edit/hyperframes/<slot>/motion-directions.md`: 2-3 distinct options when direction is open.
 - `edit/hyperframes/<slot>/`: the upstream composition root, or the parent of its
   required `videos/<project>` directory. Keep `BRIEF.md`, `frame.md`,
   `STORYBOARD.md`, `storyboard.html`, assets, composition source, and snapshots
   in the owning upstream project; retain its formats and relative paths.
-- `edit/project.md`: chosen direction and significant revision decisions.
+- `edit/hyperframes/<slot>/DECISIONS.md`: review scope, chosen direction, and
+  significant revision decisions. Shared project context lives in `edit/project.md`
+  when it is within the run's scope.
 
 Use real product screens and supplied brand assets. Analyze reference layouts
 with contact sheets and inspect selected moments with timeline views or playable
@@ -266,3 +268,39 @@ recipe when using older toolkit versions.
 Before using ASR text in graphics, follow the subtitle skill's project glossary
 and cached-transcript correction pass. Preserve real word timestamps and speaker
 labels; regenerate downstream subtitle and packed artifacts from verified copy.
+
+## Assembly lessons from vertical pilots
+
+Use EDL `reframe` for source-pixel crop/scale/pad filters. It runs before draft
+scaling; reserve `grade` for color correction. Set `transcripts` to map EDL source
+names to existing transcript JSON paths. The renderer reads flat word lists and
+segment-nested words, including `word` text fields and whitespace spacers.
+Use `subtitles.rechunk: false` for a reviewed SRT whose copy and timing should
+survive styling. See the rough-cut assembly skill for the EDL fields.
+
+Check transparent overlays on the assembled video. A HyperFrames contrast audit
+reporting `0/0` supplies no contrast measurements. Sample the first and last
+encoded frames and inspect endpoint clips, along with scene boundaries. Cover
+the actual padded assembly duration, including frame rounding. Check speaker
+handoffs by listening; a 30 ms fade does not certify isolation from another voice.
+
+Keep GSAP and other runtime assets local when offline rendering is required,
+using the installed upstream loading contract. Consult current CLI help for
+language options. Sub-composition lint suggestions need judgment about reuse
+and composition size.
+
+`media-verify` checks duration, internal cuts (visual discontinuity and audio
+pops), and grade consistency. Subtitle readability, overlay placement, endpoint
+coverage, face obstruction, and loudness require separate recorded review or
+measurement. The CLI and JSON report list these under separate review coverage. A single-segment edit has no internal cuts to analyze.
+
+For an external library that downloads audio only, acquire video with that
+library's documented video workflow or `yt-dlp`, then point EDL `sources` at the
+file. Use the library's supported registration API when available; do not assume
+media-tooling manages the library database. Retain the source URL, format, and
+reacquisition command in the slot so releasing a source does not prevent another
+render. Keep download/release behavior within the project's media policy.
+
+Record sizes and superseded iteration paths in the handoff. Large ProRes overlay
+renders warrant a retention decision; preserve approved renders and composition
+source until the project's cleanup policy permits removal.

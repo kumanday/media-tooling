@@ -246,3 +246,11 @@ Instead:
 - For large projects, summarize findings instead of dumping raw transcripts into the main conversation.
 - Always pack transcripts before reasoning over them; use the raw JSON only when word-level timing is needed.
 - Use the timeline view only at editing decision points, not as a default pipeline step.
+
+For a reviewed SRT, `media-burn-subtitles --preserve-cues` applies styling while
+preserving cue text and times. EDL renders use `subtitles.rechunk: false` for the
+same behavior. Translation groups cues until a sentence ends, with safety limits
+of 18 seconds or 60 source cues. An unfinished sentence can still reach a safety
+limit; inspect translation windows before translating. Internal periods in
+names/domains such as `Fal.ai` stay inside translated clauses. Translated cue
+timing is allocated within each window and requires review against the audio.
