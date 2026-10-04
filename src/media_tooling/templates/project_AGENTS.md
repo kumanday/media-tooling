@@ -31,8 +31,12 @@ Operational defaults:
 Optional Hyperframes workflow:
 - use `hyperframes` for HTML-rendered video, animated overlays, title cards, kinetic captions, website/UI captures, GIFs, PNG sequences, batch variants, or standalone graphic segments
 - keep composition source and renders under `$PROJECT_DIR/edit/hyperframes/<slot>/`
-- validate with `hyperframes lint .` and `hyperframes inspect . --at-transitions` before using the render
-- render alpha-capable overlays with `hyperframes render . --format webm` or `--format mov`
+- route reference-led motion graphics, storyboard alternatives, scene stills, and director notes through `media-motion-graphics`, which uses the current upstream HyperFrames skills
+- use upstream branded storyboard sketches before animation and composition snapshots plus a draft encode after building; carry reviewed layouts into motion
+- default to revision review; explicit autonomous requests select auto review with multimodal storyboard feedback and bounded corrections, recorded in BRIEF.md
+- use transparent composition backgrounds and verify encoded alpha; prefer MOV when WebM alpha is unavailable
+- use `hyperframes lint .` while editing and `hyperframes check . --snapshots --at-transitions` before using the render
+- render alpha overlays with `hyperframes render . --format mov`; WebM is an option after verifying local alpha support
 - add rendered overlays to EDL specs with `overlays[].source`; `media-edl-render` composites overlays before burning subtitles
 - keep using media-tooling commands for ASR, contact sheets, packed transcripts, EDL assembly, grading, loudness normalization, subtitle burning, and `media-verify`
 - do not use Hyperframes for ordinary cuts, static cards that the EDL renderer can generate, transcript work, or final verification
@@ -75,7 +79,7 @@ These 12 production rules are enforced by code guardrails and must never be viol
 8. **Word-level verbatim ASR only** — Never use phrase-mode SRT generation. Word-level timestamps are required for accurate cut-point selection.
 9. **Cache transcripts** — Never re-transcribe unless the source file has changed. Check modification timestamps before re-running.
 10. **Worker context isolation for animations** — When the harness supports workers, use them to isolate animation-slot scratch context and compact handoffs. Run media-heavy worker tasks sequentially.
-11. **Strategy confirmation before execution** — Present the editing strategy to the user for approval before making irreversible edits.
+11. **Strategy confirmation before execution** — Use a confirmed editing strategy or explicit autonomous production scope; autonomous mode reviews storyboards visually and does not authorize publication.
 12. **All outputs in project directory, never clobber source** — Write all generated files into `$PROJECT_DIR`. Never overwrite or modify source media files.
 
 ## Anti-patterns (things that consistently fail)
@@ -92,7 +96,7 @@ Avoid these 13 patterns — they have been proven to produce broken or low-quali
 8. **Hard audio cuts (no fade)** — Violates Hard Rule 3. Produces audible clicks/pops at every join point.
 9. **Typing text centered on partial string** — Centering should use the full string bounding box, not character-by-character positioning. Partial-string centering causes misalignment.
 10. **Using workers as parallel media processors** — Violates Hard Rule 10. Workers are for isolating intermediate context, not for increasing concurrent media processing.
-11. **Editing before confirming strategy with user** — Violates Hard Rule 11. Always get explicit approval of the editing plan before making cuts.
+11. **Editing before confirming strategy with user** — Violates Hard Rule 11. Use explicit approval of the editing plan or an autonomous request covering that scope.
 12. **Cutting inside a word** — Violates Hard Rule 6. Always cut at word boundaries to preserve speech clarity.
 13. **Assuming content type** — Never assume a file is "podcast", "interview", etc. Always generalize processing to work for any spoken-media content.
 {{MANAGED_BLOCK_END}}

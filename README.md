@@ -97,9 +97,14 @@ Hyperframes is optional. Install it when a project needs HTML-rendered motion gr
 ```bash
 npm install -g hyperframes@latest
 hyperframes doctor
+hyperframes skills update
 ```
 
-See [`docs/HYPERFRAMES.md`](./docs/HYPERFRAMES.md) for explicit commands and the prompts that trigger it inside broader workflows.
+The packaged `media-motion-graphics` skill uses current upstream HyperFrames
+skills for reference-led planning, storyboard alternatives, branded scene stills,
+and director-note revisions. Autonomous requests use multimodal storyboard
+feedback and draft-render review; human review is the default. See [`docs/HYPERFRAMES.md`](./docs/HYPERFRAMES.md)
+for setup, project artifacts, and rendering commands.
 
 ## Primary workflow
 

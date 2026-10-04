@@ -99,7 +99,7 @@ An EDL JSON document describes which time ranges to extract from which source fi
   },
   "overlays": [
     {
-      "source": "hyperframes/lower-third/render.webm",
+      "source": "hyperframes/lower-third/render.mov",
       "start": 0.8,
       "end": 6.8,
       "position": {"x": 0, "y": 0},
@@ -176,6 +176,10 @@ instead of `source` for simple PIL-generated text or counter cards.
 
 ### Hyperframes overlays
 
+For reference analysis, brand direction, storyboard options, stills, or motion
+revisions, read `../media-motion-graphics/SKILL.md` and use the current upstream
+HyperFrames skills. Return here with the rendered segment or overlay for assembly.
+
 Use Hyperframes when an overlay or graphic segment needs browser-native layout
 or motion: animated lower thirds, title cards, kinetic captions, UI/website
 captures, GIFs, PNG sequences, batch variants, or standalone HTML-rendered
@@ -189,16 +193,39 @@ hyperframes init "$PROJECT_DIR/edit/hyperframes/lower-third" \
   --example blank \
   --resolution landscape \
   --non-interactive
-hyperframes lint "$PROJECT_DIR/edit/hyperframes/lower-third"
-hyperframes inspect "$PROJECT_DIR/edit/hyperframes/lower-third" --at-transitions
+hyperframes check "$PROJECT_DIR/edit/hyperframes/lower-third" --snapshots --at-transitions
 hyperframes render "$PROJECT_DIR/edit/hyperframes/lower-third" \
-  --format webm \
-  --output "$PROJECT_DIR/edit/hyperframes/lower-third/render.webm"
+  --format mov \
+  --output "$PROJECT_DIR/edit/hyperframes/lower-third/render.mov"
 ```
 
 Then reference the render from `overlays[].source`, usually as
-`"hyperframes/lower-third/render.webm"` when `edl.json` lives in
+`"hyperframes/lower-third/render.mov"` when `edl.json` lives in
 `$PROJECT_DIR/edit/edl.json`.
+
+### Overlay source timing and alpha
+
+Every source overlay starts at source time zero unless `source_start` selects a
+non-negative offset in seconds. For example, a window from output 14s to 28s with
+`source_start: 14` plays source 14s-28s. Reusing the same file across windows with
+no offset repeats its beginning. Still images and generated cards have no source
+seek. The renderer trims the selected video interval and shifts its timestamps to
+the output window.
+
+`duration_type: sync` enforces a 3-14s window; `beat` enforces 0.5-2s. Omit the
+optional duration type for a full-length overlay. These bounds do not require
+splitting a long source. For compatibility with older toolkit versions, split an
+all-intra ProRes MOV and use one chunk per window:
+
+```bash
+ffmpeg -ss 14 -i render.mov -t 14 -c copy chunk-14.mov
+```
+
+Set composition backgrounds to transparent and verify alpha on encoded pixels.
+Use MOV/ProRes 4444 when local WebM encoding flattens transparency. Inspect a
+draft encode for scene visibility, not just composition snapshots. Portrait
+segment extraction anchors height (1920 normally, 1280 in draft), preserving the
+source aspect ratio; verify the final dimensions with ffprobe.
 
 ### `media-grade` — Apply color grade
 

@@ -1636,6 +1636,17 @@ class RenderEDLTests(unittest.TestCase):
 
 
 class ValidateOverlayTests(unittest.TestCase):
+    def test_source_start_validation(self) -> None:
+        for offset in [-1, float("nan"), float("inf"), True, "2"]:
+            with self.subTest(offset=offset), self.assertRaises(EDLSchemaError):
+                _validate_overlay({"source": "overlay.mov", "start": 0, "end": 4, "source_start": offset}, 0)
+        _validate_overlay({"source": "overlay.mov", "start": 0, "end": 4, "source_start": 14}, 0)
+        with self.assertRaises(EDLSchemaError):
+            _validate_overlay({"source": "card.png", "start": 0, "end": 4, "source_start": 1}, 0)
+        with self.assertRaises(EDLSchemaError):
+            _validate_overlay({"card": {"type": "text", "text": "hello"}, "start": 0, "end": 4, "source_start": 1}, 0)
+
+
     def test_valid_source_overlay(self) -> None:
         ov = {"source": "overlay.png", "start": 5.0, "end": 10.0}
         _validate_overlay(ov, 0)  # should not raise
@@ -3021,6 +3032,33 @@ def _create_test_video(path: Path, duration: float = 3.0, size: str = "320x240")
 
 @unittest.skipUnless(_FFMPEG_AVAILABLE, "ffmpeg/ffprobe not available")
 class E2EOverlayCompositingTests(unittest.TestCase):
+    def test_source_offset_selects_later_video_frames(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            base = root / "base.mp4"
+            _create_test_video(base, duration=2, size="64x64")
+            overlay = root / "overlay.mp4"
+            subprocess.run(["ffmpeg", "-y", "-f", "lavfi", "-i", "color=red:s=64x64:d=1:r=25", "-f", "lavfi", "-i", "color=blue:s=64x64:d=1:r=25", "-filter_complex", "[0:v][1:v]concat=n=2:v=1:a=0[v]", "-map", "[v]", str(overlay)], check=True, capture_output=True)
+            out = root / "out.mp4"
+            build_final_composite(base, [{"source": str(overlay), "_resolved_path": str(overlay), "start": 0.5, "end": 1.5, "source_start": 1}], None, out)
+            pixels = subprocess.run(["ffmpeg", "-v", "error", "-ss", "0.75", "-i", str(out), "-frames:v", "1", "-f", "rawvideo", "-pix_fmt", "rgb24", "-"], check=True, capture_output=True).stdout
+            red, green, blue = pixels[:3]
+            self.assertGreater(blue, 150)
+            self.assertLess(red, 50)
+            self.assertLess(green, 50)
+
+    def test_portrait_extraction_preserves_orientation_and_target_size(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            source = root / "portrait.mp4"
+            _create_test_video(source, duration=0.4, size="108x192")
+            for draft, expected in [(False, "1080,1920"), (True, "720,1280")]:
+                out = root / f"portrait-{draft}.mp4"
+                extract_segment(source, 0, 0.2, "", out, preview=True, draft=draft)
+                result = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height", "-of", "csv=p=0", str(out)], check=True, capture_output=True, text=True)
+                self.assertEqual(result.stdout.strip(), expected)
+
+
     """End-to-end tests that run real ffmpeg to prove overlay compositing works.
 
     These tests address the evidence gap: they demonstrate that the filter
