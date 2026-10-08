@@ -389,5 +389,43 @@ class MainEndToEndTests(unittest.TestCase):
         self.assertGreater(size_kb, 3, f"Output surprisingly small: {size_kb:.1f}KB")
 
 
+class SegmentSpeakerInheritanceTests(unittest.TestCase):
+    def test_words_inherit_segment_speaker_when_absent(self) -> None:
+        segments = [
+            {
+                "start": 0.0,
+                "end": 2.0,
+                "text": "Hello world",
+                "speaker_id": "speaker_0",
+                "words": [
+                    {"word": "Hello", "start": 0.0, "end": 1.0},
+                    {"word": " world", "start": 1.0, "end": 2.0, "speaker": "speaker_1"},
+                ],
+            },
+        ]
+        words = extract_words(segments)
+        self.assertEqual(words[0]["speaker"], "speaker_0")
+        self.assertEqual(words[1]["speaker"], "speaker_1")
+
+    def test_phrases_split_on_inherited_speaker_change(self) -> None:
+        segments = [
+            {
+                "start": 0.0,
+                "end": 2.0,
+                "text": "Hello there",
+                "speaker_id": "speaker_0",
+                "words": [
+                    {"word": "Hello", "start": 0.0, "end": 1.0},
+                    {"word": " there", "start": 1.0, "end": 2.0, "speaker": "speaker_1"},
+                ],
+            },
+        ]
+        words = extract_words(segments)
+        phrases = group_into_phrases(words)
+        self.assertEqual(len(phrases), 2)
+        self.assertEqual(phrases[0]["speaker"], "speaker_0")
+        self.assertEqual(phrases[1]["speaker"], "speaker_1")
+
+
 if __name__ == "__main__":
     unittest.main()

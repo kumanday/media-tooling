@@ -189,6 +189,95 @@ Please translate the subtitles into Spanish, but do not translate cue-by-cue fro
 Please build a first-pass rough cut from the approved EDL and add an animated lower third for the opening hook. Use Hyperframes for the lower third, validate it, render an alpha overlay, add it to the EDL overlays list, then render and verify the preview.
 ```
 
+## Example 10. Plan a product motion video
+
+```text
+Use media-motion-graphics and the current upstream HyperFrames skills to plan a
+30-second product video. Our brand assets and screenshots are in assets/reference/.
+Analyze the two reference clips listed in inventory/motion-references.txt for
+pacing, typography, camera movement, and transitions. Propose three distinct
+storyboard directions, then show a branded still for every scene of the selected
+direction before animating. Keep the composition under edit/hyperframes/product/.
+```
+
+## Example 11. Revise motion with director notes
+
+```text
+In the existing product composition, slow scene S03's zoom to 0.7x speed, using
+its hold time to keep the next beat fixed. Hard cut into S04 and push in on the
+actual product button. Preserve the approved copy and layout. Update the existing
+source, inspect snapshots of those scenes and their seams, run HyperFrames check,
+and show the revised preview.
+```
+
+See [Hyperframes](HYPERFRAMES.md#reference-led-motion-workflow) for the upstream
+capabilities and artifact paths used by these prompts.
+
+## Example 12. Produce an autonomous motion pilot
+
+```text
+Produce one short under our agreed brief using media-motion-graphics in auto
+review mode. Choose the storyboard direction, send images of every storyboard
+scene to a multimodal model for feedback, and apply blocking corrections with at
+most two review passes. Record feedback in review.md. Check the actual draft
+encode for scene visibility and layout, then render and verify the deliverable.
+Keep the work local; publication is a separate step.
+```
+
+## Example 13. Create a short from your own video
+
+Replace the bracketed fields before sharing this prompt with an agent. Use
+media-tooling to select and extract the short, then HyperFrames' upstream
+`talking-head-recut` skill to package that clip with transcript-timed graphics.
+The selected clip is the skill's input; it plays in full beneath the graphics.
+
+```text
+Create one short from my long-form video using media-tooling's motion-graphics workflow.
+
+Materials:
+- Source video: [YouTube URL or local file]
+- Goal and audience: [what the short should communicate, and to whom]
+- Brand assets or supporting visuals: [paths, links, or none]
+- Style references: [optional video links]
+- Output language(s): [languages]
+
+Read the workspace's AGENTS.md and the toolkit's docs/HYPERFRAMES.md, then use
+the media-render-pipeline, media-motion-graphics, and subtitle skills. Read the
+upstream /hyperframes router and use its talking-head-recut skill to package
+the selected spoken clip with timed graphics. Verify installed commands and
+skill availability before using them.
+
+Find a strong, self-contained spoken moment of roughly 30-60 seconds, unless
+I supply a specific cut. Select and extract that clip with media-tooling before
+passing it to talking-head-recut. Preserve the speaker's meaning and develop
+your own creative direction. Use motion graphics to explain or reinforce the
+content, with the speaker's face unobstructed and subtitles readable.
+
+Produce a vertical 1080x1920 short with burned subtitles and normalized audio.
+Use a fresh composition slot and keep its brief, storyboard, review, and
+decisions there. Keep using media-tooling for final EDL assembly, subtitle
+burning, loudness normalization, and verification.
+
+Use review-mode: auto. Visually review the storyboard with multimodal feedback
+before animating, apply bounded corrections, and review frames and boundary
+clips from the assembled encode. Run media-verify and separately check subtitle
+readability, graphics placement, endpoint coverage, speaker handoffs, and
+loudness. Report any unresolved findings.
+
+Deliver a local preview, composition and EDL paths, verification results, and
+any workflow friction. Nothing gets published.
+```
+
+For human creative review, replace the `review-mode: auto` paragraph with:
+
+```text
+Use review-mode: revision. Get my approval on the creative direction and
+storyboard before animating, then show me the final preview. Review frames and
+boundary clips from the assembled encode. Run media-verify and separately check
+subtitle readability, graphics placement, endpoint coverage, speaker handoffs,
+and loudness. Report any unresolved findings.
+```
+
 ## Command examples
 
 These commands are the building blocks that the prompt patterns usually trigger. They assume you installed `media-tooling` with `uv tool install` and are running from the project workspace.

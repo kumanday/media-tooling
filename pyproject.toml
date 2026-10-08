@@ -10,7 +10,7 @@ dependencies = [
     "mlx<0.29.5; sys_platform == 'darwin' and platform_machine == 'arm64'",
     "onnxruntime<1.24; sys_platform == 'darwin' and platform_machine == 'x86_64'",
     "numpy>=1.26",
-    "pillow>=11.2.1",
+    "pillow>=12.3.0",
     "jsonschema>=4.23",
 ]
 
@@ -39,12 +39,14 @@ media-contact-sheet = "media_tooling.contact_sheet:main"
 media-grade = "media_tooling.grade:main"
 media-rough-cut = "media_tooling.rough_cut:main"
 media-subtitle = "media_tooling.subtitle:main"
+media-tts = "media_tooling.tts:main"
 media-timeline-view = "media_tooling.timeline_view:main"
 media-tooling-init = "media_tooling.project_init:main"
 media-loudnorm = "media_tooling.loudnorm:main"
 media-pack-transcript = "media_tooling.pack_transcript:main"
 media-translate-subtitles = "media_tooling.subtitle_translate:main"
 media-edl-render = "media_tooling.edl_render:main"
+media-fcpxml-export = "media_tooling.fcpxml_export:main"
 media-verify = "media_tooling.verify:main"
 media-generated = "media_tooling.generated_media:main"
 

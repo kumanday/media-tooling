@@ -22,6 +22,15 @@ The transcription backend depends on the workstation:
 - Apple Silicon macOS installs `lightning-whisper-mlx`
 - other systems install `faster-whisper`
 
+For ElevenLabs narration, install the optional dependency and set the API key
+and voice ID in the environment:
+
+```bash
+uv tool install --reinstall "media-tooling[elevenlabs] @ git+https://github.com/kumanday/media-tooling"
+export ELEVENLABS_API_KEY="..."
+export ELEVENLABS_VOICE_ID_EN="..."
+```
+
 ## Optional Hyperframes install
 
 Install Hyperframes when project workflows need HTML-rendered video, animated overlays, website/UI captures, GIFs, or batch-rendered motion graphics.

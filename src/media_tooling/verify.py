@@ -79,6 +79,12 @@ class Finding:
         }
 
 
+SEPARATE_REVIEW_CHECKS = [
+    "subtitle_readability", "overlay_placement", "face_obstruction",
+    "endpoint_coverage", "speaker_isolation", "loudness",
+]
+
+
 @dataclass
 class VerifyReport:
     """Aggregated verification report."""
@@ -100,6 +106,7 @@ class VerifyReport:
             "fail_count": self.fail_count,
             "warning_count": self.warning_count,
             "findings": [f.to_dict() for f in self.findings],
+            "requires_separate_review": list(SEPARATE_REVIEW_CHECKS),
         }
 
     def add(self, finding: Finding) -> None:
@@ -822,6 +829,7 @@ def _print_report(report: VerifyReport) -> None:
     print(f"\n{'='*60}")
     print(f"  Verify Report: {status}")
     print(f"  Video: {report.video}")
+    print("  Separate review: " + ", ".join(SEPARATE_REVIEW_CHECKS))
     print(f"{'='*60}")
     for f in report.findings:
         icon = "✓" if f.passed else "✗"

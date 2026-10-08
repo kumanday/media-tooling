@@ -5,6 +5,10 @@ Use it when a video needs browser-native motion graphics: animated captions, low
 
 Keep using media-tooling for transcription, contact sheets, packed transcripts, EDL assembly, grading, loudness normalization, subtitle burning, and output verification.
 
+For a copyable prompt that selects a spoken clip and packages it with the
+upstream `talking-head-recut` skill, see
+[Create a short from your own video](WORKFLOWS.md#example-13-create-a-short-from-your-own-video).
+
 ## Install
 
 From a media-tooling checkout:
@@ -12,6 +16,7 @@ From a media-tooling checkout:
 ```bash
 ./scripts/install-hyperframes.sh
 hyperframes doctor
+hyperframes skills update
 ```
 
 For a manual install:
@@ -21,9 +26,20 @@ brew install node ffmpeg
 npm install -g hyperframes@latest
 hyperframes telemetry disable
 hyperframes doctor
+hyperframes skills update
 ```
 
-Hyperframes requires Node.js 22 or newer plus FFmpeg and FFprobe. For agent runs, use these environment variables to keep CLI output predictable:
+Hyperframes requires Node.js 22 or newer plus FFmpeg and FFprobe. The motion
+workflow uses the current upstream skills and CLI commands. The examples were
+checked against CLI 0.8.116 and upstream commit
+[`237a984`](https://github.com/heygen-com/hyperframes/tree/237a984bb8d97f8dff7a5464c78851d633747f54).
+Check `hyperframes --version` and command help before using them in an older project.
+
+For standalone agent skills, `hyperframes skills update` installs the core set
+and refreshes already installed skills; the upstream router installs creation
+workflows on demand. For a HyperFrames plugin, use its plugin update mechanism.
+Read the upstream `/hyperframes` skill first, then the selected creation workflow
+and required domains. See the [upstream skill catalog](https://github.com/heygen-com/hyperframes#skills). For agent runs, use these environment variables to keep CLI output predictable:
 
 ```bash
 export HYPERFRAMES_NO_TELEMETRY=1
@@ -46,19 +62,24 @@ hyperframes init "$PROJECT_DIR/edit/hyperframes/lower-third" \
 cd "$PROJECT_DIR/edit/hyperframes/lower-third"
 ```
 
-Edit the generated HTML/CSS/JS, then validate and render:
+Edit the generated HTML/CSS/JS using the upstream composition and motion skills.
+Use `hyperframes lint .` for early feedback. Check the composition, review the
+preview, and render once approved:
 
 ```bash
-hyperframes lint .
-hyperframes inspect . --at-transitions
+hyperframes check . --snapshots --at-transitions
 hyperframes preview . --port 3002 --no-open
 hyperframes render . \
-  --format webm \
-  --output "$PROJECT_DIR/edit/hyperframes/lower-third/render.webm" \
-  --quality high
+  --format mov \
+  --output "$PROJECT_DIR/edit/hyperframes/lower-third/render.mov" \
+  --quality delivery
 ```
 
-Use `--format webm` or `--format mov` for alpha-capable overlays. Use `--format mp4` for standalone segments, `--format gif` for docs and PR previews, and `--format png-sequence` for handoff to tools such as After Effects.
+Use `--format mov` (ProRes 4444) for reliable alpha overlays. WebM alpha depends
+on the local FFmpeg/libvpx encoder; the pilot encountered an opaque WebM despite
+a transparent page. Verify encoded alpha pixels and composite a draft over a
+contrasting background before assembly. Set page and composition backgrounds to
+`transparent`; the `blank` example starts with an opaque background. Use `--format mp4` for standalone segments, `--format gif` for docs and PR previews, and `--format png-sequence` for handoff to tools such as After Effects.
 
 Add a rendered Hyperframes overlay to an EDL with `overlays[].source`:
 
@@ -71,7 +92,7 @@ Add a rendered Hyperframes overlay to an EDL with `overlays[].source`:
   ],
   "overlays": [
     {
-      "source": "hyperframes/lower-third/render.webm",
+      "source": "hyperframes/lower-third/render.mov",
       "start": 0.8,
       "end": 6.8,
       "position": {"x": 0, "y": 0},
@@ -114,8 +135,176 @@ An agent should not reach for Hyperframes for ordinary cuts, ASR, contact sheets
 
 Before a Hyperframes render is used in a media-tooling output:
 
-- Run `hyperframes lint .`
-- Run `hyperframes inspect . --at-transitions`
+- Run `hyperframes check . --snapshots --at-transitions`, read its findings, and inspect the PNGs
+- Confirm the browser audit ran; skipped browser checks are incomplete verification
+- Review playback for reading time, transition continuity, and audio synchronization
 - Render the intended delivery format with `hyperframes render .`
 - If the render is part of an EDL, run `media-edl-render` and `media-verify`
 - Keep all composition files and renders under `$PROJECT_DIR/edit/hyperframes/<slot>/`
+
+
+## Reference-led motion workflow
+
+Use the packaged [media-motion-graphics skill](../.agents/skills/media-motion-graphics/SKILL.md)
+for product videos, branded graphics, storyboard alternatives, scene stills, and
+director notes. It connects the project to upstream HyperFrames authoring:
+
+| Need | Upstream capability |
+| --- | --- |
+| Choose a creation workflow or resume an existing project | `hyperframes` router |
+| Product capture and promo planning | `product-launch-video` |
+| Brand design and static storyboard sketches | `hyperframes-creative` and shared review loop |
+| Named effects, components, and transitions | `hyperframes-registry` with `catalog` / `add` |
+| Seekable timing and camera moves | `hyperframes-core` and `hyperframes-keyframes` |
+| Runtime, layout, motion, and contrast checks | `hyperframes-cli` with `check` |
+| Stills from the built composition | `snapshot --at` |
+
+The toolkit keeps the following artifacts in the project:
+
+- `edit/hyperframes/<slot>/motion-references.md`: reference URLs/paths, timecoded observations,
+  and the proposed pacing, type, camera, transition, and sound adaptations.
+- `edit/hyperframes/<slot>/motion-directions.md`: 2-3 distinct options when direction is open.
+- `edit/hyperframes/<slot>/`: the upstream composition root, or the parent of its
+  required `videos/<project>` directory. Keep `BRIEF.md`, `frame.md`,
+  `STORYBOARD.md`, `storyboard.html`, assets, composition source, and snapshots
+  in the owning upstream project; retain its formats and relative paths.
+- `edit/hyperframes/<slot>/DECISIONS.md`: review scope, chosen direction, and
+  significant revision decisions. Shared project context lives in `edit/project.md`
+  when it is within the run's scope.
+
+Use real product screens and supplied brand assets. Analyze reference layouts
+with contact sheets and inspect selected moments with timeline views or playable
+clips. Record which motion properties were observed; identify inaccessible
+references explicitly. Search HyperFrames' catalog before building a named
+visual treatment from scratch.
+
+Use upstream's branded static `storyboard.html` sketch pass before animation,
+one key frame per scene. Include real copy, fonts, colors, and available assets;
+label missing assets. This pass uses static HTML cells and does not invoke the
+render CLI. Carry confirmed placement and hierarchy into the animated build.
+A user can explicitly skip this review or request the storyboard as the deliverable.
+
+After building, capture representative moments from the actual composition:
+
+```bash
+# Run inside the owning HyperFrames composition root.
+# Choose times from this composition's scene IDs and timing, rather than a grid.
+hyperframes snapshot . --at 1.5,4.0,7.25 --describe false
+hyperframes check . --snapshots --at-transitions
+```
+
+Inspect the PNGs against the confirmed layouts and watch the preview for pacing
+and sound. `--describe false` keeps snapshots local without optional vision-model
+analysis. `check` includes lint and the browser audits; `inspect` is deprecated
+upstream. Motion intent sidecars let the check verify scene-specific assertions.
+Follow the selected review mode for final preview and rendering within the user's authorization.
+For a standalone MP4, verify duration, resolution, fps, and audio against the brief.
+For overlays or assembled segments, return to media-tooling's EDL render and
+verification workflow.
+
+## Director notes
+
+Use stable scene IDs and output timestamps to locate revisions. Edit existing
+source and shared timing values, preserve approved layouts, and update affected
+storyboard and motion intent records. Review the changed scene and neighboring
+seams before checking the assembled composition.
+
+For example, a 1.4-second zoom slowed to 0.7x speed takes 2 seconds. Decide whether
+the extra 0.6 seconds replaces hold time or shifts later beats; keep fixed voice
+or music cues synchronized. A hard visual cut removes the transition at the named
+boundary while preserving appropriate audio fades. A button push-in targets the
+real button's bounds through a visual wrapper so timing and text remain stable.
+
+
+## Autonomous review
+
+Set `review-mode: auto` in the composition's `BRIEF.md` when the user requests
+autonomous production; default to `review-mode: revision` for human review.
+This is a media-tooling extension alongside the upstream brief fields. Use the
+upstream autonomous configuration for authoring, and run the toolkit's visual
+review step before continuing. Existing permission to produce the agreed video
+covers local previews and final rendering; publishing needs separate permission.
+
+Capture readable images of every static storyboard cell with a browser screenshot
+facility. Pass those actual images to an available multimodal LLM along with the
+brief, transcript excerpts, brand constraints, scene IDs, and durations. The
+current agent can serve as the reviewer when it accepts image input. Ask for a
+pass/revise decision and scene-specific feedback on copy accuracy, legibility,
+speaker/subtitle placement, brand consistency, and reading time. Record the images,
+feedback, and disposition in `review.md` next to the storyboard.
+
+Apply targeted corrections and review once more, with a maximum of two review
+passes. Continue when blocking findings are resolved. Unavailable visual review
+or persistent blocking issues stop delivery with artifacts preserved. Optional
+style suggestions are advisory. This mode needs no separate service or rubric
+configuration.
+
+## Encoded-output checks and overlay offsets
+
+Timed `class="clip"` elements with `data-start` / `data-duration` own scene
+visibility; GSAP adds polish inside their windows. Check the actual draft encode
+at scene midpoints and immediately around entries/exits. The pilot found GSAP
+visibility differences between snapshots and rendered video, so clean snapshots
+and `check` results alone cannot establish render parity. In auto mode, send
+sampled draft frames through the same multimodal review before delivery; inspect
+boundary clips for timing and sound. Use distinct iteration output paths.
+
+Each EDL source overlay starts at source time zero by default. Optional
+`source_start` selects a source offset in seconds:
+
+```json
+{
+  "source": "hyperframes/product/render.mov",
+  "source_start": 14,
+  "start": 14,
+  "end": 28,
+  "duration_type": "sync"
+}
+```
+
+This plays source 14s-28s at output 14s-28s. Reusing a file without the offset
+replays its beginning. `source_start` is a finite non-negative number for video
+sources; images and generated cards do not support seeking. `duration_type: sync`
+limits each window to 3-14s, and `beat` to 0.5-2s. Omit the optional type for a
+full-length overlay. See the rough-cut assembly skill for an all-intra chunk
+recipe when using older toolkit versions.
+
+Before using ASR text in graphics, follow the subtitle skill's project glossary
+and cached-transcript correction pass. Preserve real word timestamps and speaker
+labels; regenerate downstream subtitle and packed artifacts from verified copy.
+
+## Assembly lessons from vertical pilots
+
+Use EDL `reframe` for source-pixel crop/scale/pad filters. It runs before draft
+scaling; reserve `grade` for color correction. Set `transcripts` to map EDL source
+names to existing transcript JSON paths. The renderer reads flat word lists and
+segment-nested words, including `word` text fields and whitespace spacers.
+Use `subtitles.rechunk: false` for a reviewed SRT whose copy and timing should
+survive styling. See the rough-cut assembly skill for the EDL fields.
+
+Check transparent overlays on the assembled video. A HyperFrames contrast audit
+reporting `0/0` supplies no contrast measurements. Sample the first and last
+encoded frames and inspect endpoint clips, along with scene boundaries. Cover
+the actual padded assembly duration, including frame rounding. Check speaker
+handoffs by listening; a 30 ms fade does not certify isolation from another voice.
+
+Keep GSAP and other runtime assets local when offline rendering is required,
+using the installed upstream loading contract. Consult current CLI help for
+language options. Sub-composition lint suggestions need judgment about reuse
+and composition size.
+
+`media-verify` checks duration, internal cuts (visual discontinuity and audio
+pops), and grade consistency. Subtitle readability, overlay placement, endpoint
+coverage, face obstruction, and loudness require separate recorded review or
+measurement. The CLI and JSON report list these under separate review coverage. A single-segment edit has no internal cuts to analyze.
+
+For an external library that downloads audio only, acquire video with that
+library's documented video workflow or `yt-dlp`, then point EDL `sources` at the
+file. Use the library's supported registration API when available; do not assume
+media-tooling manages the library database. Retain the source URL, format, and
+reacquisition command in the slot so releasing a source does not prevent another
+render. Keep download/release behavior within the project's media policy.
+
+Record sizes and superseded iteration paths in the handoff. Large ProRes overlay
+renders warrant a retention decision; preserve approved renders and composition
+source until the project's cleanup policy permits removal.

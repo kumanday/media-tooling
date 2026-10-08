@@ -22,6 +22,7 @@ Media Tooling gives an agent harness a repeatable media-processing pipeline:
 4. Generate contact sheets for silent screen recordings and visual demos.
 5. Turn those processed assets into planning artifacts.
 6. Assemble first-pass rough cuts from reusable project-local specs.
+7. Generate narration audio from project scripts.
 
 The main artifacts it produces are:
 
@@ -100,9 +101,14 @@ Hyperframes is optional. Install it when a project needs HTML-rendered motion gr
 ```bash
 npm install -g hyperframes@latest
 hyperframes doctor
+hyperframes skills update
 ```
 
-See [`docs/HYPERFRAMES.md`](./docs/HYPERFRAMES.md) for explicit commands and the prompts that trigger it inside broader workflows.
+The packaged `media-motion-graphics` skill uses current upstream HyperFrames
+skills for reference-led planning, storyboard alternatives, branded scene stills,
+and director-note revisions. Autonomous requests use multimodal storyboard
+feedback and draft-render review; human review is the default. See [`docs/HYPERFRAMES.md`](./docs/HYPERFRAMES.md)
+for setup, project artifacts, and rendering commands.
 
 ## Primary workflow
 
@@ -216,11 +222,15 @@ The main skills are:
   Uses a project-local JSON spec to assemble cards, image holds, extracted clips, manifests, and first-pass rough cuts.
 - [`media-render-pipeline`](./.agents/skills/media-render-pipeline/SKILL.md)
   End-to-end orchestration skill for finished, broadcast-ready video production from raw source media.
+- [`media-tts`](./.agents/skills/media-tts/SKILL.md)
+  Generates narration audio from project scripts through the configured TTS backend.
 
 The underlying commands are:
 
 - `media-subtitle`
   Generate transcript `.txt`, subtitle `.srt`, and structured `.json` from a single audio or video file.
+- `media-tts`
+  Generate narration audio from a text, Markdown, or SRT script. ElevenLabs is the current backend.
 - `media-batch-subtitle`
   Process a manifest of spoken-media files sequentially.
 - `media-translate-subtitles`
@@ -233,6 +243,8 @@ The underlying commands are:
   Build a first-pass rough cut from a project-local JSON spec of cards, image holds, and clip extracts.
 - `media-edl-render`
   Render an assembled video from an EDL JSON spec with per-segment grading, audio fades, subtitle burning, and two-pass loudness normalization.
+- `media-fcpxml-export`
+  Export a layered media manifest as FCPXML for DaVinci Resolve import.
 - `media-grade`
   Apply automatic or preset color grading to a video file.
 - `media-loudnorm`

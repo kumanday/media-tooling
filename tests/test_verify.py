@@ -198,6 +198,8 @@ class TestFindingAndReport(unittest.TestCase):
         self.assertEqual(len(d["findings"]), 1)
         self.assertTrue(d["passed"])
         self.assertIn("warning_count", d)
+        self.assertIn("subtitle_readability", d["requires_separate_review"])
+        self.assertIn("overlay_placement", d["requires_separate_review"])
 
 
 # ── _compute_frame_delta (real images) ────────────────────────────────────────

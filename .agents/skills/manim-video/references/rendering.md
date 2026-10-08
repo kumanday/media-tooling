@@ -141,10 +141,10 @@ generation reusable across Manim, rough cuts, and other video workflows.
 Recommended flow:
 
 1. Put the narration script in `plan.md` with scene or beat timestamps.
-2. Generate audio outside Manim through the project-standard TTS workflow.
+2. Generate audio outside Manim with the project-standard `media-tts` command.
 3. Render Manim scenes without TTS calls.
 4. Use ffmpeg to mix narration, music, and rendered scene clips.
 
-`media-tooling[animations]` does not bundle `manim-voiceover`. The current
-plugin release pins a vulnerable `python-dotenv` range, and future voiceover
-work should live in a shared TTS skill rather than a Manim-specific dependency.
+For ElevenLabs, install `media-tooling[elevenlabs]` and set
+`ELEVENLABS_API_KEY` plus `ELEVENLABS_VOICE_ID_EN` in the environment. Keep
+both values out of scene code and project artifacts.

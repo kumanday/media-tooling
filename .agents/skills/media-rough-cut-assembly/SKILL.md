@@ -99,7 +99,7 @@ An EDL JSON document describes which time ranges to extract from which source fi
   },
   "overlays": [
     {
-      "source": "hyperframes/lower-third/render.webm",
+      "source": "hyperframes/lower-third/render.mov",
       "start": 0.8,
       "end": 6.8,
       "position": {"x": 0, "y": 0},
@@ -176,6 +176,10 @@ instead of `source` for simple PIL-generated text or counter cards.
 
 ### Hyperframes overlays
 
+For reference analysis, brand direction, storyboard options, stills, or motion
+revisions, read `../media-motion-graphics/SKILL.md` and use the current upstream
+HyperFrames skills. Return here with the rendered segment or overlay for assembly.
+
 Use Hyperframes when an overlay or graphic segment needs browser-native layout
 or motion: animated lower thirds, title cards, kinetic captions, UI/website
 captures, GIFs, PNG sequences, batch variants, or standalone HTML-rendered
@@ -189,16 +193,39 @@ hyperframes init "$PROJECT_DIR/edit/hyperframes/lower-third" \
   --example blank \
   --resolution landscape \
   --non-interactive
-hyperframes lint "$PROJECT_DIR/edit/hyperframes/lower-third"
-hyperframes inspect "$PROJECT_DIR/edit/hyperframes/lower-third" --at-transitions
+hyperframes check "$PROJECT_DIR/edit/hyperframes/lower-third" --snapshots --at-transitions
 hyperframes render "$PROJECT_DIR/edit/hyperframes/lower-third" \
-  --format webm \
-  --output "$PROJECT_DIR/edit/hyperframes/lower-third/render.webm"
+  --format mov \
+  --output "$PROJECT_DIR/edit/hyperframes/lower-third/render.mov"
 ```
 
 Then reference the render from `overlays[].source`, usually as
-`"hyperframes/lower-third/render.webm"` when `edl.json` lives in
+`"hyperframes/lower-third/render.mov"` when `edl.json` lives in
 `$PROJECT_DIR/edit/edl.json`.
+
+### Overlay source timing and alpha
+
+Every source overlay starts at source time zero unless `source_start` selects a
+non-negative offset in seconds. For example, a window from output 14s to 28s with
+`source_start: 14` plays source 14s-28s. Reusing the same file across windows with
+no offset repeats its beginning. Still images and generated cards have no source
+seek. The renderer trims the selected video interval and shifts its timestamps to
+the output window.
+
+`duration_type: sync` enforces a 3-14s window; `beat` enforces 0.5-2s. Omit the
+optional duration type for a full-length overlay. These bounds do not require
+splitting a long source. For compatibility with older toolkit versions, split an
+all-intra ProRes MOV and use one chunk per window:
+
+```bash
+ffmpeg -ss 14 -i render.mov -t 14 -c copy chunk-14.mov
+```
+
+Set composition backgrounds to transparent and verify alpha on encoded pixels.
+Use MOV/ProRes 4444 when local WebM encoding flattens transparency. Inspect a
+draft encode for scene visibility, not just composition snapshots. Portrait
+segment extraction anchors height (1920 normally, 1280 in draft), preserving the
+source aspect ratio; verify the final dimensions with ffprobe.
 
 ### `media-grade` — Apply color grade
 
@@ -315,6 +342,32 @@ media-verify rough-cut.mp4 --edl edl.json
 # If issues found → fix EDL, re-render, re-verify (up to 3 passes)
 ```
 
+### `media-fcpxml-export` — Resolve layer handoff
+
+When a project needs a DaVinci Resolve timeline with separate plates, render
+project-specific media layers in the project workspace and export a manifest:
+
+```bash
+media-fcpxml-export "$PROJECT_DIR/edit/resolve/layer-manifest.json" \
+  -o "$PROJECT_DIR/edit/resolve/project.fcpxml"
+```
+
+Minimal manifest shape:
+
+```json
+{
+  "project": "Layered Resolve Export",
+  "sequence": {"width": 1920, "height": 1080, "fps": 30, "duration_frames": 767},
+  "layers": [
+    {"name": "Background", "path": "assets/background.mov", "kind": "video", "lane": 0, "duration_frames": 767},
+    {"name": "Voice", "path": "assets/voice.wav", "kind": "audio", "lane": -1, "role": "dialogue", "duration_frames": 767}
+  ]
+}
+```
+
+Use this for the FCPXML packaging step only. The alpha plates, stems, and
+graphics are still project-specific artifacts.
+
 ### `media-rough-cut` — Card/image/clip assembly (simpler alternative)
 
 For assemblies that don't need word-boundary editing, grading, or loudnorm, the simpler `media-rough-cut` command builds a rough cut from a JSON spec of placeholder cards, image holds, and clip extractions.
@@ -401,3 +454,34 @@ See `docs/hard-rules.md` for the full list of 12 hard rules and 13 anti-patterns
 - Run `media-verify` after rendering to self-evaluate cut boundaries.
 - Never skip loudness normalization for social-media distribution targets.
 - Use `--draft` mode first to verify cut points, then `--preview` for QC, then full render for final output.
+
+## Reframing and reviewed subtitles
+
+Optional top-level `reframe` and per-range `reframe` accept FFmpeg video filter
+strings. A range value overrides the top-level value; an empty string disables
+it for that range. Geometry runs in source pixels before the renderer scales the
+result's longer side to 1920 (1280 with `--draft`), then applies `grade`. All
+segments must produce compatible dimensions for concatenation.
+
+```json
+{
+  "version": 1,
+  "sources": {"episode": "/path/to/episode.mp4"},
+  "transcripts": {"episode": "/path/to/library/transcripts/episode.json"},
+  "reframe": "crop=540:960:700:60",
+  "ranges": [{"source": "episode", "start": 89.54, "end": 149.30}],
+  "subtitles": {"path": "reviewed.srt", "style": "natural-sentence", "rechunk": false}
+}
+```
+
+`transcripts` maps source names to JSON files; relative paths resolve beside the
+EDL. Without a mapping, the renderer uses `transcripts/<source-name>.json` beside
+the EDL. Flat `words` and `segments[].words` are supported, with `text` or `word`
+text fields. Existing word times drive both cut snapping and master-SRT offsets;
+whitespace spacers and non-word events are omitted. Segment-only transcripts
+without word times cannot supply word alignment.
+
+`subtitles.rechunk` defaults to `true`. Set it to `false` to preserve an existing
+SRT's cue text and timing in both overlay and subtitle-only renders. Styling still
+applies. Sentence-style re-chunking distributes time across merged text; it does
+not recover spoken word timing. Review translated cue timing separately.

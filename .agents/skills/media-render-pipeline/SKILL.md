@@ -162,10 +162,12 @@ Write 4–8 sentences covering:
 - Subtitle style
 - Target duration estimate
 
-**Wait for user confirmation before proceeding.** This is Hard Rule 11. Never
-execute edits without explicit approval of the strategy.
+Confirm the strategy before proceeding. An explicit request for autonomous
+production approves execution within that agreed scope; record it and use
+`media-motion-graphics`'s `review-mode: auto` visual-review process for graphic
+checkpoints. Otherwise wait for user confirmation (Hard Rule 11).
 
-If the user requests changes, update the strategy and re-confirm.
+If the user changes the scope, update the strategy and confirm unresolved choices.
 
 ### Step 5: Execute
 
@@ -177,30 +179,40 @@ Produce the edit decision list and build the video.
    - Pad every cut edge with 30–200ms working window (Hard Rule 7).
    - Each range entry includes `source`, `start`, `end`, `beat`, `quote`,
      `reason`, and optional `grade`.
-2. **Drill into `media-timeline-view`** at ambiguous moments where visual
+2. **Generate narration when needed** — Keep the script in the project
+   workspace and use `media-tts` before rendering:
+   ```bash
+   media-tts "$PROJECT_DIR/script.md" \
+     --backend elevenlabs \
+     --output "$PROJECT_DIR/assets/audio/narration.mp3"
+   ```
+   Set `ELEVENLABS_API_KEY` and `ELEVENLABS_VOICE_ID_EN` in the environment;
+   never put credentials or voice IDs in project files. Use `media-loudnorm`
+   afterward when delivery-level normalization is required.
+3. **Drill into `media-timeline-view`** at ambiguous moments where visual
    context would change the editing decision.
-3. **Build animations or overlays in isolated slots** (if applicable) — use
+4. **Build animations or overlays in isolated slots** (if applicable) — use
    `$PROJECT_DIR/edit/hyperframes/slot_<id>/` for HTML-rendered motion and
    `$PROJECT_DIR/edit/animations/slot_<id>/` for other animation sources.
    Hyperframes is the preferred path for kinetic typography, animated lower
    thirds, UI motion, website captures, GIFs, PNG sequences, batch variants,
    and alpha overlays. Run:
    ```bash
-   hyperframes lint "$PROJECT_DIR/edit/hyperframes/slot_<id>"
-   hyperframes inspect "$PROJECT_DIR/edit/hyperframes/slot_<id>" --at-transitions
+   hyperframes check "$PROJECT_DIR/edit/hyperframes/slot_<id>" --snapshots --at-transitions
    hyperframes render "$PROJECT_DIR/edit/hyperframes/slot_<id>" \
-     --format webm \
-     --output "$PROJECT_DIR/edit/hyperframes/slot_<id>/render.webm"
+     --format mov \
+     --output "$PROJECT_DIR/edit/hyperframes/slot_<id>/render.mov"
    ```
+   For long overlays, follow `media-rough-cut-assembly`'s source-offset guidance.
    Add rendered overlays to `edl.json` with `overlays[].source`,
    `start`, `end`, optional `position`, `z_order`, and `duration_type`.
    `media-edl-render` composites overlays before burning subtitles and applies
    the required overlay PTS shift.
-4. **Specify grade per-segment in the EDL** — add `grade` on ranges or
+5. **Specify grade per-segment in the EDL** — add `grade` on ranges or
    top-level so the renderer applies it during extraction, never post-concat
    (Anti-pattern 1, Anti-pattern 6). No manual grading step is needed;
    the EDL renderer handles grading automatically when it reads `edl.json`.
-5. **Render a preview** via `media-edl-render --preview`:
+6. **Render a preview** via `media-edl-render --preview`:
    ```bash
    media-edl-render "$PROJECT_DIR/edit/edl.json" \
      -o "$PROJECT_DIR/edit/preview.mp4" \
@@ -219,7 +231,7 @@ Produce the edit decision list and build the video.
    - Two-pass loudness normalization (−14 LUFS / −1 dBTP / LRA 11).
 
    Preview mode uses 720p with faster encode settings. Do **not** render
-   full-quality yet — that happens in Step 8 after user approval.
+   full-quality yet; that happens in Step 8 after the selected review gate passes.
 
 ### Step 6: Self-eval
 
@@ -268,7 +280,8 @@ After the user reviews the preview:
 1. **Address feedback** — make requested changes to the EDL, re-render the
    preview (`--preview`), re-run self-eval, and present the revised preview
    to the user. Repeat until the user approves.
-2. **Final render** — once approved, produce the full-quality render:
+2. **Final render** — after human approval or a passing auto review within the
+   authorized production scope, produce the full-quality render:
    ```bash
    media-edl-render "$PROJECT_DIR/edit/edl.json" \
      -o "$PROJECT_DIR/edit/final.mp4" \
@@ -276,7 +289,15 @@ After the user reviews the preview:
      --ffmpeg-bin "$(command -v ffmpeg)" \
      --ffprobe-bin "$(command -v ffprobe)"
    ```
-3. **Persist session memory** — append to `$PROJECT_DIR/edit/project.md`:
+3. **Optional Resolve handoff** — if an editor needs layered import, render
+   project-specific alpha plates/WAV stems in `$PROJECT_DIR`, write a layer
+   manifest, then export FCPXML:
+   ```bash
+   media-fcpxml-export "$PROJECT_DIR/edit/resolve/layer-manifest.json" \
+     -o "$PROJECT_DIR/edit/resolve/project.fcpxml"
+   ```
+4. **Persist session memory** in `$PROJECT_DIR/edit/project.md`, or in the
+   composition slot's `DECISIONS.md` for an independent motion-graphics run:
 
    ```markdown
    ## Session YYYY-MM-DD
@@ -294,15 +315,15 @@ After the user reviews the preview:
    Unfinished work, open questions, or next actions.
    ```
 
-4. On the next session startup, read `edit/project.md` and summarize the last
+4. On the next session startup, read the permitted project or slot record and summarize the last
    session in one sentence to re-establish context.
 
 ## Session memory protocol
 
-All strategy, decisions, and reasoning must persist across sessions in
-`$PROJECT_DIR/edit/project.md`.
+Shared strategy, decisions, and reasoning persist in `$PROJECT_DIR/edit/project.md`.
+Independent motion-graphics runs use their composition slot's `DECISIONS.md`.
 
-- **On startup:** Read `project.md` if it exists. Summarize the last session
+- **On startup:** Read the permitted project or slot record if it exists. Summarize the last session
   in one sentence before asking whether to continue.
 - **After each session:** Append a timestamped entry with strategy, decisions,
   reasoning log, and outstanding items.
@@ -333,8 +354,9 @@ not bundled when the skill is deployed standalone).
 | 12 | All outputs in project directory, never clobber source | This skill |
 
 **Hard Rule 11 is especially critical for this skill:** the propose-strategy
-step (Step 4) must receive explicit user confirmation before any edits are
-executed. This is not optional. See Anti-pattern 11.
+step (Step 4) must receive explicit user confirmation or an explicit autonomous
+production request covering the agreed scope. Auto mode substitutes multimodal
+review for graphic checkpoints; it does not authorize publication.
 
 ## Anti-patterns (things that consistently fail)
 
@@ -366,7 +388,7 @@ Inventory → Pre-scan → Converse → Propose strategy → Execute → Self-ev
 ```
 
 Steps 1–3: Understand the material and the user's intent.
-Step 4: Get explicit confirmation (Hard Rule 11).
+Step 4: Confirm the strategy or record explicit autonomous scope (Hard Rule 11).
 Step 5: Build the edit (EDL + preview render).
 Step 6: Self-evaluate before showing the user (max 3 passes).
 Step 7: Present the preview to the user.
@@ -388,9 +410,11 @@ in `docs/generated-media.md` in the toolkit repository.
 | `media-subtitle` | Step 1 (transcribe) |
 | `media-batch-subtitle` | Step 1 (batch transcribe) |
 | `media-pack-transcript` | Step 1 (pack) |
+| `media-tts` | Step 5 (narration) |
 | `media-timeline-view` | Steps 1, 5, 6 (on-demand visual drill-down) |
 | `media-edl-render` | Steps 5, 8 (render with EDL) |
-| `media-generated` | Steps 4–8 (TTV review, imports, selections and verified EDL renders) |
+| `media-generated` | Steps 4-8 (TTV review, imports, selections and verified EDL renders) |
+| `media-fcpxml-export` | Step 8 (optional Resolve layer handoff) |
 | `media-burn-subtitles` | Step 5 (subtitle burning, usually via EDL render) |
 | `media-grade` | Step 5 (standalone grading outside EDL workflow; not needed when using `media-edl-render`) |
 | `media-loudnorm` | Step 5 (standalone normalization outside EDL workflow; not needed when using `media-edl-render`) |
@@ -425,7 +449,7 @@ in `docs/generated-media.md` in the toolkit repository.
   "grade": "warm_cinematic",
   "overlays": [
     {
-      "source": "hyperframes/slot_1/render.webm",
+      "source": "hyperframes/slot_1/render.mov",
       "start": 0.0,
       "end": 5.0,
       "position": {"x": 0, "y": 0},
@@ -451,7 +475,8 @@ in `docs/generated-media.md` in the toolkit repository.
 - `grade`: top-level default grade preset or raw ffmpeg filter. Overridden by
   per-range `grade`.
 - `overlays`: rendered animation clips with placement in the output timeline.
-  Paths are resolved relative to `$PROJECT_DIR`. `media-edl-render` composites
+  Paths are resolved relative to the EDL directory. Use optional `source_start`
+  to select a video source offset; omitted offsets start at zero. `media-edl-render` composites
   overlays before burning subtitles (Hard Rule 1) and applies PTS shifts
   (Hard Rule 4) automatically.
 - `subtitles`: string (path) or dict with optional keys `style`, `path`,
@@ -464,11 +489,17 @@ in `docs/generated-media.md` in the toolkit repository.
 
 ## Animation guidance (when requested)
 
+For reference-led graphics, product videos, storyboard alternatives, scene stills,
+or director notes, read `../media-motion-graphics/SKILL.md`. Use its upstream
+HyperFrames workflow for graphic authoring, then return here for EDL integration
+and delivery. Carry the confirmed strategy into its brief; keep settled decisions
+and approvals instead of repeating intake.
+
 When the user wants overlay animations, follow these principles:
 
 - **Get palette and visual language from the conversation.** Never assume
   defaults. If the user hasn't specified, propose a palette in Step 4 and
-  wait for confirmation.
+  use the selected human or auto review mode.
 - **Tool options:**
   - Hyperframes — HTML/CSS/JS-native motion, kinetic captions, lower thirds,
     title cards, website/UI captures, alpha overlays, GIFs, PNG sequences, and
@@ -510,7 +541,7 @@ Hard rules for subtitles: applied LAST (Rule 1), output-timeline offsets
 
 ## Guardrails
 
-- Never execute edits without user confirmation of the strategy (Hard Rule 11).
+- Execute within a confirmed strategy or explicit autonomous production scope (Hard Rule 11).
 - Never cut inside a word (Hard Rule 6).
 - Never burn subtitles before overlays (Hard Rule 1).
 - Never use a single-pass filtergraph for multi-source assembly (Hard Rule 2).
@@ -521,4 +552,14 @@ Hard rules for subtitles: applied LAST (Rule 1), output-timeline offsets
 - Use `media-timeline-view` only at decision points — not as a default scan
   step.
 - Cache transcripts; never re-transcribe unless the source changed (Hard Rule 9).
-- Persist session memory in `$PROJECT_DIR/edit/project.md` after every session.
+- Persist session memory in the permitted project or composition-slot record after every session.
+
+Independent motion-graphics runs keep their session and creative decisions in the
+composition slot's `DECISIONS.md`; honor user exclusions of `edit/project.md`.
+Use EDL `reframe` for geometry before draft scaling, `transcripts` for existing
+word-level JSON paths, and `subtitles.rechunk: false` to preserve reviewed cues.
+See `media-rough-cut-assembly` for schema and timing behavior. `media-verify` does
+not automate subtitle readability, overlay placement, face obstruction, or
+loudness verification. Record these separately, including first/last encoded
+frames and speaker handoff clips. Zero measured contrast elements need visual
+review on the assembled footage.

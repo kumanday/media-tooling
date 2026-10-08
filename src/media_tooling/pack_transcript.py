@@ -88,17 +88,23 @@ def extract_words(segments: list[Any]) -> list[dict[str, Any]]:
         else:
             raw_words = getattr(segment, "words", None) or []
 
+        seg_speaker = (
+            (segment.get("speaker_id") or segment.get("speaker"))
+            if isinstance(segment, dict)
+            else (getattr(segment, "speaker_id", None) or getattr(segment, "speaker", None))
+        )
+
         for w in raw_words:
             if isinstance(w, dict):
                 text = str(w.get("word", ""))
                 start = w.get("start")
                 end = w.get("end")
-                speaker = w.get("speaker")
+                speaker = w.get("speaker") or seg_speaker
             else:
                 text = str(getattr(w, "word", ""))
                 start = getattr(w, "start", None)
                 end = getattr(w, "end", None)
-                speaker = getattr(w, "speaker", None)
+                speaker = getattr(w, "speaker", None) or seg_speaker
 
             if start is None or end is None:
                 continue

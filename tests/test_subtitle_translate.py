@@ -16,10 +16,17 @@ from media_tooling.subtitle_translate import (
     main,
     parse_srt_file,
     resegment_translated_window,
+    split_text_into_clauses,
 )
 
 
 class SubtitleTranslationTests(unittest.TestCase):
+    def test_numeric_punctuation_stays_inside_clauses(self) -> None:
+        for text in ["Usa Seedance 2.0. Fin.", "El resultado se mantiene en 2,5 segundos. Fin.", "Versión 3.1.2 lista! Fin."]:
+            with self.subTest(text=text):
+                self.assertEqual(split_text_into_clauses(text), [text[:-5], "Fin."])
+
+
     def run_cli(self, *argv: str) -> tuple[int, str]:
         stream = io.StringIO()
         with contextlib.redirect_stdout(stream), mock.patch.object(sys, "argv", ["media-translate-subtitles", *argv]):
@@ -271,3 +278,22 @@ class SubtitleTranslationTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class PilotTranslationTests(unittest.TestCase):
+    def test_domains_remain_intact(self) -> None:
+        self.assertEqual(split_text_into_clauses('Usa Fal.ai y https://fal.ai. Fin.'),
+                         ['Usa Fal.ai y https://fal.ai.', 'Fin.'])
+
+    def test_short_sentences_get_separate_windows(self) -> None:
+        from media_tooling.subtitle_translate import SubtitleCue
+        cues = [SubtitleCue(1, 0, 1, 'First sentence.'),
+                SubtitleCue(2, 1, 2, 'Next sentence.')]
+        windows = build_translation_windows(cues)
+        self.assertEqual([w.source_cue_indices for w in windows], [[1], [2]])
+
+    def test_target_duration_does_not_split_unfinished_sentence(self) -> None:
+        from media_tooling.subtitle_translate import SubtitleCue
+        cues = [SubtitleCue(1, 0, 7, 'This sentence'),
+                SubtitleCue(2, 7, 13, 'still continues'),
+                SubtitleCue(3, 13, 15, 'and ends here.')]
+        self.assertEqual(len(build_translation_windows(cues)), 1)
