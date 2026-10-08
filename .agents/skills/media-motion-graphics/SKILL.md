@@ -161,6 +161,32 @@ use new output names for iterations instead of deleting them preemptively.
 For spoken footage, follow `media-subtitle-pipeline`'s project glossary and cached
 transcript correction guidance before using transcript copy in the storyboard.
 
+## Generated footage with TTV
+
+Use TTV when a reviewed scene needs generated footage. Export the selected
+`STORYBOARD.md` scenes to `$PROJECT_DIR/storyboards/<revision>.json` using the
+scene shape in `docs/generated-media.md`. Preserve scene IDs, scene order,
+durations, entry/exit intent, references, delivery dimensions, and continuity.
+Include a `motion_review` record with review mode, reviewer, disposition, and
+paths and SHA-256 hashes of the storyboard, review images, and `review.md`.
+Archive those files alongside the JSON revision. Mark `approved: true` only
+after the selected review process has passed.
+
+Creative review and spending permission are separate records. Carry the user's
+existing permission to use providers and the agreed budget into `DECISIONS.md`;
+auto review alone does not authorize paid generation. Review the returned TTV
+plan's exact prompts, model, variants, duration, references, and costs before
+creating `media-generated approve`. Use a keyframe-only approval and a cited
+keyframe result when first/last frames need visual review before video generation.
+
+Import approved results and select their takes through `media-generated`.
+Use the imported clips as content layers in HyperFrames; keep text, UI, layout,
+crop, timing, and overlays editable in the composition. Director notes on those
+elements revise HyperFrames source. Notes that change generated footage create a
+new TTV request for the affected scene IDs. Keep neighboring takes and resolve
+any stale continuity dependencies. See `docs/generated-media.md` for the handoff
+example, selection provenance, and portrait EDL options.
+
 ## Verification and handoff
 
 Use `lint` for early feedback and `check --snapshots --at-transitions` for the

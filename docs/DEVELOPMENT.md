@@ -41,6 +41,11 @@ uv run --group dev mypy src tests
 
 ## When editing the toolkit
 
+The TTV adapter is `src/media_tooling/generated_media.py`. Its contract schemas
+and golden fixtures are pinned data under `src/media_tooling/contracts/`. Keep
+the renderer and verifier independent of TTV. See [generated-media.md](generated-media.md)
+for the workflow and offline acceptance command.
+
 - prefer updating shared helpers instead of duplicating batch logic
 - keep user-facing execution guidance in `src/media_tooling/templates/project_AGENTS.md` rather than the repo root
 - keep implementation notes and maintenance guidance here or in other files under `docs/`
