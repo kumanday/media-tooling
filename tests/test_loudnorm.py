@@ -19,6 +19,7 @@ from media_tooling.loudnorm import (
     main,
     measure_loudness,
     parse_args,
+    validate_output_path,
 )
 
 SAMPLE_MEASUREMENT_JSON = json.dumps({
@@ -255,6 +256,77 @@ class ApplyLoudnormPreviewTests(unittest.TestCase):
         self.assertIn("-movflags", cmd)
 
 
+class OutputFormatTests(unittest.TestCase):
+    def _second_pass_cmd(self, output: str, probe_stdout: str = "") -> list[str]:
+        measure_result = _mock_subprocess_run_factory(stderr=SAMPLE_MEASUREMENT_JSON)
+        probe_result = _mock_subprocess_run_factory(stdout=probe_stdout)
+        apply_result = _mock_subprocess_run_factory()
+        with mock.patch("media_tooling.loudnorm.subprocess.run") as mock_run:
+            mock_run.side_effect = [measure_result, probe_result, apply_result]
+            apply_loudnorm_two_pass(Path("input.mp4"), Path(output))
+        return mock_run.call_args_list[-1][0][0]
+
+    def _audio_codec(self, cmd: list[str]) -> str:
+        return cmd[cmd.index("-c:a") + 1]
+
+    def test_codec_follows_output_extension(self) -> None:
+        expected = {
+            "out.wav": "pcm_s24le",
+            "out.flac": "flac",
+            "out.mp3": "libmp3lame",
+            "out.m4a": "aac",
+            "out.mp4": "aac",
+            "out.mov": "aac",
+            "OUT.WAV": "pcm_s24le",
+        }
+        for output, codec in expected.items():
+            with self.subTest(output=output):
+                self.assertEqual(self._audio_codec(self._second_pass_cmd(output)), codec)
+
+    def test_audio_only_output_drops_video_without_probing(self) -> None:
+        measure_result = _mock_subprocess_run_factory(stderr=SAMPLE_MEASUREMENT_JSON)
+        apply_result = _mock_subprocess_run_factory()
+        with mock.patch("media_tooling.loudnorm.subprocess.run") as mock_run:
+            mock_run.side_effect = [measure_result, apply_result]
+            apply_loudnorm_two_pass(Path("input.mp4"), Path("out.wav"))
+
+        self.assertEqual(mock_run.call_count, 2)
+        cmd = mock_run.call_args_list[1][0][0]
+        self.assertIn("-vn", cmd)
+        self.assertNotIn("-c:v", cmd)
+        self.assertNotIn("-b:a", cmd)
+
+    def test_video_output_copies_video(self) -> None:
+        cmd = self._second_pass_cmd("out.mov", probe_stdout="video\n")
+        self.assertEqual(cmd[cmd.index("-c:v") + 1], "copy")
+        self.assertNotIn("-vn", cmd)
+
+    def test_unknown_extension_rejected_before_ffmpeg_runs(self) -> None:
+        with mock.patch("media_tooling.loudnorm.subprocess.run") as mock_run:
+            with self.assertRaisesRegex(ValueError, "unsupported output extension '.ogg'"):
+                apply_loudnorm_two_pass(Path("input.mp4"), Path("out.ogg"))
+            with self.assertRaises(ValueError):
+                apply_loudnorm_preview(Path("input.mp4"), Path("out"))
+        mock_run.assert_not_called()
+
+    def test_validate_output_path_accepts_known_extensions(self) -> None:
+        for ext in (".wav", ".flac", ".mp3", ".m4a", ".mp4", ".mov", ".mkv"):
+            validate_output_path(Path(f"out{ext}"))
+
+    def test_main_returns_1_for_unknown_extension(self) -> None:
+        with (
+            mock.patch("media_tooling.loudnorm.subprocess.run") as mock_run,
+            mock.patch.object(sys, "argv", ["media-loudnorm", "input.mp3", "-o", "out.ogg"]),
+            mock.patch("pathlib.Path.exists", return_value=True),
+            mock.patch("builtins.print") as mock_print,
+        ):
+            result = main()
+
+        self.assertEqual(result, 1)
+        mock_run.assert_not_called()
+        self.assertTrue(any("unsupported output extension" in str(c) for c in mock_print.call_args_list))
+
+
 class ParseArgsTests(unittest.TestCase):
     def test_requires_input_and_output(self) -> None:
         with mock.patch.object(sys, "argv", ["media-loudnorm", "input.mp4", "-o", "output.mp4"]):
@@ -434,6 +506,44 @@ class IntegrationTests(unittest.TestCase):
         self.assertEqual(result, 0)
         self.assertTrue(output.exists())
         self.assertGreater(output.stat().st_size, 0)
+
+    def _probe_audio(self, path: Path) -> tuple[str, str]:
+        proc = subprocess.run(
+            [
+                "ffprobe", "-v", "error",
+                "-select_streams", "a:0",
+                "-show_entries", "stream=codec_name:format=format_name",
+                "-of", "json",
+                str(path),
+            ],
+            check=True, capture_output=True, text=True,
+        )
+        data = json.loads(proc.stdout)
+        return data["format"]["format_name"], data["streams"][0]["codec_name"]
+
+    def _assert_decodes_cleanly(self, path: Path) -> None:
+        proc = subprocess.run(
+            ["ffmpeg", "-v", "error", "-i", str(path), "-f", "null", "-"],
+            capture_output=True, text=True,
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertEqual(proc.stderr.strip(), "")
+
+    def test_two_pass_wav_output_is_pcm(self) -> None:
+        output = Path(self.tmpdir) / "normalized.wav"
+        result = main_with_args(["media-loudnorm", str(self.audio_input), "-o", str(output)])
+        self.assertEqual(result, 0)
+        self.assertEqual(self._probe_audio(output), ("wav", "pcm_s24le"))
+        self._assert_decodes_cleanly(output)
+
+    def test_two_pass_m4a_output_is_aac(self) -> None:
+        output = Path(self.tmpdir) / "normalized.m4a"
+        result = main_with_args(["media-loudnorm", str(self.audio_input), "-o", str(output)])
+        self.assertEqual(result, 0)
+        format_name, codec = self._probe_audio(output)
+        self.assertIn("m4a", format_name.split(","))
+        self.assertEqual(codec, "aac")
+        self._assert_decodes_cleanly(output)
 
     def test_has_video_stream_on_audio_file(self) -> None:
         self.assertFalse(has_video_stream(self.audio_input))

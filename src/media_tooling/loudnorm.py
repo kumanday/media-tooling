@@ -12,6 +12,19 @@ LOUDNORM_I = -14.0
 LOUDNORM_TP = -1.0
 LOUDNORM_LRA = 11.0
 
+# Output extension -> (audio encoder args, container holds video).
+# The encoder must match the container: ffmpeg will happily mux AAC into a
+# .wav file, which produces a stream most decoders reject.
+OUTPUT_FORMATS: dict[str, tuple[list[str], bool]] = {
+    ".wav": (["-c:a", "pcm_s24le"], False),
+    ".flac": (["-c:a", "flac"], False),
+    ".mp3": (["-c:a", "libmp3lame", "-b:a", "192k"], False),
+    ".m4a": (["-c:a", "aac", "-b:a", "192k"], False),
+    ".mp4": (["-c:a", "aac", "-b:a", "192k"], True),
+    ".mov": (["-c:a", "aac", "-b:a", "192k"], True),
+    ".mkv": (["-c:a", "aac", "-b:a", "192k"], True),
+}
+
 
 def has_video_stream(
     input_path: Path,
@@ -36,6 +49,40 @@ def has_video_stream(
             f"ffprobe failed (exit {proc.returncode}): {proc.stderr.strip()}"
         )
     return bool(proc.stdout.strip())
+
+
+def validate_output_path(output_path: Path) -> None:
+    """Raise ValueError if output_path has an extension loudnorm cannot write."""
+    if output_path.suffix.lower() not in OUTPUT_FORMATS:
+        supported = ", ".join(OUTPUT_FORMATS)
+        raise ValueError(
+            f"unsupported output extension {output_path.suffix or '(none)'!r} "
+            f"for {output_path.name}; supported: {supported}"
+        )
+
+
+def build_encode_args(
+    input_path: Path,
+    output_path: Path,
+    filter_str: str,
+    ffprobe_bin: str = "ffprobe",
+) -> list[str]:
+    """Return the stream mapping, filter, and codec args for the encode pass.
+
+    The audio codec follows the output extension. Video is stream-copied only
+    when the input has video and the output container can hold it.
+    """
+    validate_output_path(output_path)
+    audio_args, holds_video = OUTPUT_FORMATS[output_path.suffix.lower()]
+    args: list[str] = []
+    if holds_video and has_video_stream(input_path, ffprobe_bin=ffprobe_bin):
+        args.extend(["-c:v", "copy"])
+    else:
+        args.append("-vn")
+    args.extend(["-af", filter_str, *audio_args, "-ar", "48000"])
+    if output_path.suffix.lower() == ".mp4":
+        args.extend(["-movflags", "+faststart"])
+    return args
 
 
 def parse_args() -> argparse.Namespace:
@@ -119,8 +166,9 @@ def apply_loudnorm_two_pass(
     """Run two-pass loudnorm on input_path, write normalized copy to output_path.
 
     Returns True on success, False if measurement failed (caller should fall
-    back to preview mode).
+    back to preview mode). Raises ValueError for unsupported output extensions.
     """
+    validate_output_path(output_path)
     measurement = measure_loudness(input_path, ffmpeg_bin=ffmpeg_bin)
     if measurement is None:
         return False
@@ -138,14 +186,9 @@ def apply_loudnorm_two_pass(
         ffmpeg_bin, "-y", "-hide_banner", "-nostats",
         "-i", str(input_path),
     ]
-    if has_video_stream(input_path, ffprobe_bin=ffprobe_bin):
-        cmd.extend(["-c:v", "copy"])
-    cmd.extend([
-        "-af", filter_str,
-        "-c:a", "aac", "-b:a", "192k", "-ar", "48000",
-    ])
-    if output_path.suffix.lower() == ".mp4":
-        cmd.extend(["-movflags", "+faststart"])
+    cmd.extend(build_encode_args(
+        input_path, output_path, filter_str, ffprobe_bin=ffprobe_bin,
+    ))
     cmd.append(str(output_path))
     subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
     return True
@@ -165,14 +208,9 @@ def apply_loudnorm_preview(
         ffmpeg_bin, "-y", "-hide_banner", "-nostats",
         "-i", str(input_path),
     ]
-    if has_video_stream(input_path, ffprobe_bin=ffprobe_bin):
-        cmd.extend(["-c:v", "copy"])
-    cmd.extend([
-        "-af", filter_str,
-        "-c:a", "aac", "-b:a", "192k", "-ar", "48000",
-    ])
-    if output_path.suffix.lower() == ".mp4":
-        cmd.extend(["-movflags", "+faststart"])
+    cmd.extend(build_encode_args(
+        input_path, output_path, filter_str, ffprobe_bin=ffprobe_bin,
+    ))
     cmd.append(str(output_path))
     subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
 
@@ -185,6 +223,11 @@ def main() -> int:
         return 1
 
     output_path = Path(args.output).expanduser().resolve()
+    try:
+        validate_output_path(output_path)
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
     output_path.parent.mkdir(parents=True, exist_ok=True)
     ffmpeg_bin = args.ffmpeg_bin
     ffprobe_bin = args.ffprobe_bin

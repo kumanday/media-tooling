@@ -1774,6 +1774,9 @@ def render_edl(
         except RuntimeError as exc:
             print(f"loudnorm probe error: {exc}", file=sys.stderr)
             return 1
+        except ValueError as exc:
+            print(f"loudnorm: {exc}", file=sys.stderr)
+            return 1
 
         if not success:
             print("loudnorm measurement failed, using preview mode", file=sys.stderr)
