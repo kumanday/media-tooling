@@ -9,6 +9,7 @@ dependencies = [
     "faster-whisper>=1.1.0; sys_platform != 'darwin' or platform_machine != 'arm64'",
     "mlx<0.29.5; sys_platform == 'darwin' and platform_machine == 'arm64'",
     "onnxruntime<1.24; sys_platform == 'darwin' and platform_machine == 'x86_64'",
+    "fsspec>=2026.6.0",
     "numpy>=1.26",
     "pillow>=12.3.0",
     "jsonschema>=4.23",
