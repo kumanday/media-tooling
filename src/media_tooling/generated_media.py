@@ -172,6 +172,18 @@ def validate_document(kind: str, document: dict[str, Any]) -> None:
     _unique(scenes, "scene_id")
     if scenes and "order" in scenes[0]:
         _unique(scenes, "order")
+    if kind == "request":
+        _unique([asset for scene in scenes for asset in scene["reference_assets"]], "asset_id")
+        for scene in scenes:
+            for role in ("first_frame", "last_frame"):
+                if sum(asset["role"] == role for asset in scene["reference_assets"]) > 1:
+                    raise IntegrationError(f"Multiple {role} assets in one scene")
+    if kind == "plan":
+        _unique([variant for scene in scenes for variant in scene["variants"]], "variant_id")
+        for scene in scenes:
+            for variant in scene["variants"]:
+                _unique(variant["shots"], "shot_id")
+                _unique(variant["shots"], "order")
     if kind == "result":
         for scene in scenes:
             shots = _unique(scene["actual_shots"], "shot_id")
@@ -501,6 +513,16 @@ def _selection_inputs(project: Path, selection: dict[str, Any]) -> dict[str, dic
         if (plan["request_id"] != request["request_id"] or approval["request_id"] != request["request_id"]
                 or approval["plan_id"] != plan["plan_id"] or approval["plan_sha256"] != plan["document_sha256"]):
             raise IntegrationError("Result provenance chain does not match request, plan, and approval")
+        requested_scenes = {scene["scene_id"]: scene for scene in request["scenes"]}
+        for planned_scene in plan["scenes"]:
+            requested_scene = requested_scenes.get(planned_scene["scene_id"])
+            if not requested_scene:
+                raise IntegrationError("Plan refers to an unrequested scene")
+            required_refs = set(requested_scene["continuity"]["required_reference_asset_ids"])
+            for variant in planned_scene["variants"]:
+                planned_refs = {identifier for shot in variant["shots"] for identifier in shot["reference_asset_ids"]}
+                if not required_refs <= planned_refs:
+                    raise IntegrationError("Plan omitted required storyboard references")
         source_board = read_json(project_path(project, Path("storyboards") / (_component(request["storyboard"]["revision_id"]) + ".json")))
         if sha256(canonical_bytes(source_board)) != request["storyboard"]["sha256"]:
             raise IntegrationError("Request storyboard hash mismatch")
@@ -508,6 +530,17 @@ def _selection_inputs(project: Path, selection: dict[str, Any]) -> dict[str, dic
         if index["result_id"] != result["result_id"] or index["result_sha256"] != result["document_sha256"]:
             raise IntegrationError("Asset import record refers to a different result")
         results[result["result_id"]] = {"result": result, "request": request, "plan": plan, "approval": approval, "index": index}
+        if approval["approved_keyframe_result_id"]:
+            reviewed = load_document(project, "result", approval["approved_keyframe_result_id"])
+            reviewed_approval = load_document(project, "approval", reviewed["approval_id"])
+            if (reviewed["result_kind"] != "keyframes" or reviewed["terminal_status"] != "succeeded"
+                    or reviewed["request_id"] != request["request_id"] or reviewed["plan_id"] != plan["plan_id"]
+                    or reviewed_approval["execution_mode"] != "keyframes"
+                    or reviewed_approval["request_id"] != request["request_id"]
+                    or reviewed_approval["plan_id"] != plan["plan_id"]
+                    or reviewed_approval["plan_sha256"] != plan["document_sha256"]):
+                raise IntegrationError("Reviewed keyframes do not match the approved plan")
+            results[result["result_id"]]["reviewed"] = reviewed
     return results
 
 
@@ -575,8 +608,17 @@ def compile_selection(project: Path, selection: dict[str, Any], *, prepare_audio
                           for shot in variant["shots"]]
         approved_positions = {(scene_id, shot["shot_id"]): (scene_order, shot["order"])
                               for scene_id, scene_order, _, shot in approved_shots}
-        frames = [(source_scene["scene_id"], frame) for source_scene in entry["result"]["scenes"]
+        reviewed = entry.get("reviewed")
+        frame_source = reviewed or entry["result"]
+        frames = [(source_scene["scene_id"], frame) for source_scene in frame_source["scenes"]
                   for frame in source_scene["keyframes"]]
+        lineage_attempts = {(source_scene["scene_id"], attempt["attempt_id"]): attempt for source_scene in frame_source["scenes"]
+                            for attempt in source_scene["attempts"]}
+        lineage_frames = {frame["asset"]["asset_id"]: (source_scene_id, frame) for source_scene_id, frame in frames}
+        planned_assets = {asset["asset_id"]: asset for source_scene in entry["request"]["scenes"]
+                          for asset in source_scene["reference_assets"]}
+        lineage_assets = {**planned_assets, **{asset["asset_id"]: asset for asset in frame_source["reference_assets"]},
+                          **{frame["asset"]["asset_id"]: frame["asset"] for _, frame in frames}}
         predecessor_ids = {identifier for identifier in take["depends_on_take_ids"]
                            if identifier in takes and takes[identifier][1]["order"] < result_scene["order"]}
         predecessor_scenes = {takes[identifier][1]["scene_id"] for identifier in predecessor_ids}
@@ -603,6 +645,9 @@ def compile_selection(project: Path, selection: dict[str, Any], *, prepare_audio
                                   and (source_scene_id == scene["scene_id"] or source_scene_id in predecessor_scenes)
                                   and (frame_position := approved_positions.get((source_scene_id, frame["shot_id"]))) is not None
                                   and frame_position <= shot_position}
+            for identifier in approved_keyframes:
+                if identifier in reference_assets and reference_assets[identifier]["sha256"] != lineage_assets[identifier]["sha256"]:
+                    raise IntegrationError("Selected clip substituted a reviewed keyframe")
             prepared = attempt["generation_parameters"].get("prepared_reference_sources", "{}")
             try:
                 prepared_sources = json.loads(prepared)
@@ -618,11 +663,47 @@ def compile_selection(project: Path, selection: dict[str, Any], *, prepare_audio
                 allowed |= {identifier for identifier, source in prepared_sources.items()
                             if source in allowed and source in reference_assets
                             and reference_assets.get(identifier, {}).get("role") == "provider_reference"}
-                if set(attempt["reference_asset_ids"]) <= allowed:
+                consumed = set(attempt["reference_asset_ids"])
+                consumed.update(prepared_sources.get(identifier, identifier) for identifier in list(consumed))
+                pending = list(consumed)
+                while pending:
+                    identifier = pending.pop()
+                    source_asset = lineage_assets.get(identifier)
+                    if source_asset:
+                        consumed.update(key for key, asset in planned_assets.items()
+                                        if asset["sha256"] == source_asset["sha256"])
+                    origin = lineage_frames.get(identifier)
+                    image_attempt = lineage_attempts.get((origin[0], origin[1].get("attempt_id"))) if origin else None
+                    if image_attempt:
+                        image_refs = set(image_attempt["reference_asset_ids"])
+                        try:
+                            image_prepared = json.loads(image_attempt["generation_parameters"].get("prepared_reference_sources", "{}"))
+                            if (not isinstance(image_prepared, dict)
+                                    or any(not isinstance(key, str) or not isinstance(value, str) for key, value in image_prepared.items())
+                                    or set(image_prepared) - image_refs):
+                                raise IntegrationError("Invalid keyframe reference provenance")
+                            image_refs.update(image_prepared.get(key, key) for key in list(image_refs))
+                        except (TypeError, ValueError, AttributeError):
+                            raise IntegrationError("Invalid keyframe reference provenance") from None
+                        pending.extend(image_refs - consumed)
+                        consumed.update(image_refs)
+                required = set(refs)
+                if reviewed:
+                    required.update(frame["asset"]["asset_id"] for source_scene_id, frame in frames
+                                    if source_scene_id == scene["scene_id"] and frame["shot_id"] == attempt["shot_id"])
+                if consumed & planned_assets.keys():
+                    for identifier in consumed & planned_assets.keys():
+                        recorded = reference_assets.get(identifier, lineage_assets.get(identifier))
+                        if not recorded or recorded["sha256"] != planned_assets[identifier]["sha256"]:
+                            raise IntegrationError("Selected clip substituted a planned reference")
+                        imported_reference = asset_imports.get(identifier)
+                        if not imported_reference or file_hash(project_path(project, imported_reference["local_path"])) != recorded["sha256"]:
+                            raise IntegrationError("Required reference import is missing or modified")
+                if set(attempt["reference_asset_ids"]) <= allowed and required <= consumed:
                     authorized = True
                     break
             if not authorized:
-                raise IntegrationError("Selected clip used unapproved reference assets")
+                raise IntegrationError("Selected clip used unapproved reference assets or omitted required references")
             imported = imports.get(clip["clip_id"])
             if not imported or imported["sha256"] != clip["asset"]["sha256"] or imported["source_uri"] != clip["asset"]["uri"]:
                 raise IntegrationError("Missing or mismatched clip import")
@@ -713,7 +794,7 @@ def compile_selection(project: Path, selection: dict[str, Any], *, prepare_audio
         stored = read_json(project_path(project, selection["edl"]["path"]))
         if sha256(canonical_bytes(stored)) != selection["edl"]["sha256"]:
             raise IntegrationError("Stored EDL hash mismatch")
-        for key in ("grade", "overlays", "subtitles"):
+        for key in ("grade", "overlays", "subtitles", "reframe", "transcripts"):
             if key in stored:
                 edl[key] = stored[key]
         edl["generated_media"]["editorial_assets"] = _editorial_assets(project, edl)
@@ -723,6 +804,7 @@ def compile_selection(project: Path, selection: dict[str, Any], *, prepare_audio
 
 def _editorial_assets(project: Path, edl: dict[str, Any]) -> list[dict[str, str]]:
     paths = [overlay["source"] for overlay in edl.get("overlays", []) if isinstance(overlay.get("source"), str)]
+    paths.extend(edl.get("transcripts", {}).values())
     subtitles = edl.get("subtitles")
     if isinstance(subtitles, str):
         paths.append(subtitles)
@@ -768,9 +850,11 @@ def write_selection(project: Path, draft: dict[str, Any], *, edl_options: dict[s
                       "created_at": now(), "continuity_decisions": [], "edl": None, **draft})
     edl = compile_selection(project, selection)
     if edl_options:
-        if set(edl_options) - {"grade", "overlays", "subtitles"}:
-            raise IntegrationError("EDL options support grade, overlays and subtitles")
+        if set(edl_options) - {"grade", "overlays", "subtitles", "reframe", "transcripts"}:
+            raise IntegrationError("EDL options support grade, overlays, subtitles, reframe and transcripts")
         options = copy.deepcopy(edl_options)
+        if "transcripts" in options:
+            options["transcripts"] = {key: str(project_path(project, path)) for key, path in options["transcripts"].items()}
         for overlay in options.get("overlays", []):
             if isinstance(overlay.get("source"), str):
                 overlay["source"] = str(project_path(project, overlay["source"]))
@@ -851,7 +935,7 @@ def cost_rollup(project: Path, selection: dict[str, Any] | None = None) -> dict[
             if len(matches) != 1:
                 raise IntegrationError("Selected take is missing or ambiguous in referenced results")
             selected.add(matches[0])
-    observations: dict[str, dict[str, Any]] = {}
+    observations: dict[tuple[str, str, str], dict[str, Any]] = {}
     for path in sorted(project_path(project, "rough-cuts/manifests/results").glob("*.json")):
         result = read_json(path)
         validate_document("result", result)
@@ -862,9 +946,10 @@ def cost_rollup(project: Path, selection: dict[str, Any] | None = None) -> dict[
                 row = {"attempt_id": attempt["attempt_id"], "result_id": result["result_id"],
                        "scene_id": scene["scene_id"], "provider": attempt["provider"], "model": attempt["model"],
                        "selected_output": attempt["attempt_id"] in selected_attempts, **attempt["billing"]}
-                if attempt["attempt_id"] in observations and observations[attempt["attempt_id"]] != row:
+                key = (result["result_id"], scene["scene_id"], attempt["attempt_id"])
+                if key in observations and observations[key] != row:
                     raise IntegrationError("Conflicting billing observations for one attempt")
-                observations[attempt["attempt_id"]] = row
+                observations[key] = row
 
     def totals(rows: list[dict[str, Any]]) -> dict[str, Any]:
         sums = {}

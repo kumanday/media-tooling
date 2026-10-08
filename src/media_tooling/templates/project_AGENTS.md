@@ -31,9 +31,11 @@ Operational defaults:
 
 TTV generated-media workflow:
 - keep approved editorial storyboards and stable scene IDs in `storyboards/`
+- export reviewed motion-graphics scenes using the handoff in `docs/generated-media.md`; archive visual review evidence and existing provider spending permission with the storyboard revision
 - use `media-generated request`, review the returned plan, and record exact approved variants with `approve` before submitting paid work
 - exchange immutable documents through `send --server` or `send --handoff`; import results with an explicit asset root or allowed delivery origins
 - use `select` to freeze takes, trims and EDL, then `render` to run the existing renderer and verifier with provenance records
+- use `select --edl-options` for portrait `reframe`, transcripts, overlays, subtitles and grading; use imported generated clips as HyperFrames content layers
 - use new revisions for edits, regenerate only affected scenes, and explicitly resolve stale continuity decisions
 - keep transient signed delivery URLs separate from durable manifests and credentials out of documents
 

@@ -4,6 +4,65 @@ Media Tooling owns the editorial storyboard, take selection and final EDL. TTV o
 
 Start in a project created by `media-tooling-init`. An approved storyboard JSON has `project_id`, `revision_id`, `approved: true` and `scenes`. Each scene uses the `GenerationRequest.scenes` shape in the [pinned schema](../src/media_tooling/contracts/v1_0/GenerationRequest.schema.json). Keep scene IDs stable across revisions and give each scene an explicit, unique `order`. A request for a subset preserves these values.
 
+## Motion-graphics storyboard handoff
+
+The agent exports selected scenes from the reviewed HyperFrames `STORYBOARD.md`
+into this JSON shape. Markdown remains the creative source; the JSON is the
+explicit generation handoff. Copy each stable scene ID and map its beat duration
+to `requested_duration_s`, visual intent to `intent`, real image references to
+`reference_assets`, and portrait or landscape size to `delivery`. Put typography,
+UI motion, overlays, and timing edits in the HyperFrames composition. Request TTV
+generation for the footage needed by those content layers.
+
+For example, a reviewed portrait scene can be exported as follows. Replace the
+example evidence hashes with hashes of the archived files:
+
+```json
+{
+  "project_id": "product-film", "revision_id": "storyboard-1", "approved": true,
+  "motion_review": {
+    "mode": "auto", "reviewer": "agent with image input", "disposition": "passed",
+    "evidence": [
+      {"path": "storyboards/storyboard-1/STORYBOARD.md", "sha256": "sha256:FILE_HASH"},
+      {"path": "storyboards/storyboard-1/scene-01.png", "sha256": "sha256:FILE_HASH"},
+      {"path": "storyboards/storyboard-1/review.md", "sha256": "sha256:FILE_HASH"},
+      {"path": "storyboards/storyboard-1/DECISIONS.md", "sha256": "sha256:FILE_HASH"}
+    ]
+  },
+  "scenes": [{
+    "scene_id": "scene-01", "order": 1, "requested_duration_s": 5,
+    "intent": {"summary": "A hand opens the product on a desk", "entry_state": "Closed product",
+      "exit_state": "Product open", "continuity_notes": "Keep the desk and lighting consistent"},
+    "transition_out": {"type": "cut", "editorial_note": null},
+    "continuity": {"mode": "independent", "required_reference_asset_ids": []},
+    "reference_assets": [],
+    "delivery": {"aspect_ratio": "9:16", "target_width": 1080, "target_height": 1920, "audio_policy": "mute"},
+    "generation_policy": {"provider_preferences": ["fal"], "max_attempts": 4,
+      "max_estimated_cost_usd": 10, "allow_provider_fallback": false}
+  }]
+}
+```
+
+In `revision` mode, record the user's storyboard review. In `auto` mode, retain
+the actual scene images, visual feedback, and disposition from the skill's
+bounded review. Archive the evidence at the recorded paths and verify its hashes
+before exporting. The request hashes the entire storyboard JSON, including
+`motion_review`; this metadata is an agent-maintained review record. The CLI
+validates the generation contract and approvals rather than judging creative
+review. Record existing provider spending permission and budget in `DECISIONS.md`.
+Creative auto review alone grants no spending permission.
+
+Review the returned provider plan before execution. For a separate keyframe
+review, approve `--mode keyframes`, import and visually review that result, then
+cite its ID with `approve --keyframes`. Selection binds the clip's references to
+that exact reviewed result and checks mandatory reference lineage through
+recorded keyframe generation and provider image preparation.
+
+Import the generated clips as HyperFrames content layers. Edit layout, crop,
+timing, copy, or overlays in HyperFrames source. Regenerate footage using a new
+request containing the affected scene IDs, then select replacements and resolve
+continuity decisions before assembly.
+
 ```sh
 media-generated --project /path/to/project request storyboard.json \
   --id request-1 --revision 1
@@ -72,7 +131,7 @@ media-generated --project /path/to/project render \
 
 `select` writes the immutable selection and ordinary EDL. It verifies request, plan, approval, result, storyboard and asset hashes; checks take membership, order, duration bounds and continuity; then expands clips into EDL sources and ranges. `render` repeats these checks before calling the existing renderer and `media-verify`. Render records include hashes, source and attempt provenance, reference assets, options and FFmpeg version. A failed verification remains a recorded result and returns a nonzero status.
 
-Pass `select --edl-options options.json` for existing EDL `grade`, `subtitles` and `overlays` settings. Their paths resolve inside the project. Changing settings creates a new selection and EDL revision. Generated clips can also be ordinary sources in other EDL projects.
+Pass `select --edl-options options.json` for existing EDL `grade`, `subtitles`, `overlays`, `reframe`, and `transcripts` settings. Their paths resolve inside the project. Transcript, subtitle, and overlay files are hashed with the edit. Changing settings creates a new selection and EDL revision. For example, `{"reframe":"crop=ih*9/16:ih","transcripts":{"generated_0":"transcripts/scene-01.json"}}` preserves portrait framing and the first selected clip's transcript. Generated clips can also be ordinary sources in other EDL projects.
 
 Contract 1.0 supports `cut` and `none` transitions and `preserve` or `mute` audio. Muting creates a derived copy. Clips without audio receive silence when other clips preserve audio. The existing concat renderer requires matching aspect ratios and frame rates; incompatible selections fail before rendering. Its 30 ms cut padding remains active. Provenance records requested and padded bounds, clamped to source duration. For completely silent audio, pass `render --no-loudnorm` to use the existing normalization bypass; this choice is recorded.
 

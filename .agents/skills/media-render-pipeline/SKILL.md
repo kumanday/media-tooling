@@ -30,6 +30,14 @@ Delegate to the appropriate sub-skill when a step's work falls entirely within
 its scope. This skill adds the conversation, strategy, self-evaluation, and
 iteration layers that the sub-skills do not cover.
 
+For generated footage, export reviewed `media-motion-graphics` storyboard scenes
+using `docs/generated-media.md`, preserve stable IDs and visual review evidence,
+and use `media-generated` for provider plan approval, import, and take selection.
+Carry existing spending permission and budgets into the plan approval. Use
+imported clips as HyperFrames content layers and retain editable motion source.
+`select --edl-options` preserves portrait reframing and transcript paths together
+with grading, overlays, and subtitles.
+
 ## Worker/subagent protocol
 
 If the harness supports workers, use them for independent, bounded side work to

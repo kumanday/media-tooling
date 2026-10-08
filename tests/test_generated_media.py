@@ -59,6 +59,14 @@ class ContractTest(unittest.TestCase):
             with self.assertRaisesRegex(gm.IntegrationError, "trim_out_s must exceed"):
                 gm.validate_document("selection", gm.seal(selection))
 
+    def test_plan_variant_ids_are_unique_across_scenes(self) -> None:
+        plan = fixture("plan")
+        duplicate = copy.deepcopy(plan["scenes"][0])
+        duplicate.update(scene_id="another-scene", order=2)
+        plan["scenes"].append(duplicate)
+        with self.assertRaisesRegex(gm.IntegrationError, "Duplicate variant_id"):
+            gm.validate_document("plan", gm.seal(plan))
+
     def test_file_and_http_use_identical_canonical_bytes(self) -> None:
         document = fixture("request")
         received = []
@@ -119,7 +127,7 @@ class AssemblyTest(unittest.TestCase):
         scene = fixture("request")["scenes"][0]
         scene["reference_assets"] = []
         scene["continuity"] = {"mode": "independent", "required_reference_asset_ids": []}
-        self.board = {"approved": True, "project_id": "pilot", "revision_id": "board-1",
+        self.board: dict[str, Any] = {"approved": True, "project_id": "pilot", "revision_id": "board-1",
                       "scenes": [{**copy.deepcopy(scene), "scene_id": f"scene-{i}", "order": i, "requested_duration_s": 2} for i in (3, 1, 2)]}
         self.request = gm.build_request(self.project, self.board, request_id="request-1")
         self.plan = fixture("plan")
@@ -360,6 +368,116 @@ class AssemblyTest(unittest.TestCase):
         with self.assertRaisesRegex(gm.IntegrationError, "different project"):
             gm.cost_rollup(self.project, foreign)
 
+    def test_cost_attempt_ids_are_scoped_to_result_and_scene(self) -> None:
+        historical = copy.deepcopy(self.result)
+        historical["result_id"] = "historical-same-attempt-ids"
+        original_id = historical["scenes"][1]["attempts"][0]["attempt_id"]
+        historical["scenes"][1]["attempts"][0]["attempt_id"] = historical["scenes"][0]["attempts"][0]["attempt_id"]
+        for clip in historical["scenes"][1]["clips"]:
+            if clip["attempt_id"] == original_id:
+                clip["attempt_id"] = historical["scenes"][1]["attempts"][0]["attempt_id"]
+        gm.import_result(self.project, gm.seal(historical), asset_root=self.asset_root)
+        rows = gm.cost_rollup(self.project)["attempts"]
+        self.assertEqual(len(rows), 10)
+        self.assertEqual(len({(row["result_id"], row["scene_id"], row["attempt_id"]) for row in rows}), 10)
+
+    def test_required_references_cannot_be_omitted_or_substituted(self) -> None:
+        board = copy.deepcopy(self.board)
+        board["revision_id"] = "required-board"
+        asset = {**self.result["reference_assets"][0], "asset_id": "required-reference", "source_take_id": None}
+        next(scene for scene in board["scenes"] if scene["scene_id"] == "scene-1")["reference_assets"] = [asset]
+        next(scene for scene in board["scenes"] if scene["scene_id"] == "scene-1")["continuity"]["required_reference_asset_ids"] = [asset["asset_id"]]
+        gm.build_request(self.project, board, request_id="required-request")
+        plan = copy.deepcopy(self.plan)
+        plan.update(plan_id="required-plan", request_id="required-request")
+        plan["scenes"][0]["variants"][0]["shots"][0]["reference_asset_ids"] = [asset["asset_id"]]
+        approval = gm.approve_plan(self.project, gm.seal(plan), [f"variant-{i}" for i in (1, 2, 3)],
+                                   approval_id="required-approval", allow_unknown_cost=True)
+        result = copy.deepcopy(self.result)
+        result.update(result_id="required-result", request_id="required-request", plan_id="required-plan", approval_id=approval["approval_id"])
+        result["reference_assets"].append(asset)
+        draft = {**copy.deepcopy(self.draft), "storyboard_revision_id": board["revision_id"]}
+        for identifier, references, expected in (("omitted", [], False), ("present", [asset["asset_id"]], True)):
+            result["result_id"] = identifier
+            result["scenes"][0]["attempts"][0]["reference_asset_ids"] = references
+            sealed = gm.seal(result)
+            gm.import_result(self.project, sealed, asset_root=self.asset_root)
+            draft.update(edit_revision_id=identifier, source_results=[{"result_id": identifier, "sha256": sealed["document_sha256"]}])
+            if expected:
+                gm.write_selection(self.project, draft)
+            else:
+                with self.assertRaisesRegex(gm.IntegrationError, "omitted required"):
+                    gm.write_selection(self.project, draft)
+        substitute = self.asset_root / "required-substitute.png"
+        Image.new("RGB", (320, 180), "white").save(substitute)
+        generated = copy.deepcopy(result)
+        generated["result_id"] = "derived-required-reference"
+        image_attempt = {**copy.deepcopy(generated["scenes"][0]["attempts"][0]), "attempt_id": "image-attempt", "provider": "gemini"}
+        generated["scenes"][0]["attempts"].insert(0, image_attempt)
+        generated["scenes"][0]["keyframes"] = [{"shot_id": "shot-1-0", "order": 0, "position": "first", "attempt_id": "image-attempt",
+            "asset": {**asset, "asset_id": "derived-frame", "role": "keyframe", "uri": substitute.as_uri(), "sha256": gm.file_hash(substitute)},
+            "media": {"measured_duration_s": None, "width": 320, "height": 180, "fps": None, "has_audio": None}}]
+        generated["scenes"][0]["attempts"][1]["reference_asset_ids"] = ["derived-frame"]
+        for identifier, image_refs, expected in (("derived-required-reference", [asset["asset_id"]], True), ("derived-omitted-reference", [], False)):
+            generated["result_id"] = identifier
+            image_attempt["reference_asset_ids"] = image_refs
+            sealed = gm.seal(generated)
+            gm.import_result(self.project, sealed, asset_root=self.asset_root)
+            draft.update(edit_revision_id=identifier, source_results=[{"result_id": identifier, "sha256": sealed["document_sha256"]}])
+            if expected:
+                gm.write_selection(self.project, draft)
+            else:
+                with self.assertRaisesRegex(gm.IntegrationError, "omitted required"):
+                    gm.write_selection(self.project, draft)
+        result["result_id"] = "substituted-reference"
+        result["reference_assets"][-1].update(uri=substitute.as_uri(), sha256=gm.file_hash(substitute))
+        sealed = gm.seal(result)
+        gm.import_result(self.project, sealed, asset_root=self.asset_root)
+        draft["source_results"] = [{"result_id": sealed["result_id"], "sha256": sealed["document_sha256"]}]
+        with self.assertRaisesRegex(gm.IntegrationError, "substituted a planned"):
+            gm.write_selection(self.project, draft)
+
+    def test_video_selection_binds_exact_reviewed_keyframes(self) -> None:
+        reviewed = copy.deepcopy(self.result)
+        image_approval = gm.approve_plan(self.project, self.plan, [f"variant-{i}" for i in (1, 2, 3)],
+                                        execution_mode="keyframes", approval_id="review-approval", allow_unknown_cost=True)
+        reviewed.update(result_id="reviewed-frames", result_kind="keyframes", approval_id=image_approval["approval_id"])
+        for scene in reviewed["scenes"]:
+            scene["keyframes"] = [{"shot_id": shot["shot_id"], "order": shot["order"], "position": "first", "attempt_id": None,
+                                   "asset": {**self.result["reference_assets"][0], "asset_id": "frame-" + shot["shot_id"], "role": "keyframe", "source_take_id": None},
+                                   "media": {"width": 320, "height": 180, "measured_duration_s": None,
+                                             "fps": None, "has_audio": None}} for shot in scene["actual_shots"]]
+            scene.update(clips=[], takes=[], attempts=[])
+        gm.import_result(self.project, gm.seal(reviewed), asset_root=self.asset_root)
+        video_approval = gm.approve_plan(self.project, self.plan, [f"variant-{i}" for i in (1, 2, 3)],
+                                        approval_id="reviewed-video-approval", keyframe_result_id=reviewed["result_id"], allow_unknown_cost=True)
+        result = copy.deepcopy(self.result)
+        result.update(result_id="reviewed-video", approval_id=video_approval["approval_id"])
+        for scene, image_scene in zip(result["scenes"], reviewed["scenes"], strict=True):
+            scene["keyframes"] = copy.deepcopy(image_scene["keyframes"])
+            for attempt in scene["attempts"]:
+                attempt["reference_asset_ids"] = ["frame-" + attempt["shot_id"]]
+        sealed = gm.seal(result)
+        gm.import_result(self.project, sealed, asset_root=self.asset_root)
+        draft = copy.deepcopy(self.draft)
+        draft.update(edit_revision_id="reviewed-edit", source_results=[{"result_id": sealed["result_id"], "sha256": sealed["document_sha256"]}])
+        gm.write_selection(self.project, draft)
+        substitute = self.asset_root / "reviewed-substitute.png"
+        Image.new("RGB", (320, 180), "white").save(substitute)
+        for identifier, same_id in (("new-id-frame", False), ("same-id-frame", True)):
+            changed = copy.deepcopy(result)
+            changed["result_id"] = identifier
+            frame = changed["scenes"][0]["keyframes"][0]["asset"]
+            frame.update(uri=substitute.as_uri(), sha256=gm.file_hash(substitute))
+            if not same_id:
+                frame["asset_id"] = "unreviewed-frame"
+                changed["scenes"][0]["attempts"][0]["reference_asset_ids"] = [frame["asset_id"]]
+            sealed = gm.seal(changed)
+            gm.import_result(self.project, sealed, asset_root=self.asset_root)
+            draft["source_results"] = [{"result_id": identifier, "sha256": sealed["document_sha256"]}]
+            with self.assertRaisesRegex(gm.IntegrationError, "unapproved reference|substituted a reviewed"):
+                gm.write_selection(self.project, draft)
+
     def test_asset_roots_symlinks_hash_and_probe(self) -> None:
         asset = self.result["scenes"][0]["clips"][0]["asset"]
         with self.assertRaises(gm.IntegrationError):
@@ -414,7 +532,8 @@ class AssemblyTest(unittest.TestCase):
         self.assertEqual(boundary_selection["continuity_decisions"][0]["replacement_asset"]["sha256"], gm.file_hash(boundary_path))
 
     def test_actual_render_verify_and_idempotent_record(self) -> None:
-        selection = gm.write_selection(self.project, self.draft)
+        selection = gm.write_selection(self.project, self.draft, edl_options={"reframe": "crop=100:180"})
+        self.assertEqual(gm.compile_selection(self.project, selection)["reframe"], "crop=100:180")
         record = gm.render_selection(self.project, selection, preview=True, no_loudnorm=True)
         self.assertTrue(record["passed"], gm.read_json(gm.project_path(self.project, record["verification_path"])))
         self.assertEqual(record, gm.render_selection(self.project, selection, preview=True, no_loudnorm=True))
