@@ -16,7 +16,7 @@ except ImportError:  # pragma: no cover - optional dependency
 
 
 ELEVENLABS_TTS_URL = "https://api.elevenlabs.io/v1/text-to-speech"
-DEFAULT_MODEL = "eleven_multilingual_v2"
+DEFAULT_MODEL = "eleven_v4"
 DEFAULT_OUTPUT_FORMAT = "mp3_44100_128"
 RETRYABLE_STATUS_CODES = {408, 409, 425, 429, 500, 502, 503, 504}
 

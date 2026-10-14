@@ -33,7 +33,7 @@ media-tts "$PROJECT_DIR/script.md" \
 An SRT input is flattened in cue order before synthesis. Use `--overwrite` to
 replace an existing file or `--skip-existing` for resumable workflows.
 
-The command uses `eleven_multilingual_v2` by default. Set
+The command uses `eleven_v4` by default. Set
 `ELEVENLABS_MODEL_ID` or pass `--model` when a project needs another model.
 Run `media-loudnorm` afterward when the narration needs delivery-level
 normalization, then mux it with the rendered video using the rough-cut or
