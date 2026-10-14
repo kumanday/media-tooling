@@ -140,7 +140,8 @@ Before a Hyperframes render is used in a media-tooling output:
 - Review playback for reading time, transition continuity, and audio synchronization
 - Render the intended delivery format with `hyperframes render .`
 - If the render is part of an EDL, run `media-edl-render` and `media-verify`
-- Keep all composition files and renders under `$PROJECT_DIR/edit/hyperframes/<slot>/`
+- Keep composition files and working renders (drafts, masters, alpha overlays) under `$PROJECT_DIR/edit/hyperframes/<slot>/`
+- Write each finished standalone video to `$PROJECT_DIR/renders/<slot>.mp4` (or the project root), with a version or variant suffix for revisions
 
 
 ## Reference-led motion workflow

@@ -41,7 +41,7 @@ TTV generated-media workflow:
 
 Optional Hyperframes workflow:
 - use `hyperframes` for HTML-rendered video, animated overlays, title cards, kinetic captions, website/UI captures, GIFs, PNG sequences, batch variants, or standalone graphic segments
-- keep composition source and renders under `$PROJECT_DIR/edit/hyperframes/<slot>/`
+- keep composition source and working renders under `$PROJECT_DIR/edit/hyperframes/<slot>/`; write each finished standalone video to `$PROJECT_DIR/renders/<slot>.mp4` (or the project root) so it is easy to find
 - route reference-led motion graphics, storyboard alternatives, scene stills, and director notes through `media-motion-graphics`, which uses the current upstream HyperFrames skills
 - use upstream branded storyboard sketches before animation and composition snapshots plus a draft encode after building; carry reviewed layouts into motion
 - default to revision review; explicit autonomous requests select auto review with multimodal storyboard feedback and bounded corrections, recorded in BRIEF.md

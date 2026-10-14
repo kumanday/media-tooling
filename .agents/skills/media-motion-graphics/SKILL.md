@@ -28,8 +28,18 @@ those workflows to project assets, reference analysis, and media-tooling assembl
 
 Keep compositions under `$PROJECT_DIR/edit/hyperframes/<slot>/`. Bind the upstream
 project root to that directory, including any `videos/<project>` subdirectory a
-workflow requires. Keep capture, media manifests, scripts, and renders beneath
-that root. Reuse existing composition roots when editing. Media-tooling owns
+workflow requires. Keep capture, media manifests, scripts, and working renders
+(drafts, masters, alpha overlays for EDL assembly) beneath that root. Reuse
+existing composition roots when editing.
+
+Deliver each finished standalone video where people can find it: no deeper than
+one directory below `$PROJECT_DIR`. Default to `$PROJECT_DIR/renders/<slot>.mp4`
+(create `renders/` if needed); the project root itself is also acceptable. Use a
+version or variant suffix for revisions and languages (`<slot>-v2.mp4`,
+`<slot>-es.mp4`) instead of overwriting a delivered file. Render the master
+inside the slot, then write the delivery file (after `media-loudnorm` when used)
+to that location; do not leave the only copy of a final video under
+`edit/hyperframes/<slot>/`. Media-tooling owns
 source processing, EDL assembly, subtitle burning, grading, and delivery checks.
 Use installed upstream scripts and formats; do not copy their implementation into
 this skill. Honor the user's requested review mode and existing approvals; do not
@@ -201,7 +211,9 @@ Use the selected review mode for the final preview/render checkpoint within
 existing user permissions. Verify rendered duration, resolution, fps, and audio against the
 brief with `ffprobe`. For overlays, hand off source/render paths, actual duration,
 alpha format, and placement to `media-rough-cut-assembly`; for standalone videos,
-handoff the MP4 directly. Run `media-verify` after EDL integration and inspect its
+verify the delivery file in `$PROJECT_DIR/renders/` (or the project root), report
+that path in the handoff, and record it in the slot's `DECISIONS.md` and in
+`edit/project.md` when that record is in scope. Run `media-verify` after EDL integration and inspect its
 findings. Persist the chosen direction and significant revision decisions in
 the slot's `DECISIONS.md`; maintain current canonical copy in the working artifacts.
 
