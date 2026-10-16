@@ -475,8 +475,9 @@ def _resolve_elevenlabs_api_key(*, api_key: str | None = None) -> str:
     """
     if _requests_module is None:
         raise RuntimeError(
-            "The elevenlabs backend requires the 'requests' package. "
-            "Install with: pip install media-tooling[elevenlabs]"
+            "The elevenlabs backend requires the 'requests' package from the elevenlabs extra. Install with: "
+            "uv tool install --reinstall \"media-tooling[elevenlabs] @ git+https://github.com/kumanday/media-tooling\" "
+            "(see docs/INSTALL.md)"
         )
     resolved_key = (api_key.strip() if api_key is not None
                     else os.environ.get("ELEVENLABS_API_KEY", "").strip())

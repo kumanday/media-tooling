@@ -1,13 +1,23 @@
 # Setup
 
+[INSTALL.md](INSTALL.md) has the step-by-step install, update and verification
+procedure, written so a coding agent can follow it. This page covers the
+background.
+
 ## User install
 
-Install `uv` and `ffmpeg`, then install `media-tooling` as a command provider:
+Install `uv` and `ffmpeg`, then install `media-tooling` as a command provider
+with the ElevenLabs extra, and link its skills for coding agents:
 
 ```bash
 brew install uv ffmpeg
-uv tool install git+https://github.com/kumanday/media-tooling
+uv tool install "media-tooling[elevenlabs] @ git+https://github.com/kumanday/media-tooling"
+media-tooling-link-skills
 ```
+
+To update later, run `uv tool upgrade media-tooling`, then
+`media-tooling-link-skills`, then `media-tooling-init --agents-only` in each
+project.
 
 If you prefer one-off execution instead of a persistent tool install, use `uvx` with the same package source:
 
@@ -22,11 +32,10 @@ The transcription backend depends on the workstation:
 - Apple Silicon macOS installs `lightning-whisper-mlx`
 - other systems install `faster-whisper`
 
-For ElevenLabs narration, install the optional dependency and set the API key
-and voice ID in the environment:
+ElevenLabs narration, scoring and transcription read the API key and voice ID
+from the environment:
 
 ```bash
-uv tool install --reinstall "media-tooling[elevenlabs] @ git+https://github.com/kumanday/media-tooling"
 export ELEVENLABS_API_KEY="..."
 export ELEVENLABS_VOICE_ID_EN="..."
 ```
