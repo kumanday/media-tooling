@@ -203,6 +203,10 @@ shot needs a scene lead of 2-4 s, so the shot plays before the first word. Use
   frame (for example zooming a chart or map through the app's viewport function).
   The tool screenshots every frame and encodes at 30 fps. Schedule cues from the
   narration's word times, so one continuous take lines up with the words.
+- **Apps that render asynchronously** (map tiles, WebGL scenes): give the scenario
+  a `frame` hook. It runs on every frame and is awaited, so the page can set its
+  own state from the clip time and wait until it is ready (for example, tiles
+  loaded) before the screenshot. A tween's `apply` may also return a promise.
 - **Never use the CDP screencast** for delivery footage. It returned a cropped
   1920×993 viewport at 1×, and encoding to 16:9 stretched it about 9%.
 - **Hiding UI:** hiding labels, sidebars or toasts (the scenario's `css` and
@@ -353,7 +357,8 @@ the slot's `tools/` or this skill's `scripts/`.
 | Voice reads an acronym as a word | pronunciation | spell it in the TTS text |
 | `--speed` has no effect | `eleven_v4` ignores it | pace with gaps |
 | A session wrote its own TTS script, or used an older model | an upstream workflow's TTS step, or a reference naming another model | `media-tts` / `media-tts-frames`; extend media-tooling if a feature is missing |
-| Frames out of sync after re-voicing | cue times hard-coded from the old take | `scripts/retime_frames.py` |
+| Frames out of sync after re-voicing | cue times hard-coded from the old take | `scripts/retime_frames.py`; for cue tables and helpers whose start is not the last argument add `--time-keys` / `--helper NAME:IDX`, then read `--audit` |
+| Map or WebGL capture has missing or blurry tiles | screenshot taken before the app finished loading | `frame_capture.cjs` `frame` hook that awaits the app's readiness |
 | Timing reports "no silence before segment" | two sentences voiced without a pause | merged automatically; otherwise re-voice |
 | Lint error on animated position | `left`/`top` tweens | transforms |
 | Captions hidden behind media | z-index | captions 30, chrome 20 |

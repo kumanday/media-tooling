@@ -110,6 +110,9 @@ node <workflow-skill>/scripts/audio.mjs sync-durations --audio-meta ./audio_meta
   re-time them instead of rebuilding them:
   `media-motion-graphics/scripts/retime_frames.py --old-audio-meta old.json
   --new-audio-meta audio_meta.json --frames-dir compositions/frames`.
+  Run `--dry-run --audit` first: cue tables (`--time-keys cue,q`), helpers whose
+  start is not their last argument (`--helper wipe:1`) and other duration
+  variables (`--duration-var D`) need flags, and the audit lists what was not moved.
 
 ## Music and sound effects (optional)
 
