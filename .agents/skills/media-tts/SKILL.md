@@ -23,9 +23,13 @@ Install the optional backend and provide credentials through the environment:
 
 ```bash
 uv tool install --reinstall "media-tooling[elevenlabs] @ git+https://github.com/kumanday/media-tooling"
+media-tooling-link-skills
 export ELEVENLABS_API_KEY="..."
 export ELEVENLABS_VOICE_ID_EN="..."
 ```
+
+The full install, update and verification steps are in the toolkit's
+`docs/INSTALL.md`.
 
 - **Where keys go:** never write a key or voice ID into scripts, project files or
   generated artifacts. A project may keep them in a dotenv file outside the
