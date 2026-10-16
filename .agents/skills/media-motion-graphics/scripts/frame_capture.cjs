@@ -28,8 +28,13 @@
 //     { "start": 1.0, "end": 6.0, "from": { "x": 40, "y": 3, "scale": 0.12 }, "to": { "x": 26, "y": 6, "scale": 0.035 },
 //       "log": ["scale"], "apply": "v => window.app.setViewport(v)" }
 //   ],
-//   "settleMs": 400                                           // render time allowed after a click or eval
+//   "settleMs": 400,                                          // render time allowed after a click or eval
+//   "frame": "async ({ t, f }) => window.app.renderAt(t)"    // optional per-frame hook, awaited before each screenshot
 // }
+//
+// `frame` runs after the events and tweens of every frame and is awaited, so a page can derive its state from the
+// clip time and wait for its own readiness (map tiles, fonts) before the screenshot; with it every frame is shot.
+// A tween's `apply` may also return a promise; it is awaited.
 //
 // Selectors use Playwright syntax. Moves, scrolls and tweens use cubic in-out easing ("log" fields interpolate
 // geometrically, which suits zoom). --encode writes an H.264 30 fps MP4 at the device-pixel size; crop or scale
@@ -102,9 +107,10 @@ const CURSOR = `(() => { const c = document.createElement('div'); c.id = '__cap_
         const a = tw.from[k], b = tw.to[k];
         v[k] = (tw.log || []).includes(k) ? Math.exp(Math.log(a) + (Math.log(b) - Math.log(a)) * e) : a + (b - a) * e;
       }
-      await page.evaluate(({ fn, v }) => { (0, eval)(fn)(v); }, { fn: tw.apply, v });
+      await page.evaluate(async ({ fn, v }) => { await (0, eval)(fn)(v); }, { fn: tw.apply, v });
       changed = true; if (u >= 1) tw.done = true;
     }
+    if (S.frame) { await page.evaluate(async ({ fn, t, f }) => { await (0, eval)(fn)({ t, f }); }, { fn: S.frame, t, f }); changed = true; }
     const name = path.join(outDir, `f${String(f).padStart(5, '0')}.jpg`);
     if (changed || last === null || f % 15 === 0) {
       await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
