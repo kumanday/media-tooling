@@ -15,7 +15,8 @@ uv tool install "media-tooling[elevenlabs] @ git+https://github.com/kumanday/med
 media-tooling-link-skills
 ```
 
-To update later, run `uv tool upgrade media-tooling`, then
+To update later, run `uv tool upgrade --reinstall media-tooling` (a plain
+`uv tool upgrade` doesn't fetch new commits from Git), then
 `media-tooling-link-skills`, then `media-tooling-init --agents-only` in each
 project.
 

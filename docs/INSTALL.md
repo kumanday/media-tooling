@@ -101,7 +101,7 @@ it lists the `media-*` skills, for example `media-tts`.
 ## Update
 
 ```bash
-uv tool upgrade media-tooling
+uv tool upgrade --reinstall media-tooling
 ```
 ```bash
 media-tooling-link-skills
@@ -113,7 +113,9 @@ Then refresh each project's managed block, which leaves other files untouched:
 media-tooling-init --agents-only "$PROJECT_DIR"
 ```
 
-`uv tool upgrade` keeps the extras chosen at install time. Re-running
+Use `--reinstall`: the install comes from a Git branch, and a plain
+`uv tool upgrade` reports "Nothing to upgrade" without fetching new commits. The
+upgrade keeps the extras chosen at install time. Re-running
 `media-tooling-link-skills` repairs links if the tool environment moved, for
 example after a Python upgrade.
 
