@@ -197,6 +197,37 @@ new TTV request for the affected scene IDs. Keep neighboring takes and resolve
 any stale continuity dependencies. See `docs/generated-media.md` for the handoff
 example, selection provenance, and portrait EDL options.
 
+## Narrated films with generated shots
+
+For a narrated film that mixes generated shots (TTV on fal.ai), real product
+captures and a voice clone, follow `references/generated-film-playbook.md`.
+It covers:
+- planning a generated-shot thread, with bridges that land on real capture frames;
+- keyframe providers and H3 Turbo/Max passes;
+- revisions with continuity boundaries;
+- narration and timing, frame-by-frame captures and sound;
+- composition patterns, finishing, language and 9:16 variants, and thumbnails;
+- a pitfalls table.
+
+Its scripts are in `scripts/`:
+- `ttv_round.py`: plan, then execute one TTV file-handoff round. Keys stay in the
+  environment, and the config travels through a pipe.
+- `narration_timing.py`: single-take narration to voice segments, scene windows,
+  word clocks and captions.
+- `finish_delivery.py`: loudnorm, a true-peak limiter, measurement and `media-verify`.
+- `elevenlabs_music.py` and `elevenlabs_sfx.py`: bed and Foley.
+- `html_still.cjs`: thumbnails.
+- `frame_capture.cjs`: deterministic frame-by-frame capture of a web page or app from a scenario file.
+
+Rules that are easy to miss:
+- Mute H3 audio.
+- Never use the CDP screencast for delivery footage.
+- `eleven_v4` ignores `--speed`.
+- A single-scene regenerate of a continuing shot needs the previous take's last
+  frame as its boundary.
+- Selection IDs are immutable.
+- `grade_consistency` on a whole multi-scene film needs visual judgment.
+
 ## Verification and handoff
 
 Use `lint` for early feedback and `check --snapshots --at-transitions` for the
