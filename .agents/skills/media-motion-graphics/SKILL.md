@@ -21,7 +21,16 @@ those workflows to project assets, reference analysis, and media-tooling assembl
    If required skills or commands are missing, report the gap and use the setup
    instructions in the toolkit's `docs/HYPERFRAMES.md`. Do not invent upstream
    commands or reconstruct missing skills from memory.
-3. Load only the domains needed: `hyperframes-creative` for brand and storyboard
+3. **Narration and audio:** narration always comes from media-tooling. Use
+   `media-tts` for one take or `media-tts-frames` for per-frame clips and
+   `audio_meta.json`, both with `eleven_v4`. This holds even when an upstream
+   workflow (`faceless-explainer`, `product-launch-video` and others) offers its
+   own TTS providers. In those workflows, write the narration step's
+   `audio_meta.json` with `media-tts-frames`, then run the workflow's
+   `sync-durations`. Don't write project-local TTS scripts. Add music or sound
+   effects only when the user asks (`media-video-music`). See the `media-tts`
+   skill.
+4. Load only the domains needed: `hyperframes-creative` for brand and storyboard
    design, `hyperframes-registry` for reusable treatments, `hyperframes-core` and
    `hyperframes-keyframes` for timing and seekable motion, and `hyperframes-cli`
    for checks, snapshots, preview, and rendering.
@@ -215,7 +224,8 @@ Its scripts are in `scripts/`:
 - `narration_timing.py`: single-take narration to voice segments, scene windows,
   word clocks and captions.
 - `finish_delivery.py`: loudnorm, a true-peak limiter, measurement and `media-verify`.
-- `elevenlabs_music.py` and `elevenlabs_sfx.py`: bed and Foley.
+- `retime_frames.py`: moves hard-coded cue times in built frames onto a re-voiced take.
+- `elevenlabs_music.py` and `elevenlabs_sfx.py`: optional text-prompted bed and Foley, when the user wants them.
 - `html_still.cjs`: thumbnails.
 - `frame_capture.cjs`: deterministic frame-by-frame capture of a web page or app from a scenario file.
 

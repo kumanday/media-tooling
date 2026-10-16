@@ -8,7 +8,8 @@ Read these central media-tooling skills before routing media-processing work:
 
 Use installed toolkit commands from this project directory:
 - spoken media: `media-subtitle` or `media-batch-subtitle`
-- narration/TTS: `media-tts`
+- narration/TTS: `media-tts` (one file) or `media-tts-frames` (per-frame clips, word timings and `audio_meta.json` for HyperFrames workflows)
+- optional score and sound effects for a finished video, only when requested: `media-video-music`
 - silent or visual-first video: `media-contact-sheet` or `media-batch-contact-sheet`
 - rough-cut assembly: `media-rough-cut`
 - burn subtitles: `media-burn-subtitles` or `media-batch-burn-subtitles`
@@ -27,6 +28,7 @@ Operational defaults:
 - use sequential processing to reduce resource contention. Have patience for long media jobs
 - use `--skip-existing` for resumable batches
 - keep `ELEVENLABS_API_KEY` and `ELEVENLABS_VOICE_ID_EN` in the environment, never in project files
+- synthesize all narration with `media-tts` or `media-tts-frames` (default model `eleven_v4`), including inside upstream HyperFrames workflows; do not write project-local TTS scripts or call the TTS API directly, and if a command lacks something a workflow needs, extend media-tooling instead
 - re-run `media-tooling-init` after reinstalling or relocating the toolkit so these skill paths stay current
 
 TTV generated-media workflow:
@@ -47,6 +49,7 @@ Optional Hyperframes workflow:
 - use upstream branded storyboard sketches before animation and composition snapshots plus a draft encode after building; carry reviewed layouts into motion
 - default to revision review; explicit autonomous requests select auto review with multimodal storyboard feedback and bounded corrections, recorded in BRIEF.md
 - use transparent composition backgrounds and verify encoded alpha; prefer MOV when WebM alpha is unavailable
+- in upstream HyperFrames workflows (`faceless-explainer`, `product-launch-video` and others), produce the narration step's `audio_meta.json` with `media-tts-frames` instead of the workflow's own TTS providers, then run the workflow's duration sync
 - use `hyperframes lint .` while editing and `hyperframes check . --snapshots --at-transitions` before using the render
 - render alpha overlays with `hyperframes render . --format mov`; WebM is an option after verifying local alpha support
 - add rendered overlays to EDL specs with `overlays[].source`; `media-edl-render` composites overlays before burning subtitles

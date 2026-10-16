@@ -150,6 +150,13 @@ Selections are immutable. `media-generated select` refuses an existing
 
 ## 7. Narration
 
+Narration always goes through media-tooling: `media-tts` for one take, or
+`media-tts-frames` for per-frame clips with word timings and `audio_meta.json`.
+That holds inside upstream HyperFrames workflows too (see the `media-tts`
+skill). The single-take method below suits a long continuous film built in its
+own composition. `media-tts-frames` suits frame-based workflows such as
+`faceless-explainer`.
+
 - **Two files:**
   - `script.md` is the caption source: plain text, one paragraph per scene,
     numbers in words.
@@ -207,14 +214,48 @@ shot needs a scene lead of 2-4 s, so the shot plays before the first word. Use
 
 ## 9. Sound
 
-- **Mute the H3 audio.** Its own soundtrack can hold music or garbled speech.
-- **Foley and ambience:** generate cues with `scripts/elevenlabs_sfx.py`, one per
-  generated shot. Lay them on alternating audio tracks so adjacent cues never
-  share one.
-- **Music bed:** generate a quiet instrumental bed with
-  `scripts/elevenlabs_music.py`, longer than the film. Play it at volume
-  0.15-0.16 and carve it under the voice with the HyperFrames audio carve script.
-  Pass `--core <dir with node_modules/@hyperframes/core>` when the slot has no
+- **Mute the H3 audio** in every case. Its own soundtrack can hold music or
+  garbled speech.
+
+Music and sound effects are optional. Add them only when the user asks for them;
+a narrated film can also ship with narration alone.
+
+- **Scoring a finished video:** use `media-video-music` (ElevenLabs
+  video-to-music). It scores the picture-locked edit from its own cuts and
+  motion, and with `--sfx` it adds effects on separate stems.
+
+  ```bash
+  media-video-music generate renders/film.mp4 --out-dir assets/score --sfx \
+    --description "Quiet, modern underscore for a calm narrated film; leave room for the voice; no vocals" \
+    --tag minimal --tag ambient
+  media-video-music mix renders/film.mp4 --music assets/score/music.mp3 --sfx assets/score/sfx.mp3 \
+    -o renders/film-music.mp4 [--lufs -14 --true-peak -1]
+  ```
+
+  - **Input:** generate from the final cut, at most 200 MB and 600 s. The stems
+    match its length; re-score after any timing change.
+  - **What comes back:** the ZIP holds `music.mp3` and `sfx.mp3`. The music
+    arrived mastered at about -16 LUFS. The effects were sparse hits around cuts
+    and on-screen events.
+  - **Narration audio:** leave `--use-audio-as-reference` off for narrated
+    videos. It would read the narration as a musical reference.
+  - **Mixing:** `mix` lowers the music (default -10 dB), ducks it under the voice
+    with a sidechain compressor, adds the SFX at -4 dB, then normalizes loudness
+    and limits true peak. Measured on a narrated short, -10 dB put the music
+    about 21 dB under speech, rising to about 10 dB under the voice level in
+    pauses. -16 dB buried it.
+  - **Delivery:** deliver the mixed version as a variant
+    (`renders/<slot>-music.mp4`) beside the narration-only file.
+  - **Inside a HyperFrames workflow:** to place the stems in the composition
+    instead, list them in `audio_meta.json` as host audio. The music goes in as
+    `bgm` with `source: "host"` and `music: none` in the storyboard. The SFX
+    stem goes in as an `sfx` entry on frame 1 at offset 0 for the full length.
+- **Prompted cues:** for effects or a bed written to a prompt instead of scored
+  from the picture, use `scripts/elevenlabs_sfx.py` (one cue per generated shot,
+  on alternating audio tracks) and `scripts/elevenlabs_music.py` (an
+  instrumental bed longer than the film). Play the bed at volume 0.15-0.16 and
+  carve it under the voice with the HyperFrames audio carve script. Pass
+  `--core <dir with node_modules/@hyperframes/core>` when the slot has no
   `node_modules`.
 - **Extending a bed:** to extend a reviewed bed without regenerating it, repeat a
   middle section with a 4 s `acrossfade` at matching levels. Check the level
@@ -311,6 +352,8 @@ the slot's `tools/` or this skill's `scripts/`.
 | H3 audio has music or speech | model soundtrack | mute; generated SFX |
 | Voice reads an acronym as a word | pronunciation | spell it in the TTS text |
 | `--speed` has no effect | `eleven_v4` ignores it | pace with gaps |
+| A session wrote its own TTS script, or used an older model | an upstream workflow's TTS step, or a reference naming another model | `media-tts` / `media-tts-frames`; extend media-tooling if a feature is missing |
+| Frames out of sync after re-voicing | cue times hard-coded from the old take | `scripts/retime_frames.py` |
 | Timing reports "no silence before segment" | two sentences voiced without a pause | merged automatically; otherwise re-voice |
 | Lint error on animated position | `left`/`top` tweens | transforms |
 | Captions hidden behind media | z-index | captions 30, chrome 20 |
