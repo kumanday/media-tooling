@@ -4,6 +4,12 @@ Media Tooling owns the editorial storyboard, take selection and final EDL. TTV o
 
 Start in a project created by `media-tooling-init`. An approved storyboard JSON has `project_id`, `revision_id`, `approved: true` and `scenes`. Each scene uses the `GenerationRequest.scenes` shape in the [pinned schema](../src/media_tooling/contracts/v1_0/GenerationRequest.schema.json). Keep scene IDs stable across revisions and give each scene an explicit, unique `order`. A request for a subset preserves these values.
 
+For the production method used with these commands, see
+`.agents/skills/media-motion-graphics/references/generated-film-playbook.md`.
+It covers keyframe providers, H3 Turbo and Max passes, bridges onto real
+capture frames, narration, capture, finishing and pitfalls. The skill's
+`scripts/ttv_round.py` runs one file-handoff round.
+
 ## Motion-graphics storyboard handoff
 
 The agent exports selected scenes from the reviewed HyperFrames `STORYBOARD.md`

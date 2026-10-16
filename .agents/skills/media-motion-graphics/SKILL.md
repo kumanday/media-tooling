@@ -21,7 +21,16 @@ those workflows to project assets, reference analysis, and media-tooling assembl
    If required skills or commands are missing, report the gap and use the setup
    instructions in the toolkit's `docs/HYPERFRAMES.md`. Do not invent upstream
    commands or reconstruct missing skills from memory.
-3. Load only the domains needed: `hyperframes-creative` for brand and storyboard
+3. **Narration and audio:** narration always comes from media-tooling. Use
+   `media-tts` for one take or `media-tts-frames` for per-frame clips and
+   `audio_meta.json`, both with `eleven_v4`. This holds even when an upstream
+   workflow (`faceless-explainer`, `product-launch-video` and others) offers its
+   own TTS providers. In those workflows, write the narration step's
+   `audio_meta.json` with `media-tts-frames`, then run the workflow's
+   `sync-durations`. Don't write project-local TTS scripts. Add music or sound
+   effects only when the user asks (`media-video-music`). See the `media-tts`
+   skill.
+4. Load only the domains needed: `hyperframes-creative` for brand and storyboard
    design, `hyperframes-registry` for reusable treatments, `hyperframes-core` and
    `hyperframes-keyframes` for timing and seekable motion, and `hyperframes-cli`
    for checks, snapshots, preview, and rendering.
@@ -196,6 +205,38 @@ elements revise HyperFrames source. Notes that change generated footage create a
 new TTV request for the affected scene IDs. Keep neighboring takes and resolve
 any stale continuity dependencies. See `docs/generated-media.md` for the handoff
 example, selection provenance, and portrait EDL options.
+
+## Narrated films with generated shots
+
+For a narrated film that mixes generated shots (TTV on fal.ai), real product
+captures and a voice clone, follow `references/generated-film-playbook.md`.
+It covers:
+- planning a generated-shot thread, with bridges that land on real capture frames;
+- keyframe providers and H3 Turbo/Max passes;
+- revisions with continuity boundaries;
+- narration and timing, frame-by-frame captures and sound;
+- composition patterns, finishing, language and 9:16 variants, and thumbnails;
+- a pitfalls table.
+
+Its scripts are in `scripts/`:
+- `ttv_round.py`: plan, then execute one TTV file-handoff round. Keys stay in the
+  environment, and the config travels through a pipe.
+- `narration_timing.py`: single-take narration to voice segments, scene windows,
+  word clocks and captions.
+- `finish_delivery.py`: loudnorm, a true-peak limiter, measurement and `media-verify`.
+- `retime_frames.py`: moves hard-coded cue times in built frames onto a re-voiced take.
+- `elevenlabs_music.py` and `elevenlabs_sfx.py`: optional text-prompted bed and Foley, when the user wants them.
+- `html_still.cjs`: thumbnails.
+- `frame_capture.cjs`: deterministic frame-by-frame capture of a web page or app from a scenario file.
+
+Rules that are easy to miss:
+- Mute H3 audio.
+- Never use the CDP screencast for delivery footage.
+- `eleven_v4` ignores `--speed`.
+- A single-scene regenerate of a continuing shot needs the previous take's last
+  frame as its boundary.
+- Selection IDs are immutable.
+- `grade_consistency` on a whole multi-scene film needs visual judgment.
 
 ## Verification and handoff
 

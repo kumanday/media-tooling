@@ -230,7 +230,11 @@ The underlying commands are:
 - `media-subtitle`
   Generate transcript `.txt`, subtitle `.srt`, and structured `.json` from a single audio or video file.
 - `media-tts`
-  Generate narration audio from a text, Markdown, or SRT script. ElevenLabs is the current backend.
+  Generate narration audio from a text, Markdown, or SRT script. ElevenLabs is the current backend (default model `eleven_v4`).
+- `media-tts-frames`
+  Generate per-frame narration clips with word timings and the `audio_meta.json` that HyperFrames workflows (such as `faceless-explainer`) consume, from their `SCRIPT.md`.
+- `media-video-music`
+  Optional: score a finished video with ElevenLabs video-to-music (separate music and SFX stems), then mix the stems under the narration with ducking and loudness normalization.
 - `media-batch-subtitle`
   Process a manifest of spoken-media files sequentially.
 - `media-translate-subtitles`

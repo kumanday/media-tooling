@@ -144,6 +144,22 @@ Before a Hyperframes render is used in a media-tooling output:
 - Write each finished standalone video to `$PROJECT_DIR/renders/<slot>.mp4` (or the project root), with a version or variant suffix for revisions
 
 
+## Narration and audio in HyperFrames workflows
+
+- **Narration:** synthesize all narration with media-tooling. Use
+  `media-tts-frames SCRIPT.md --hyperframes .` for frame-based workflows such as
+  `faceless-explainer` and `product-launch-video`: it writes per-frame clips and
+  the workflow's `audio_meta.json` (host voices with word timings). Then run the
+  workflow's `audio.mjs sync-durations`. Use `media-tts` for a single take. Both
+  default to `eleven_v4`; see the `media-tts` skill.
+- **Cues:** mark where a visual should land with `{@name}` in the spoken text.
+  `audio_meta.json` then carries each frame's `cues[]` with frame-relative times,
+  so frame builders can time reveals to the narration without a project script.
+- **Re-voicing:** if frames were already built against an older take, re-time
+  them with `media-motion-graphics/scripts/retime_frames.py`.
+- **Music and sound effects:** add them only on request. `media-video-music`
+  scores the finished cut and returns separate music and SFX stems.
+
 ## Reference-led motion workflow
 
 Use the packaged [media-motion-graphics skill](../.agents/skills/media-motion-graphics/SKILL.md)
