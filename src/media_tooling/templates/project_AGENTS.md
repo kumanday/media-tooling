@@ -29,7 +29,7 @@ Operational defaults:
 - use `--skip-existing` for resumable batches
 - keep `ELEVENLABS_API_KEY` and `ELEVENLABS_VOICE_ID_EN` in the environment, never in project files
 - synthesize all narration with `media-tts` or `media-tts-frames` (default model `eleven_v4`), including inside upstream HyperFrames workflows; do not write project-local TTS scripts or call the TTS API directly, and if a command lacks something a workflow needs, extend media-tooling instead
-- re-run `media-tooling-init` after reinstalling or relocating the toolkit so these skill paths stay current
+- after installing or upgrading the toolkit, run `media-tooling-link-skills` (so agents discover the `media-*` skills) and re-run `media-tooling-init --agents-only` so these skill paths stay current; see the toolkit's `docs/INSTALL.md`
 
 TTV generated-media workflow:
 - keep approved editorial storyboards and stable scene IDs in `storyboards/`
