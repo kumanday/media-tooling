@@ -237,7 +237,7 @@ The underlying commands are:
 - `media-tts-frames`
   Generate per-frame narration clips with word timings and the `audio_meta.json` that HyperFrames workflows (such as `faceless-explainer`) consume, from their `SCRIPT.md`.
 - `media-video-music`
-  Optional: score a finished video with ElevenLabs video-to-music (separate music and SFX stems), then mix the stems under the narration with ducking and loudness normalization.
+  Optional: score a finished video with ElevenLabs video-to-music (separate music and SFX stems), then mix the stems under the narration. The mix measures the narration, sets the music and SFX gains relative to it, ducks the music under the voice, normalizes loudness with one linear gain and a true-peak limiter, and prints the measured margins.
 - `media-batch-subtitle`
   Process a manifest of spoken-media files sequentially.
 - `media-translate-subtitles`

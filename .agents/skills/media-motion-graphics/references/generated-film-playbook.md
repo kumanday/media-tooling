@@ -239,15 +239,36 @@ a narrated film can also ship with narration alone.
   - **Input:** generate from the final cut, at most 200 MB and 600 s. The stems
     match its length; re-score after any timing change.
   - **What comes back:** the ZIP holds `music.mp3` and `sfx.mp3`. The music
-    arrived mastered at about -16 LUFS. The effects were sparse hits around cuts
-    and on-screen events.
+    arrived mastered at about -13 to -16 LUFS. The effects were sparse hits
+    around cuts and on-screen events, peaking around -7 dBFS.
   - **Narration audio:** leave `--use-audio-as-reference` off for narrated
     videos. It would read the narration as a musical reference.
-  - **Mixing:** `mix` lowers the music (default -10 dB), ducks it under the voice
-    with a sidechain compressor, adds the SFX at -4 dB, then normalizes loudness
-    and limits true peak. Measured on a narrated short, -10 dB put the music
-    about 21 dB under speech, rising to about 10 dB under the voice level in
-    pauses. -16 dB buried it.
+  - **Mixing:** `mix` measures the narration and both stems (EBU R128
+    momentary loudness) and sets the gains from them. The ducked music bed sits
+    20 dB under the voice while it speaks, at least 12 dB under at the 10th
+    percentile, with the SFX counted as part of the bed. The loudest effect sits
+    8 dB under speech level. The narration keys a sidechain compressor whose
+    threshold follows the narration's own loudness. One linear gain brings the
+    mix to `--lufs`, and a 4x-oversampled limiter holds `--true-peak`; the encode
+    is re-measured and corrected until both hold. The command prints the gains
+    and the measured margins, including the bed level in narration pauses.
+    `--music-under-db`, `--music-min-under-db` and `--sfx-under-db` change the
+    targets. `--music-db` and `--sfx-db` fix a gain instead.
+  - **Why the gains are measured:** the old fixed defaults (music -10 dB, SFX
+    -4 dB) suited a normally leveled voice. On a narrated explainer the
+    HyperFrames render carried the narration at -25.9 LUFS and the music stem
+    arrived at -13.2 LUFS. The fixed gains left the bed 0.6 dB under the voice
+    while it spoke, 3 dB above speech level in pauses, and SFX hits 7.7 dB above
+    speech, and the single-pass dynamic loudnorm lifted the pauses further.
+    Whole-file loudness and `media-verify` passed that mix, yet the narration
+    was hard to follow. Measured gains on the same film came out at music
+    -30.1 dB and SFX -16.9 dB: the bed 20.7 dB under the voice (12.1 dB at the
+    10th percentile), 17.1 dB under speech level in pauses, and the loudest SFX
+    8.0 dB under speech.
+  - **Limiter report:** TTS narration often has a high peak-to-loudness ratio.
+    On two narrated films the limiter took up to 5.6 dB and 9.1 dB off the
+    loudest peaks to hold -1 dBTP at -14 LUFS. If the reduction sounds
+    audible, lower `--lufs`.
   - **Delivery:** deliver the mixed version as a variant
     (`renders/<slot>-music.mp4`) beside the narration-only file.
   - **Inside a HyperFrames workflow:** to place the stems in the composition
@@ -366,6 +387,8 @@ the slot's `tools/` or this skill's `scripts/`.
 | Captured UI stretched and soft | CDP screencast frames | `frame_capture.cjs` |
 | WebGPU or WebGL canvas blank in capture | Playwright headless shell | Chrome channel with GPU flags |
 | True peak above -1 dBTP after loudnorm | loudnorm overshoot | `alimiter` |
+| Music and SFX drown the narration although whole-file LUFS and `media-verify` pass | fixed mix gains against a quiet narration (HyperFrames renders near -25 LUFS, stems near -13 LUFS) | `media-video-music mix` with measured gains; read the margins it prints |
+| SVG line draw with `pathLength=1` sits undrawn, then pops in | GSAP rounds px values by default, so a `stroke-dashoffset` tween from 1 to 0 snaps to whole numbers | `autoRound: false` in the tween vars |
 | Carve script cannot find `@hyperframes/core` | slot without node_modules | `--core <dir>` |
 | `media-verify` grade failure on a whole film | samples unrelated scenes | inspect the pair; report |
 | zsh `====` or `$var` loops misbehave | zsh globbing and word splitting | quote, use `${=var}`, or use Python |
