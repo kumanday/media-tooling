@@ -325,3 +325,8 @@ render. Keep download/release behavior within the project's media policy.
 Record sizes and superseded iteration paths in the handoff. Large ProRes overlay
 renders warrant a retention decision; preserve approved renders and composition
 source until the project's cleanup policy permits removal.
+
+## Cloud rendering
+
+Long compositions can render on Google Cloud Run in parallel chunks with `media-cloud-render render <slot>`; a render
+profile decides which GCP project pays. See [`CLOUD-RENDER.md`](./CLOUD-RENDER.md).

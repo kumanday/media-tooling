@@ -428,6 +428,7 @@ in `docs/generated-media.md` in the toolkit repository.
 | `media-loudnorm` | Step 5 (standalone normalization outside EDL workflow; not needed when using `media-edl-render`) |
 | `media-rough-cut` | Step 5 (alternative: card/image/clip assembly) |
 | `hyperframes` | Step 5 (optional HTML-rendered overlays, title cards, UI motion, GIFs, PNG sequences, batch variants) |
+| `media-cloud-render` | Step 5 (render a long HyperFrames composition on Cloud Run; the render profile picks the GCP project; `which` and `--dry-run` before spending; `deploy`/`destroy` only with the owner's go-ahead) |
 
 ## EDL JSON format
 

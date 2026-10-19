@@ -61,7 +61,7 @@ uv run --group dev mypy src tests
 
 ## Context
 
-- Reference: `/Users/magos/dev/trilogy/writing/video-use/helpers/grade.py`
+- Reference: `video-use/helpers/grade.py`
 - Hard Rule 2: Per-segment extract + lossless concat — grading applied during extraction, never post-concat
 - ffmpeg `signalstats` filter provides per-frame statistics for auto-grade analysis
 - Integration plan: `docs/video-use-integration-plan.md` Phase 2, item 4

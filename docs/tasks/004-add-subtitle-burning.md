@@ -58,7 +58,7 @@ uv run --group dev mypy src tests
 
 ## Context
 
-- Reference: `/Users/magos/dev/trilogy/writing/video-use/helpers/render.py` — `build_master_srt` and subtitles filter
+- Reference: `video-use/helpers/render.py` — `build_master_srt` and subtitles filter
 - Hard Rule 1: Subtitles applied last in filter chain (otherwise overlays hide captions)
 - Currently media-tooling generates `.srt` files but never burns them into video
 - Uses ffmpeg `subtitles` filter with ASS style overrides for styling

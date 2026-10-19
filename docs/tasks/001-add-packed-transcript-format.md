@@ -57,7 +57,7 @@ uv run --group dev mypy src tests
 ## Context
 
 - Read `src/media_tooling/subtitle.py` to understand the JSON metadata format produced by `media-subtitle`
-- Reference implementation: `/Users/magos/dev/trilogy/writing/video-use/helpers/pack_transcripts.py`
+- Reference implementation: `video-use/helpers/pack_transcripts.py`
 - The JSON metadata contains word-level timestamps in the `words` array with `start`, `end`, `word` fields
 - Integration plan: `docs/video-use-integration-plan.md` Phase 1, item 1
 

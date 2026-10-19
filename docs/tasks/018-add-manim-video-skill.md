@@ -53,8 +53,8 @@ Add a `.agents/skills/manim-video/SKILL.md` sub-skill for mathematical and techn
 
 ## Context
 
-- Reference: `/Users/magos/dev/trilogy/writing/video-use/skills/manim-video/SKILL.md`
-- Reference: `/Users/magos/dev/trilogy/writing/video-use/skills/manim-video/references/` (13 docs)
+- Reference: `video-use/skills/manim-video/SKILL.md`
+- Reference: `video-use/skills/manim-video/references/` (13 docs)
 - Depends on: task 017 (overlay compositing in EDL renderer) for rendering integration
 - Integration plan: `docs/video-use-integration-plan.md` Phase 4, item 10
 

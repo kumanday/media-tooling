@@ -63,7 +63,7 @@ uv run --group dev mypy src tests
 
 ## Context
 
-- Reference implementation: `/Users/magos/dev/trilogy/writing/video-use/helpers/timeline_view.py`
+- Reference implementation: `video-use/helpers/timeline_view.py`
 - This command complements `media-contact-sheet` — contact sheets are for inventory/classification; timeline_view is for editing decisions
 - Uses ffmpeg for frame extraction and ffprobe for duration probing (same pattern as existing contact_sheet.py)
 - JSON metadata format: see `src/media_tooling/subtitle.py` for the `words` array structure

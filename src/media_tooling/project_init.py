@@ -5,6 +5,13 @@ import re
 from importlib import resources
 from pathlib import Path
 
+from media_tooling.local_config import (
+    LocalConfigError,
+    load_config,
+    profile_rules_file,
+    resolve_profile,
+)
+
 PROJECT_SUBDIRECTORIES = (
     "assets/audio",
     "assets/reference",
@@ -40,6 +47,8 @@ TEMPLATE_PATH = "templates/project_AGENTS.md"
 TEMPLATE_MANAGED_BLOCK_START = "{{MANAGED_BLOCK_START}}"
 TEMPLATE_MANAGED_BLOCK_END = "{{MANAGED_BLOCK_END}}"
 TEMPLATE_SKILL_PATHS = "{{SKILL_PATHS}}"
+LOCAL_BLOCK_START = "<!-- media-tooling:local:start -->"
+LOCAL_BLOCK_END = "<!-- media-tooling:local:end -->"
 
 
 def parse_args() -> argparse.Namespace:
@@ -51,6 +60,10 @@ def parse_args() -> argparse.Namespace:
         "--agents-only",
         action="store_true",
         help="Only update the managed block in AGENTS.md.",
+    )
+    parser.add_argument(
+        "--profile",
+        help="Local profile whose private rules apply (default: resolved from your local media-tooling config).",
     )
     return parser.parse_args()
 
@@ -83,6 +96,11 @@ def main() -> None:
         project_dir=project_dir,
         skills_dir=skills_dir,
     )
+    try:
+        local_block, local_note = render_local_block(project_dir, args.profile)
+    except LocalConfigError as exc:
+        raise SystemExit(f"media-tooling-init: {exc}") from exc
+    local_action = upsert_local_block(agents_path, local_block)
 
     print(f"Project workspace: {project_dir}")
     if args.agents_only:
@@ -95,6 +113,7 @@ def main() -> None:
         print("Standard project directories already existed.")
     print(f"project.md: {memory_action} {memory_path}")
     print(f"AGENTS.md: {agents_action} {agents_path}")
+    print(f"Private rules: {local_action} ({local_note})")
     print(f"Toolkit skills: {skills_dir}")
 
 
@@ -145,6 +164,60 @@ def upsert_project_agents(*, project_dir: Path, skills_dir: Path) -> tuple[Path,
 
     agents_path.write_text(new_contents, encoding="utf-8")
     return agents_path, action
+
+
+def _home_relative(path: Path) -> str:
+    try:
+        return "~/" + path.resolve().relative_to(Path.home().resolve()).as_posix()
+    except ValueError:
+        return str(path)
+
+
+def render_local_block(project_dir: Path, cli_profile: str | None = None) -> tuple[str | None, str]:
+    """The private-rules block for a project, from your local media-tooling config (None when no rules apply).
+
+    Profiles choose ``rules = "reference"`` (default: the block points at the private file, so its content stays out
+    of the project repository) or ``rules = "embed"`` (the block carries a copy, for agents that cannot read your
+    machine's config folder).
+    """
+    cfg = load_config(required=False)
+    resolved = resolve_profile(project_dir, cfg, cli_profile, required=False)
+    if resolved is None:
+        return None, "no local profile applies"
+    rules = profile_rules_file(resolved.name, resolved.profile)
+    if not rules.is_file():
+        return None, f"profile {resolved.name} ({resolved.reason}) has no private rules file"
+    mode = resolved.profile.get("rules", "reference")
+    if mode == "embed":
+        body = rules.read_text(encoding="utf-8").strip()
+    else:
+        body = f"Read and follow `{_home_relative(rules)}` (private rules, kept outside this repository)."
+    block = (f"{LOCAL_BLOCK_START}\n## Private rules: {resolved.name} profile\n\n"
+             f"Added by media-tooling-init from your local media-tooling configuration, not from the toolkit.\n\n"
+             f"{body}\n{LOCAL_BLOCK_END}")
+    return block, f"profile {resolved.name} ({resolved.reason}), {mode}"
+
+
+def upsert_local_block(agents_path: Path, block: str | None) -> str:
+    """Place the private-rules block right after the managed block; remove it when no rules apply."""
+    text = agents_path.read_text(encoding="utf-8") if agents_path.exists() else ""
+    pattern = re.compile(rf"\n*{re.escape(LOCAL_BLOCK_START)}.*?{re.escape(LOCAL_BLOCK_END)}\n?", re.DOTALL)
+    had = bool(pattern.search(text))
+    text = pattern.sub("\n", text) if had else text
+    if block is None:
+        if had:
+            agents_path.write_text(text.rstrip() + "\n", encoding="utf-8")
+            return "removed"
+        return "none"
+    end = text.find(MANAGED_BLOCK_END)
+    if end >= 0:
+        cut = end + len(MANAGED_BLOCK_END)
+        rest = text[cut:].strip("\n")
+        text = f"{text[:cut]}\n\n{block}\n" + (f"\n{rest}\n" if rest else "")
+    else:
+        text = f"{text.rstrip()}\n\n{block}\n" if text.strip() else f"{block}\n"
+    agents_path.write_text(text, encoding="utf-8")
+    return "updated" if had else "added"
 
 
 def render_project_agents_block(skills_dir: Path) -> str:

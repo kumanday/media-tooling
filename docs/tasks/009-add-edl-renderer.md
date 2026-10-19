@@ -69,7 +69,7 @@ uv run --group dev mypy src tests
 
 ## Context
 
-- Reference: `/Users/magos/dev/trilogy/writing/video-use/helpers/render.py` — full EDL render pipeline
+- Reference: `video-use/helpers/render.py` — full EDL render pipeline
 - Depends on: burn_subtitles.py (task 004), grade.py (task 006), loudnorm.py (task 008), audio fades pattern (task 007)
 - EDL JSON format specified in integration plan
 - This is the central integration point — it composes grading, fades, subtitles, and loudnorm into a single production pipeline

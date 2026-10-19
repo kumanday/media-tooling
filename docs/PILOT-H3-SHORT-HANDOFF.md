@@ -15,8 +15,8 @@ approved via the storyboard-revision loop, motion graphics authored with
 HyperFrames 0.8.116 as an alpha overlay, composited through `media-edl-render`
 with burned subtitles (EN + ES variants), loudnorm, and `media-verify`.
 
-Production artifacts live in a separate project workspace
-(`/Users/magos/dev/trilogy/writing/`): composition at
+Production artifacts live in a separate project workspace (outside this
+repository): composition at
 `edit/hyperframes/h3-short/` (BRIEF.md, frame.md, STORYBOARD.md,
 storyboard.html, index.html, chunks/), assembly at `edit/h3-short/`
 (edl.json, edl-es.json, master.srt, master.es.srt, previews). The pilot
