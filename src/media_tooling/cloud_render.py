@@ -14,12 +14,13 @@ running several GCP projects from one machine needs:
 
   The same rules that pick a project's private rules pick its render profile (``--profile``, a pin in
   ``media-tooling.toml``, path rules, ``default_profile``).
-- **Isolation.** Every gcloud, Terraform and SDK call runs with the profile's gcloud configuration
+- **Isolation.** Every gcloud, Terraform (or OpenTofu) and SDK call runs with the profile's gcloud configuration
   (``CLOUDSDK_ACTIVE_CONFIG_NAME``) and the profile's Application Default Credentials file, so the global active
-  account is never switched. Each profile keeps its own stack coordinates (``cloudrun/<profile>/stack.json``) and its
-  own Terraform state in a versioned bucket inside its own GCP project. Upstream ``hyperframes cloudrun deploy``
-  keeps one global state file and runs Terraform inside the npm package directory, so a second project would plan
-  to replace the first one's stack; this command never uses it.
+  account is never switched; ``setup --save-adc`` saves that file only if it signs in as the profile's ``account``.
+  Each profile keeps its own stack coordinates (``cloudrun/<profile>/stack.json``) and its own Terraform state in a
+  versioned bucket inside its own GCP project. Upstream ``hyperframes cloudrun deploy`` keeps one global state file
+  and runs Terraform inside the npm package directory, so a second project would plan to replace the first one's
+  stack; this command never uses it.
 - **Clean uploads.** The Cloud Run SDK tars the whole project folder (no ignore file). Renders are staged first,
   without generated outputs (``renders/``, ``qa/``, capture frame dumps and the patterns in ``.hyperframesignore``)
   and without audio/video files no composition references (HyperFrames only plays media declared with a ``src``),
@@ -42,6 +43,9 @@ import shutil
 import subprocess
 import sys
 import time
+import urllib.error
+import urllib.parse
+import urllib.request
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -84,6 +88,10 @@ MEDIA_EXTS = {".mp4", ".mov", ".webm", ".mkv", ".m4v", ".mp3", ".wav", ".m4a", "
 REF_ATTR = re.compile(r"""\b(?:src|href|poster|data-src)\s*=\s*["']([^"'#?]+)""", re.I)
 REF_URL = re.compile(r"""url\(\s*["']?([^"')#?]+)""", re.I)
 PIN = re.compile(r"hyperframes@(\d+\.\d+\.\d+)")
+# Homebrew dropped terraform from homebrew-core after the license change; OpenTofu runs the same module
+TERRAFORM_INSTALL = "brew tap hashicorp/tap && brew install hashicorp/tap/terraform (or OpenTofu: brew install opentofu)"
+TOKEN_URL = "https://oauth2.googleapis.com/token"
+TOKENINFO_URL = "https://oauth2.googleapis.com/tokeninfo"
 
 
 class CloudRenderError(RuntimeError):
@@ -125,6 +133,50 @@ def profile_env(name: str, profile: dict[str, Any], base: dict[str, str] | None 
     else:
         env.pop("GOOGLE_APPLICATION_CREDENTIALS", None)
     return env
+
+
+def post_form(url: str, fields: dict[str, str]) -> dict[str, Any]:
+    """POST form fields and return the JSON reply. Secrets travel in the body, never in the URL."""
+    req = urllib.request.Request(url, data=urllib.parse.urlencode(fields).encode(), method="POST",
+                                 headers={"Content-Type": "application/x-www-form-urlencoded"})
+    try:
+        with urllib.request.urlopen(req, timeout=30) as res:
+            return json.loads(res.read().decode())
+    except urllib.error.HTTPError as exc:
+        try:
+            body = json.loads(exc.read().decode())
+        except (ValueError, OSError):
+            body = {}
+        body = body if isinstance(body, dict) else {}
+        raise CloudRenderError(f"{url} answered {exc.code}: {body.get('error_description') or body.get('error') or exc.reason}") from None
+    except (urllib.error.URLError, TimeoutError) as exc:
+        raise CloudRenderError(f"could not reach {url}: {getattr(exc, 'reason', exc)}") from None
+
+
+def adc_account(creds: dict[str, Any]) -> str:
+    """The Google account a user ADC file (``gcloud auth application-default login``) signs in as.
+
+    Mints a short-lived access token from the file's refresh token and asks Google's tokeninfo endpoint for its
+    email. The token is only ever sent in request bodies and never printed.
+    """
+    if creds.get("type") != "authorized_user":
+        raise CloudRenderError(f"only user credentials from `gcloud auth application-default login` can be checked, "
+                               f"not {creds.get('type') or 'untyped'} credentials (point the profile's adc_file at those)")
+    missing = [k for k in ("client_id", "client_secret", "refresh_token") if not creds.get(k)]
+    if missing:
+        raise CloudRenderError(f"the credentials have no {', '.join(missing)}")
+    token = post_form(TOKEN_URL, {"grant_type": "refresh_token", "client_id": creds["client_id"],
+                                  "client_secret": creds["client_secret"], "refresh_token": creds["refresh_token"]})
+    if not token.get("access_token"):
+        raise CloudRenderError("Google returned no access token for the credentials")
+    email = post_form(TOKENINFO_URL, {"access_token": token["access_token"]}).get("email")
+    if not email:
+        raise CloudRenderError("tokeninfo returned no email (the credentials lack the userinfo.email scope)")
+    return str(email)
+
+
+def same_account(a: str, b: str) -> bool:
+    return a.strip().lower() == b.strip().lower()
 
 
 # ── project inspection and staging ───────────────────────────────────────────────────────────────────────────────
@@ -276,6 +328,18 @@ def quiet(cmd: list[str], env: dict[str, str]) -> subprocess.CompletedProcess[st
     return subprocess.run(cmd, env=env, text=True, capture_output=True)
 
 
+def terraform_bin() -> str | None:
+    """``terraform`` if it is on PATH, otherwise OpenTofu's ``tofu`` (the same init/apply/output/destroy CLI)."""
+    return next((b for b in ("terraform", "tofu") if shutil.which(b)), None)
+
+
+def require_terraform() -> str:
+    tf = terraform_bin()
+    if not tf:
+        raise CloudRenderError(f"Terraform or OpenTofu is required: {TERRAFORM_INSTALL}")
+    return tf
+
+
 def confirm(message: str, assume_yes: bool) -> None:
     if assume_yes:
         return
@@ -329,7 +393,26 @@ def cmd_which(args: argparse.Namespace) -> int:
 def cmd_setup(args: argparse.Namespace) -> int:
     r = resolve_cloud(None, args.profile)
     p, name = r.profile, r.name
-    conf = p["gcloud_configuration"]
+    conf, want = p["gcloud_configuration"], p.get("account")
+    redo = (f"run: gcloud auth application-default login (sign in as {want or 'the profile account'}), "
+            f"then: media-cloud-render setup --profile {name} --save-adc")
+    detected: str | None = None
+    if args.save_adc:   # check whose credentials these are before writing anything
+        src = Path("~/.config/gcloud/application_default_credentials.json").expanduser()
+        if not src.exists():
+            raise CloudRenderError("no Application Default Credentials; run `gcloud auth application-default login` first")
+        data = json.loads(src.read_text())
+        try:
+            detected = adc_account(data)
+        except CloudRenderError as exc:
+            raise CloudRenderError(f"could not tell which account the Application Default Credentials belong to ({exc}); "
+                                   f"nothing saved. To fix it, {redo}") from None
+        if want and not same_account(detected, want):
+            raise CloudRenderError(f"the Application Default Credentials belong to {detected}, but profile {name!r} uses "
+                                   f"{want}; nothing saved. To fix it, {redo}")
+        if not want:
+            print(f"warning: profile {name!r} names no account; saving the credentials of {detected} unchecked "
+                  f'(add account = "{detected}" to the profile to check them)', file=sys.stderr)
     env = profile_env(name, p)
     configs = json.loads(quiet(["gcloud", "config", "configurations", "list", "--format=json"], dict(os.environ)).stdout or "[]")
     if conf not in {c["name"] for c in configs}:
@@ -342,26 +425,30 @@ def cmd_setup(args: argparse.Namespace) -> int:
     ok_login = quiet(["gcloud", "auth", "print-access-token"], env).returncode == 0
     adc = adc_path(name, p)
     if args.save_adc:
-        src = Path("~/.config/gcloud/application_default_credentials.json").expanduser()
-        if not src.exists():
-            raise CloudRenderError("no Application Default Credentials; run `gcloud auth application-default login` first")
-        data = json.loads(src.read_text())
         data["quota_project_id"] = p["project"]
         adc.parent.mkdir(parents=True, exist_ok=True)
         adc.write_text(json.dumps(data))
         adc.chmod(0o600)
-        print(f"saved Application Default Credentials for {name} to {adc} (quota project {p['project']})")
+        print(f"saved the Application Default Credentials of {detected} for {name} to {adc} (quota project {p['project']})")
+    adc_status, adc_acct = redo, None
+    if adc.exists():
+        try:
+            adc_acct = detected = detected or adc_account(json.loads(adc.read_text()))
+        except (CloudRenderError, ValueError) as exc:
+            adc_acct = f"unknown: {exc}"
+        mismatch = detected and want and not same_account(detected, want)
+        adc_status = f"belongs to {detected}, not {want}; {redo}" if mismatch else "ok"
+    tf = terraform_bin()
     report = {
-        "profile": name, "gcloud_configuration": conf, "account": p.get("account"), "project": p["project"],
+        "profile": name, "gcloud_configuration": conf, "account": want, "project": p["project"],
         "gcloud_login": "ok" if ok_login else f"run: gcloud auth login {p.get('account', '')} --configuration {conf}".strip(),
-        "adc_file": "ok" if adc.exists() else (
-            f"run: gcloud auth application-default login (sign in as {p.get('account', 'the profile account')}), "
-            f"then: media-cloud-render setup --profile {name} --save-adc"),
-        "terraform": "ok" if shutil.which("terraform") else "missing: brew install terraform",
+        "adc_file": adc_status,
+        "adc_account": adc_acct,
+        "terraform": f"ok ({tf})" if tf else f"missing: {TERRAFORM_INSTALL}",
         "node": "ok" if shutil.which("node") else "missing",
     }
     print(json.dumps(report, indent=1))
-    return 0 if all(v == "ok" for k, v in report.items() if k in ("gcloud_login", "adc_file", "terraform", "node")) else 1
+    return 0 if ok_login and adc_status == "ok" and tf and report["node"] == "ok" else 1
 
 
 def cmd_deploy(args: argparse.Namespace) -> int:
@@ -369,8 +456,7 @@ def cmd_deploy(args: argparse.Namespace) -> int:
     p, name = r.profile, r.name
     project, region = p["project"], p.get("region", DEFAULT_REGION)
     version = args.hyperframes_version or p.get("hyperframes_version") or DEFAULT_HYPERFRAMES_VERSION
-    if not shutil.which("terraform"):
-        raise CloudRenderError("terraform is required: brew install terraform")
+    tf_cmd = require_terraform()
     env = profile_env(name, p)
     if "GOOGLE_APPLICATION_CREDENTIALS" not in env:
         raise CloudRenderError(f"profile {name!r} has no ADC file; run `media-cloud-render setup --profile {name}`")
@@ -414,11 +500,11 @@ def cmd_deploy(args: argparse.Namespace) -> int:
     for key in ("cpu", "memory", "max_instances"):
         if p.get(key) is not None:
             tfvars += ["-var", f"{key}={p[key]}"]
-    run(["terraform", "init", "-input=false", "-reconfigure"], env, cwd=tf)
-    run(["terraform", "apply", "-input=false", "-auto-approve", *tfvars], env, cwd=tf)
+    run([tf_cmd, "init", "-input=false", "-reconfigure"], env, cwd=tf)
+    run([tf_cmd, "apply", "-input=false", "-auto-approve", *tfvars], env, cwd=tf)
 
     def out(key: str) -> str:
-        return run(["terraform", "output", "-raw", key], env, cwd=tf, capture=True).strip()
+        return run([tf_cmd, "output", "-raw", key], env, cwd=tf, capture=True).strip()
 
     stack = {"profile": name, "project": project, "region": region, "bucketName": out("render_bucket_name"),
              "serviceUrl": out("service_url"), "workflowId": out("workflow_name"), "image": image,
@@ -444,12 +530,13 @@ def cmd_destroy(args: argparse.Namespace) -> int:
     r = resolve_cloud(None, args.profile)
     p, name = r.profile, r.name
     stack = load_stack(name)
+    tf_cmd = require_terraform()
     env = profile_env(name, p)
     confirm(f"Destroy the Cloud Run render stack in {stack['project']} (bucket {stack['bucketName']} and its renders)?", args.yes)
     tf = profile_dir(name) / "terraform"
     tfvars = ["-var", f"project_id={stack['project']}", "-var", f"region={stack['region']}", "-var", f"image={stack['image']}"]
-    run(["terraform", "init", "-input=false", "-reconfigure"], env, cwd=tf)
-    run(["terraform", "destroy", "-input=false", "-auto-approve", *tfvars], env, cwd=tf)
+    run([tf_cmd, "init", "-input=false", "-reconfigure"], env, cwd=tf)
+    run([tf_cmd, "destroy", "-input=false", "-auto-approve", *tfvars], env, cwd=tf)
     (profile_dir(name) / "stack.json").rename(profile_dir(name) / f"stack.destroyed-{int(time.time())}.json")
     print(f"destroyed the {name} stack; the Terraform state bucket gs://{stack['tfstate_bucket']} is kept")
     return 0
@@ -537,7 +624,8 @@ def build_parser() -> argparse.ArgumentParser:
     s = sub.add_parser("setup", help="create the profile's gcloud configuration and check its credentials")
     s.add_argument("--profile", required=True)
     s.add_argument("--save-adc", action="store_true",
-                   help="copy the current Application Default Credentials into this profile's credential file")
+                   help="copy the current Application Default Credentials into this profile's credential file "
+                        "(refused unless they belong to the profile's account)")
     d = sub.add_parser("deploy", help="build the image and apply the render stack in the profile's GCP project")
     d.add_argument("--profile", required=True)
     d.add_argument("--hyperframes-version")
