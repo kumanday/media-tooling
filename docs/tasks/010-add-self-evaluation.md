@@ -64,7 +64,7 @@ uv run --group dev mypy src tests
 
 - Depends on: timeline_view.py (task 002), edl_render.py (task 009) for EDL format
 - Reference: video-use SKILL.md self-evaluation section
-- Reference: `/Users/magos/dev/trilogy/writing/video-use/helpers/timeline_view.py`
+- Reference: `video-use/helpers/timeline_view.py`
 - Integration plan: `docs/video-use-integration-plan.md` Phase 3, item 7
 
 ## Definition of Ready

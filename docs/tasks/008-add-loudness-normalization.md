@@ -55,7 +55,7 @@ uv run --group dev mypy src tests
 
 ## Context
 
-- Reference: `/Users/magos/dev/trilogy/writing/video-use/helpers/render.py` — `apply_loudnorm_two_pass`
+- Reference: `video-use/helpers/render.py` — `apply_loudnorm_two_pass`
 - ffmpeg two-pass loudnorm pattern: first pass outputs measured I, TP, LRA, threshold; second pass uses those measured values
 - Social media targets: YouTube, Instagram, TikTok, X, LinkedIn all converge on -14 LUFS
 - Integration plan: `docs/video-use-integration-plan.md` Phase 2, item 5

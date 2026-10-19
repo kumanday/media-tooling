@@ -64,7 +64,7 @@ uv run --group dev mypy src tests
 ## Context
 
 - Current subtitle.py: `src/media_tooling/subtitle.py` — handles MLX and faster-whisper backends
-- Reference: `/Users/magos/dev/trilogy/writing/video-use/helpers/transcribe.py`
+- Reference: `video-use/helpers/transcribe.py`
 - ElevenLabs Scribe API: `https://api.elevenlabs.io/v1/speech-to-text`
 - Model: `scribe_v1`, verbatim mode + diarize + audio events + word-level timestamps
 - Integration plan: `docs/video-use-integration-plan.md` Phase 4, item 9

@@ -52,7 +52,7 @@ Create a new `.agents/skills/media-render-pipeline/SKILL.md` that covers the ful
 ## Context
 
 - This skill synthesizes guidance from video-use's top-level SKILL.md
-- Reference: `/Users/magos/dev/trilogy/writing/video-use/SKILL.md`
+- Reference: `video-use/SKILL.md`
 - Depends on: tasks 009 (EDL renderer), 010 (verify), 012 (hard rules)
 - Integration plan: `docs/video-use-integration-plan.md` — Skill updates section (new render-pipeline skill)
 

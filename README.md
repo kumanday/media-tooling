@@ -267,9 +267,11 @@ The underlying commands are:
 - `media-verify`
   Self-evaluate a rendered video against its EDL spec, checking cut boundaries, duration, grade consistency, and audio pops.
 - `media-tooling-init`
-  Create the standard project directories and write or refresh the managed `AGENTS.md` block for a media project workspace.
+  Create the standard project directories and write or refresh the managed `AGENTS.md` block for a media project workspace, plus a block for your private rules when a local profile applies (see [`docs/LOCAL-CONFIG.md`](./docs/LOCAL-CONFIG.md)).
 - `media-tooling-link-skills`
-  Link the installed skills into `~/.agents/skills` and `~/.claude/skills` so coding agents discover them. Re-run after each upgrade.
+  Link the installed skills, and your private skills from your local config folder, into `~/.agents/skills` and `~/.claude/skills` so coding agents discover them. Re-run after each upgrade.
+- `media-cloud-render`
+  Render a HyperFrames project on Google Cloud Run in parallel chunks, billed to the GCP project its render profile names (client and personal work kept apart, for example). See [`docs/CLOUD-RENDER.md`](./docs/CLOUD-RENDER.md).
 - `hyperframes` (optional)
   Render HTML/CSS/JS compositions for animated overlays, title cards, UI captures, GIFs, PNG sequences, batch variants, or standalone graphic segments.
 
@@ -308,6 +310,8 @@ Those directories are generated on demand, safe to delete, and ignored by Git.
 - [`docs/SETUP.md`](./docs/SETUP.md)
 - [`docs/WORKFLOWS.md`](./docs/WORKFLOWS.md)
 - [`docs/HYPERFRAMES.md`](./docs/HYPERFRAMES.md)
+- [`docs/CLOUD-RENDER.md`](./docs/CLOUD-RENDER.md)
+- [`docs/LOCAL-CONFIG.md`](./docs/LOCAL-CONFIG.md)
 - [`docs/EXPORTING.md`](./docs/EXPORTING.md)
 
 ## Toolkit skills

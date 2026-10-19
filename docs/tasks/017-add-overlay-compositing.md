@@ -59,7 +59,7 @@ uv run --group dev mypy src tests
 ## Context
 
 - Depends on: task 009 (EDL renderer)
-- Reference: `/Users/magos/dev/trilogy/writing/video-use/helpers/render.py` — `build_final_composite`
+- Reference: `video-use/helpers/render.py` — `build_final_composite`
 - Hard Rule 4: PTS shift so overlay frame 0 lands at overlay window start
 - Hard Rule 1: Subtitles applied last (after overlays)
 - Integration plan: `docs/video-use-integration-plan.md` Phase 4, item 10

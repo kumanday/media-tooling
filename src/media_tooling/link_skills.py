@@ -9,6 +9,11 @@ agent reads the same files and an upgrade reaches all of them.
 Run it after installing or upgrading media-tooling. The link targets live inside
 the installed package, whose path can change when uv rebuilds the tool
 environment, so re-running is how stale links get repaired.
+
+Private skills (``skills/<name>/SKILL.md`` in your local media-tooling folder,
+``~/.config/media-tooling`` by default; see ``media_tooling.local_config``) are
+linked the same way, so your own workflows reach every agent without living in
+this public repository. A private skill may not reuse a toolkit skill's name.
 """
 
 from __future__ import annotations
@@ -20,6 +25,12 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
+from media_tooling.local_config import (
+    LocalConfigError,
+    load_config,
+    private_skill_names,
+    private_skills_dir,
+)
 from media_tooling.project_init import SKILL_NAMES, resolve_toolkit_skills_dir
 
 
@@ -77,6 +88,18 @@ def link_skills(*, skills_dir: Path, agents_dir: Path, claude_dir: Path | None, 
     return actions
 
 
+def link_private_skills(*, private_dir: Path, agents_dir: Path, claude_dir: Path | None, force: bool = False,
+                        dry_run: bool = False) -> list[Action]:
+    actions: list[Action] = []
+    for name in private_skill_names(private_dir):
+        if name in SKILL_NAMES:
+            actions.append(Action(private_dir / name, "skipped", "same name as a toolkit skill; rename the private one"))
+            continue
+        actions.extend(link_skills(skills_dir=private_dir, agents_dir=agents_dir, claude_dir=claude_dir, names=(name,),
+                                   force=force, dry_run=dry_run))
+    return actions
+
+
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Link the installed media-tooling skills into the agents' skill directories.")
     p.add_argument("--agents-dir", default=str(Path.home() / ".agents" / "skills"),
@@ -87,6 +110,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--force", action="store_true",
                    help="move an existing non-symlink entry aside (renamed *.bak-<time>) instead of skipping it")
     p.add_argument("--dry-run", action="store_true", help="report what would change without touching the filesystem")
+    p.add_argument("--no-private", action="store_true", help="do not link private skills from your local config folder")
     return p.parse_args(argv)
 
 
@@ -100,10 +124,16 @@ def main(argv: list[str] | None = None) -> int:
         skills_dir = resolve_toolkit_skills_dir()
         actions = link_skills(skills_dir=skills_dir, agents_dir=Path(a.agents_dir).expanduser(), claude_dir=claude_dir,
                               names=SKILL_NAMES, force=a.force, dry_run=a.dry_run)
-    except (OSError, FileNotFoundError) as exc:
+        private_dir = None if a.no_private else private_skills_dir(load_config(required=False))
+        if private_dir is not None and private_dir.is_dir():
+            actions += link_private_skills(private_dir=private_dir, agents_dir=Path(a.agents_dir).expanduser(),
+                                           claude_dir=claude_dir, force=a.force, dry_run=a.dry_run)
+    except (OSError, FileNotFoundError, LocalConfigError) as exc:
         print(str(exc), file=sys.stderr)
         return 1
     print(f"Toolkit skills: {skills_dir}{' (dry run)' if a.dry_run else ''}")
+    if private_dir is not None and private_dir.is_dir():
+        print(f"Private skills: {private_dir} ({len(private_skill_names(private_dir))} found)")
     for act in actions:
         print(f"- {act.status:9} {act.path}{f'  ({act.detail})' if act.detail else ''}")
     skipped = [act for act in actions if act.status == "skipped"]

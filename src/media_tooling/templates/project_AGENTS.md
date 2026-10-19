@@ -23,6 +23,7 @@ Use installed toolkit commands from this project directory:
 - output verification: `media-verify`
 - generated-media requests, review and import: `media-generated`
 - optional HTML-rendered video and motion overlays: `hyperframes`
+- cloud rendering of a HyperFrames project on Google Cloud Run, billed to the GCP project its render profile names: `media-cloud-render` (`which` shows the profile and account before anything runs)
 
 Operational defaults:
 - use sequential processing to reduce resource contention. Have patience for long media jobs
@@ -51,10 +52,14 @@ Optional Hyperframes workflow:
 - use transparent composition backgrounds and verify encoded alpha; prefer MOV when WebM alpha is unavailable
 - in upstream HyperFrames workflows (`faceless-explainer`, `product-launch-video` and others), produce the narration step's `audio_meta.json` with `media-tts-frames` instead of the workflow's own TTS providers, then run the workflow's duration sync
 - use `hyperframes lint .` while editing and `hyperframes check . --snapshots --at-transitions` before using the render
+- render long compositions with `media-cloud-render render <slot>` instead of a local `hyperframes render` when a profile stack is deployed; profiles live in the private `~/.config/media-tooling/profiles.toml`, a project pins one with `profile` in `media-tooling.toml`, and `deploy`/`destroy` create or remove billable resources only after confirmation
 - render alpha overlays with `hyperframes render . --format mov`; WebM is an option after verifying local alpha support
 - add rendered overlays to EDL specs with `overlays[].source`; `media-edl-render` composites overlays before burning subtitles
 - keep using media-tooling commands for ASR, contact sheets, packed transcripts, EDL assembly, grading, loudness normalization, subtitle burning, and `media-verify`
 - do not use Hyperframes for ordinary cuts, static cards that the EDL renderer can generate, transcript work, or final verification
+
+Private rules: when a local profile applies to this project, `media-tooling-init` adds a separate "Private rules"
+block after this one. Follow it; it comes from the owner's local configuration, not from the toolkit.
 
 ## Session Memory Protocol
 
