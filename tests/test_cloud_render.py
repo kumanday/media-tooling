@@ -159,7 +159,7 @@ class StagingTests(unittest.TestCase):
         self.assertFalse((stage / "qa").exists())
         self.assertFalse((stage / "capture/shots/frames").exists())
         self.assertIn("capture/shots/frames/", skipped)
-        self.assertEqual(cr.missing_references(self.proj, stage), [])
+        self.assertEqual(cr.missing_references(self.proj, stage), ([], []))
         self.assertEqual(cr.drop_unreferenced_media(self.proj, stage)[0], 2)
         self.assertTrue((stage / "assets/media/a.mp4").exists())
         self.assertFalse((stage / "assets/score/music.mp3").exists())
@@ -172,7 +172,9 @@ class StagingTests(unittest.TestCase):
         self.assertFalse(any(r.startswith("http") for r in refs))
         stage = self.root / "stage2"
         cr.stage_project(self.proj, stage, [*cr.DEFAULT_EXCLUDES, "capture/"])
-        self.assertEqual(cr.missing_references(self.proj, stage), ["capture/shots/c1.mp4"])
+        self.assertEqual(cr.missing_references(self.proj, stage), ([], ["capture/shots/c1.mp4"]))
+        (self.proj / "assets/media/a.mp4").unlink()
+        self.assertEqual(cr.missing_references(self.proj, stage)[0], ["assets/media/a.mp4"])
 
     def test_project_facts(self) -> None:
         self.assertEqual(cr.project_dims(self.proj), (1920, 1080, 30))
@@ -203,6 +205,22 @@ class DryRunTests(unittest.TestCase):
             self.assertEqual(summary["upload"]["files"], 6)
             self.assertEqual(summary["upload"]["unreferenced_media_left_out"]["files"], 2)
             self.assertIsNone(summary["stack"])
+
+    def test_render_refuses_references_missing_from_the_project(self) -> None:
+        with tempfile.TemporaryDirectory() as t:
+            root = Path(t)
+            proj = make_project(root)
+            (proj / "assets/fonts/x.woff2").unlink()
+            cfg_dir = root / "cfg"
+            cfg_dir.mkdir()
+            (cfg_dir / "profiles.toml").write_text(CONFIG)
+            env = {"HOME": str(root), "MEDIA_TOOLING_CONFIG_DIR": str(cfg_dir), "MEDIA_TOOLING_CACHE_DIR": str(root / "cache")}
+            for extra, expected in (([], 2), (["--allow-missing-refs"], 0)):
+                out, err = io.StringIO(), io.StringIO()
+                with mock.patch.dict(os.environ, env), redirect_stdout(out), redirect_stderr(err):
+                    code = cr.main(["render", str(proj), "--dry-run", *extra])
+                self.assertEqual(code, expected, err.getvalue())
+                self.assertEqual(json.loads(out.getvalue())["missing_references"]["not_in_project"], ["assets/fonts/x.woff2"])
 
 
 if __name__ == "__main__":

@@ -23,7 +23,7 @@ running several GCP projects from one machine needs:
 - **Clean uploads.** The Cloud Run SDK tars the whole project folder (no ignore file). Renders are staged first,
   without generated outputs (``renders/``, ``qa/``, capture frame dumps and the patterns in ``.hyperframesignore``)
   and without audio/video files no composition references (HyperFrames only plays media declared with a ``src``),
-  and every local asset the compositions reference is checked to be present in the stage.
+  and every local asset the compositions reference must be present in the project and in the stage.
 - **Explicit spending.** ``deploy`` and ``destroy`` create or remove billable resources and ask first (``--yes`` to
   skip); ``render`` prints the account, project, upload size and chunk plan before it starts, and ``--dry-run``
   stops there.
@@ -222,8 +222,12 @@ def drop_unreferenced_media(project_dir: Path, staged: Path) -> tuple[int, int]:
     return n, total
 
 
-def missing_references(project_dir: Path, staged: Path) -> list[str]:
-    return sorted(r for r in referenced_assets(project_dir) if (project_dir / r).exists() and not (staged / r).exists())
+def missing_references(project_dir: Path, staged: Path) -> tuple[list[str], list[str]]:
+    """Referenced files the render would lack: (absent from the project itself, removed by an exclusion)."""
+    refs = referenced_assets(project_dir)
+    absent = sorted(r for r in refs if not (project_dir / r).exists())
+    excluded = sorted(r for r in refs if (project_dir / r).exists() and not (staged / r).exists())
+    return absent, excluded
 
 
 def project_dims(project_dir: Path) -> tuple[int, int, int]:
@@ -469,7 +473,7 @@ def cmd_render(args: argparse.Namespace) -> int:
     files, size, skipped = stage_project(project_dir, stage, patterns)
     dropped = (0, 0) if args.keep_unreferenced_media else drop_unreferenced_media(project_dir, stage)
     files, size = files - dropped[0], size - dropped[1]
-    missing = missing_references(project_dir, stage)
+    absent, excluded = missing_references(project_dir, stage)
     duration = composition_duration(project_dir)
     frames = round(duration * fps) if duration else None
     summary = {
@@ -481,10 +485,14 @@ def cmd_render(args: argparse.Namespace) -> int:
         "upload": {"files": files, "mb": round(size / 1e6, 1), "excluded_paths": len(skipped),
                    "unreferenced_media_left_out": {"files": dropped[0], "mb": round(dropped[1] / 1e6, 1)}},
         "project_pins_hyperframes": pin,
+        "missing_references": {"not_in_project": absent, "excluded": excluded},
     }
     print(json.dumps(summary, indent=1))
-    if missing:
-        raise CloudRenderError(f"excluded paths remove referenced assets: {missing[:10]}")
+    if excluded:
+        raise CloudRenderError(f"exclusions remove referenced assets: {excluded[:10]}")
+    if absent and not args.allow_missing_refs:
+        raise CloudRenderError(f"the compositions reference files that are not in the project: {absent[:10]} "
+                               "(fix the references, or pass --allow-missing-refs if they are not real assets)")
     if pin and stack_version and pin != stack_version:
         print(f"warning: the project pins hyperframes@{pin}, the {name} stack renders with {stack_version}; "
               "check the result against a local render", file=sys.stderr)
@@ -553,6 +561,8 @@ def build_parser() -> argparse.ArgumentParser:
     rn.add_argument("--keep-stage", action="store_true")
     rn.add_argument("--keep-unreferenced-media", action="store_true",
                     help="upload audio/video files no composition references (left out by default)")
+    rn.add_argument("--allow-missing-refs", action="store_true",
+                    help="render even if compositions reference local files the project does not have")
     rn.add_argument("--dry-run", action="store_true", help="resolve, stage and check; upload nothing")
     return ap
 

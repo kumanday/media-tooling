@@ -95,7 +95,8 @@ media-cloud-render render path/to/slot               # stage, upload, render, do
   project, stack version, frames, cost reported by the renderer and wall time.
 - Staging leaves out generated outputs (`renders/`, `snapshots/`, `qa/`, `.hyperframes/`, `capture/**/frames/`,
   `.git/`, `node_modules/`, plus `.hyperframesignore` and `--exclude` patterns) and audio/video files no composition
-  references. It fails if an exclusion would remove a referenced asset.
+  references. It fails if a composition references a local file that is not in the project (override with
+  `--allow-missing-refs`) or that an exclusion would remove.
 - Defaults: `--quality high`, `--max-parallel-chunks 16`, the composition's own size and fps.
 - If the project pins a different HyperFrames version than the stack was built with, the command warns; compare
   against a local render before relying on it.

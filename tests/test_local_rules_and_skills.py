@@ -9,13 +9,14 @@ from pathlib import Path
 from unittest import mock
 
 from media_tooling import local_config as lc
-from media_tooling.link_skills import link_private_skills, main
+from media_tooling.link_skills import link_private_skills, main, toolkit_skill_names
 from media_tooling.project_init import (
     LOCAL_BLOCK_END,
     LOCAL_BLOCK_START,
     MANAGED_BLOCK_END,
     MANAGED_BLOCK_START,
     render_local_block,
+    resolve_toolkit_skills_dir,
     upsert_local_block,
 )
 
@@ -99,15 +100,36 @@ class PrivateSkillTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as t:
             root = Path(t)
             private = root / "cfg" / "skills"
-            for name in ("blog-explainer", "media-tts"):
+            for name in ("blog-explainer", "media-tts", "commit"):
                 (private / name).mkdir(parents=True)
                 (private / name / "SKILL.md").write_text(f"---\nname: {name}\n---\n")
             agents, claude = root / "agents", root / "claude"
-            actions = link_private_skills(private_dir=private, agents_dir=agents, claude_dir=claude)
+            reserved = toolkit_skill_names(resolve_toolkit_skills_dir())
+            self.assertIn("commit", reserved)  # packaged but not one of the linked routing skills
+            actions = link_private_skills(private_dir=private, agents_dir=agents, claude_dir=claude, reserved=reserved)
             self.assertTrue((agents / "blog-explainer").is_symlink())
             self.assertTrue((claude / "blog-explainer" / "SKILL.md").is_file())
             self.assertFalse((agents / "media-tts").exists())
-            self.assertIn("skipped", [a.status for a in actions])
+            self.assertFalse((agents / "commit").exists())
+            self.assertEqual(sum(a.status == "skipped" for a in actions), 2)
+
+    def test_private_skill_never_takes_over_another_link_without_force(self) -> None:
+        with tempfile.TemporaryDirectory() as t:
+            root = Path(t)
+            private = root / "cfg" / "skills"
+            (private / "notes").mkdir(parents=True)
+            (private / "notes" / "SKILL.md").write_text("---\nname: notes\n---\n")
+            elsewhere = root / "other-source" / "notes"
+            elsewhere.mkdir(parents=True)
+            agents = root / "agents"
+            agents.mkdir()
+            (agents / "notes").symlink_to(elsewhere)
+            actions = link_private_skills(private_dir=private, agents_dir=agents, claude_dir=None, reserved=set())
+            self.assertEqual(actions[0].status, "skipped")
+            self.assertEqual(os.readlink(agents / "notes"), str(elsewhere))
+            actions = link_private_skills(private_dir=private, agents_dir=agents, claude_dir=None, reserved=set(),
+                                          force=True)
+            self.assertEqual(Path(os.readlink(agents / "notes")).resolve(), (private / "notes").resolve())
 
     def test_main_reports_private_skills(self) -> None:
         with tempfile.TemporaryDirectory() as t:
