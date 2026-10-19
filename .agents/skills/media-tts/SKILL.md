@@ -124,3 +124,14 @@ Add background music or sound effects only when the user asks for them. For a
 finished, picture-locked video, `media-video-music` scores the edit and can
 return separate music and SFX stems. See the `media-motion-graphics` playbook,
 section 9.
+
+`media-video-music mix` sets the stem levels from the narration it measures.
+By default the music bed sits 20 dB under the voice while it speaks (at least
+12 dB under at the 10th percentile) and the loudest effect sits 8 dB under
+speech level. One linear gain then brings the mix to -14 LUFS, a limiter holds
+the true-peak ceiling, and the command prints the margins it measured.
+HyperFrames renders carry the narration near -25 LUFS while video-to-music
+stems arrive near -13 LUFS, so a fixed gain that suited one film can bury the
+voice in the next. Pass `--music-db` or `--sfx-db` only to override a measured
+gain on purpose. Report the printed margins with the delivery, and say whether
+anyone has listened to the mix.
