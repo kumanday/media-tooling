@@ -1,12 +1,17 @@
 from __future__ import annotations
 
+import email.message
 import io
 import json
 import os
+import stat
+import subprocess
 import tempfile
 import unittest
+import urllib.error
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
+from typing import Any
 from unittest import mock
 
 from media_tooling import cloud_render as cr
@@ -221,6 +226,202 @@ class DryRunTests(unittest.TestCase):
                     code = cr.main(["render", str(proj), "--dry-run", *extra])
                 self.assertEqual(code, expected, err.getvalue())
                 self.assertEqual(json.loads(out.getvalue())["missing_references"]["not_in_project"], ["assets/fonts/x.woff2"])
+
+
+TOKEN = "ya29.test-access-token"
+USER_ADC = {"type": "authorized_user", "client_id": "cid.apps.example", "client_secret": "csecret",
+            "refresh_token": "1//test-refresh-token"}
+
+
+class CloudEnvCase(unittest.TestCase):
+    """A private config folder with the test profiles (plus one without an account) and a fake HOME."""
+
+    def setUp(self) -> None:
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self.tmp.name)
+        self.home = self.root / "home"
+        self.home.mkdir()
+        self.cfg_dir = self.root / "cfg"
+        self.cfg_dir.mkdir()
+        (self.cfg_dir / "profiles.toml").write_text(
+            CONFIG + '\n[profiles.noacct]\ngcloud_configuration = "noacct-cfg"\nproject = "noacct-proj"\n')
+        self.env = mock.patch.dict(os.environ, {"HOME": str(self.home), "MEDIA_TOOLING_CONFIG_DIR": str(self.cfg_dir),
+                                                "MEDIA_TOOLING_CACHE_DIR": str(self.root / "cache")})
+        self.env.start()
+
+    def tearDown(self) -> None:
+        self.env.stop()
+        self.tmp.cleanup()
+
+    def main(self, *argv: str, tools: tuple[str, ...] = ("terraform", "node")) -> tuple[int, str, str]:
+        out, err = io.StringIO(), io.StringIO()
+        with mock.patch("shutil.which", lambda b: f"/opt/bin/{b}" if b in tools else None), \
+                redirect_stdout(out), redirect_stderr(err):
+            code = cr.main(list(argv))
+        return code, out.getvalue(), err.getvalue()
+
+
+class SetupAccountTests(CloudEnvCase):
+    def setUp(self) -> None:
+        super().setUp()
+        self.gcloud_adc = self.home / ".config" / "gcloud" / "application_default_credentials.json"
+        self.gcloud_adc.parent.mkdir(parents=True)
+        self.gcloud_adc.write_text(json.dumps(USER_ADC))
+        self.posts: list[tuple[str, dict[str, str]]] = []
+        configs = json.dumps([{"name": n} for n in ("work-cfg", "personal-cfg", "noacct-cfg")])
+        self.quiet_patch = mock.patch.object(cr, "quiet", side_effect=lambda cmd, env: subprocess.CompletedProcess(cmd, 0, configs, ""))
+        self.run_patch = mock.patch.object(cr, "run")
+        self.quiet_mock, self.run_mock = self.quiet_patch.start(), self.run_patch.start()
+
+    def tearDown(self) -> None:
+        self.quiet_patch.stop()
+        self.run_patch.stop()
+        super().tearDown()
+
+    def google(self, email: str) -> Any:
+        """A stand-in for Google's token and tokeninfo endpoints that signs everything in as `email`."""
+        def post(url: str, fields: dict[str, str]) -> dict[str, str]:
+            self.posts.append((url, dict(fields)))
+            if url == cr.TOKEN_URL:
+                self.assertEqual(fields["grant_type"], "refresh_token")
+                self.assertEqual(fields["refresh_token"], USER_ADC["refresh_token"])
+                return {"access_token": TOKEN, "expires_in": "3599"}
+            self.assertEqual((url, fields), (cr.TOKENINFO_URL, {"access_token": TOKEN}))
+            return {"email": email, "email_verified": "true"}
+        return mock.patch.object(cr, "post_form", side_effect=post)
+
+    def adc(self, profile: str) -> Path:
+        return self.cfg_dir / "adc" / f"{profile}.json"
+
+    @staticmethod
+    def report(out: str) -> dict[str, Any]:
+        result: dict[str, Any] = json.loads(out[out.index("{"):])
+        return result
+
+    def test_save_adc_matching_account_ignores_case(self) -> None:
+        with self.google("Me@Example.COM"):
+            code, out, err = self.main("setup", "--profile", "personal", "--save-adc")
+        self.assertEqual(code, 0, err)
+        saved = json.loads(self.adc("personal").read_text())
+        self.assertEqual(saved["refresh_token"], USER_ADC["refresh_token"])
+        self.assertEqual(saved["quota_project_id"], "personal-proj")
+        self.assertEqual(stat.S_IMODE(self.adc("personal").stat().st_mode), 0o600)
+        report = self.report(out)
+        self.assertEqual((report["adc_file"], report["adc_account"]), ("ok", "Me@Example.COM"))
+        self.assertEqual(report["terraform"], "ok (terraform)")
+        self.assertEqual(len(self.posts), 2)   # the report reuses the account checked before saving
+        self.assertNotIn(TOKEN, out + err)
+        self.assertFalse(any(TOKEN in url for url, _ in self.posts))
+
+    def test_save_adc_wrong_account_writes_nothing(self) -> None:
+        with self.google("me@example.com"):
+            code, out, err = self.main("setup", "--profile", "work", "--save-adc")
+        self.assertEqual(code, 2)
+        self.assertFalse((self.cfg_dir / "adc").exists())
+        for text in ("me@example.com", "me@work.example", "nothing saved", "gcloud auth application-default login",
+                     "media-cloud-render setup --profile work --save-adc"):
+            self.assertIn(text, err)
+        self.assertNotIn(TOKEN, out + err)
+        self.quiet_mock.assert_not_called()   # not even the gcloud configuration is touched
+        self.run_mock.assert_not_called()
+
+    def test_save_adc_without_profile_account_warns(self) -> None:
+        with self.google("someone@example.com"):
+            code, out, err = self.main("setup", "--profile", "noacct", "--save-adc", tools=("tofu", "node"))
+        self.assertEqual(code, 0, err)
+        self.assertTrue(self.adc("noacct").exists())
+        self.assertIn("warning", err)
+        self.assertIn("someone@example.com", err)
+        report = self.report(out)
+        self.assertEqual(report["adc_account"], "someone@example.com")
+        self.assertEqual(report["terraform"], "ok (tofu)")
+
+    def test_save_adc_unverifiable_writes_nothing(self) -> None:
+        refused = cr.CloudRenderError(f"{cr.TOKEN_URL} answered 400: Token has been expired or revoked.")
+        with mock.patch.object(cr, "post_form", side_effect=refused):
+            code, _, err = self.main("setup", "--profile", "personal", "--save-adc")
+        self.assertEqual(code, 2)
+        self.assertFalse((self.cfg_dir / "adc").exists())
+        self.assertIn("expired or revoked", err)
+        self.assertIn("nothing saved", err)
+        self.gcloud_adc.write_text(json.dumps({"type": "service_account", "client_email": "sa@example.com"}))
+        code, _, err = self.main("setup", "--profile", "personal", "--save-adc")
+        self.assertEqual(code, 2)
+        self.assertIn("service_account", err)
+        self.assertFalse((self.cfg_dir / "adc").exists())
+
+    def test_plain_setup_reports_existing_file_account(self) -> None:
+        self.adc("work").parent.mkdir()
+        self.adc("work").write_text(json.dumps(USER_ADC))
+        with self.google("me@example.com"):
+            code, out, _ = self.main("setup", "--profile", "work")
+        report = self.report(out)
+        self.assertEqual(code, 1)
+        self.assertEqual(report["adc_account"], "me@example.com")
+        self.assertTrue(report["adc_file"].startswith("belongs to me@example.com, not me@work.example"))
+        with self.google("ME@work.example"):
+            code, out, _ = self.main("setup", "--profile", "work")
+        self.assertEqual(code, 0)
+        self.assertEqual(self.report(out)["adc_file"], "ok")
+
+    def test_missing_terraform_hint_uses_hashicorp_tap(self) -> None:
+        code, out, _ = self.main("setup", "--profile", "personal", tools=("node",))
+        self.assertEqual(code, 1)
+        self.assertIn("brew install hashicorp/tap/terraform", self.report(out)["terraform"])
+        self.assertIsNone(self.report(out)["adc_account"])
+
+
+class TokenRequestTests(unittest.TestCase):
+    def test_post_form_sends_the_token_in_the_body(self) -> None:
+        reply = mock.MagicMock()
+        reply.__enter__.return_value.read.return_value = b'{"email": "me@example.com"}'
+        with mock.patch("urllib.request.urlopen", return_value=reply) as urlopen:
+            self.assertEqual(cr.post_form(cr.TOKENINFO_URL, {"access_token": TOKEN}), {"email": "me@example.com"})
+        req = urlopen.call_args.args[0]
+        self.assertEqual(req.get_method(), "POST")
+        self.assertEqual(req.full_url, cr.TOKENINFO_URL)
+        self.assertEqual(req.data, f"access_token={TOKEN}".encode())
+
+    def test_post_form_error_names_the_reason_not_the_token(self) -> None:
+        body = io.BytesIO(b'{"error": "invalid_token", "error_description": "Invalid Value"}')
+        refused = urllib.error.HTTPError(cr.TOKENINFO_URL, 400, "Bad Request", email.message.Message(), body)
+        with mock.patch("urllib.request.urlopen", side_effect=refused), self.assertRaises(cr.CloudRenderError) as ctx:
+            cr.post_form(cr.TOKENINFO_URL, {"access_token": TOKEN})
+        self.assertIn("Invalid Value", str(ctx.exception))
+        self.assertNotIn(TOKEN, str(ctx.exception))
+
+    def test_adc_account_mints_then_asks_tokeninfo(self) -> None:
+        replies = [{"access_token": TOKEN}, {"email": "me@example.com"}]
+        with mock.patch.object(cr, "post_form", side_effect=replies) as post:
+            self.assertEqual(cr.adc_account(USER_ADC), "me@example.com")
+        self.assertEqual([c.args[0] for c in post.call_args_list], [cr.TOKEN_URL, cr.TOKENINFO_URL])
+        with mock.patch.object(cr, "post_form", side_effect=[{"access_token": TOKEN}, {"aud": "x"}]), \
+                self.assertRaises(cr.CloudRenderError):
+            cr.adc_account(USER_ADC)
+
+
+class TerraformTests(CloudEnvCase):
+    def test_terraform_preferred_then_tofu(self) -> None:
+        for tools, expected in ((("terraform", "tofu"), "terraform"), (("tofu",), "tofu"), ((), None)):
+            with mock.patch("shutil.which", lambda b, t=tools: f"/opt/bin/{b}" if b in t else None):
+                self.assertEqual(cr.terraform_bin(), expected)
+
+    def test_deploy_without_either_gives_the_install_hint(self) -> None:
+        code, _, err = self.main("deploy", "--profile", "work", "--yes", tools=())
+        self.assertEqual(code, 2)
+        self.assertIn("brew tap hashicorp/tap && brew install hashicorp/tap/terraform", err)
+        self.assertIn("brew install opentofu", err)
+
+    def test_destroy_runs_tofu_when_terraform_is_missing(self) -> None:
+        stack_dir = self.cfg_dir / "cloudrun" / "work"
+        stack_dir.mkdir(parents=True)
+        (stack_dir / "stack.json").write_text(json.dumps({"project": "work-proj", "region": "us-central1",
+                                                          "bucketName": "b", "image": "img", "tfstate_bucket": "tfb"}))
+        with mock.patch.object(cr, "run") as run:
+            code, _, err = self.main("destroy", "--profile", "work", "--yes", tools=("tofu",))
+        self.assertEqual(code, 0, err)
+        self.assertEqual([c.args[0][:2] for c in run.call_args_list], [["tofu", "init"], ["tofu", "destroy"]])
+        self.assertFalse((stack_dir / "stack.json").exists())
 
 
 if __name__ == "__main__":

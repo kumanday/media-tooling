@@ -8,6 +8,24 @@ Narration (`media-tts-frames`), music (`media-video-music`) and generated shots 
 calls and run the same anywhere; only the HyperFrames render moves to the cloud. Browser captures that need a GPU
 (WebGL maps) stay local.
 
+## Prerequisites
+
+- the Google Cloud CLI (`gcloud`) and Node.js (the Cloud Run adapter SDK runs in Node)
+- Terraform or OpenTofu. Homebrew removed `terraform` from homebrew-core after the license change, so
+  `brew install terraform` fails with "No available formula"; install it from HashiCorp's tap, or install OpenTofu:
+
+  ```bash
+  brew tap hashicorp/tap
+  brew install hashicorp/tap/terraform
+  ```
+
+  ```bash
+  brew install opentofu
+  ```
+
+  `media-cloud-render` runs `terraform` when it is on `PATH` and `tofu` otherwise (for `init`, `apply`, `output` and
+  `destroy`); `setup` reports which one it found.
+
 ## Profiles
 
 Profiles live in `profiles.toml` in your private media-tooling folder (`~/.config/media-tooling/`, or
@@ -65,12 +83,22 @@ media-cloud-render setup --profile client     # creates the gcloud configuration
 gcloud auth login me@client.example --configuration client-cfg
 gcloud auth application-default login         # sign in as the profile's account
 media-cloud-render setup --profile client --save-adc
-brew install terraform
 ```
 
 `--save-adc` copies the current Application Default Credentials into `~/.config/media-tooling/adc/<profile>.json`
 (mode 600, quota project set to the profile's project). Afterwards you can sign Application Default Credentials back
 into your usual account; the profile keeps its own copy.
+
+The browser sign-in of `gcloud auth application-default login` does not show which of your Google accounts it used,
+so `--save-adc` checks first: it mints a short-lived access token from the credentials and asks Google's tokeninfo
+endpoint for the account's email (the token travels only in request bodies and is never printed). If that email is
+not the profile's `account` (compared case-insensitively), the command exits with an error that names both accounts,
+saves nothing, and asks you to run `gcloud auth application-default login` again with the right account. A profile
+without `account` is saved with a warning that shows the detected email. Only user credentials can be checked; to use
+a service-account key, point the profile's `adc_file` at it instead.
+
+Plain `setup` reports the account of the profile's saved credential file (`adc_account`), flags `adc_file` when that
+account is not the profile's `account`, and shows whether it found `terraform` or `tofu`.
 
 ## Deploy (billable; asks first)
 
