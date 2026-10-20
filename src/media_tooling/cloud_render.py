@@ -36,9 +36,11 @@ from __future__ import annotations
 
 import argparse
 import fnmatch
+import glob
 import json
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -47,7 +49,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from datetime import UTC, datetime
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 from media_tooling.local_config import (
@@ -88,6 +90,13 @@ MEDIA_EXTS = {".mp4", ".mov", ".webm", ".mkv", ".m4v", ".mp3", ".wav", ".m4a", "
 REF_ATTR = re.compile(r"""\b(?:src|href|poster|data-src)\s*=\s*["']([^"'#?]+)""", re.I)
 REF_URL = re.compile(r"""url\(\s*["']?([^"')#?]+)""", re.I)
 PIN = re.compile(r"hyperframes@(\d+\.\d+\.\d+)")
+DOCKERFILE = "packages/gcp-cloud-run/Dockerfile"
+# Cloud Run runs linux/amd64. The Dockerfile reads BuildKit's automatic TARGETARCH, which Cloud Build's default
+# (legacy) docker builder leaves empty, so the build turns BuildKit on and passes the value as well.
+IMAGE_ARCH = "amd64"
+# never read by the image build; the producer's test fixtures alone are several hundred MB
+BUILD_SKIP = ("**/node_modules/**", "**/dist/**", "**/coverage/**", "**/output/**", "**/tests/**",
+              "**/*.test.ts", "**/*.test.tsx")
 # Homebrew dropped terraform from homebrew-core after the license change; OpenTofu runs the same module
 TERRAFORM_INSTALL = "brew tap hashicorp/tap && brew install hashicorp/tap/terraform (or OpenTofu: brew install opentofu)"
 TOKEN_URL = "https://oauth2.googleapis.com/token"
@@ -371,6 +380,62 @@ def run_runner(rt: Path, job: dict[str, Any], env: dict[str, str]) -> dict[str, 
     return json.loads(out.strip().splitlines()[-1])
 
 
+# ── render image ─────────────────────────────────────────────────────────────────────────────────────────────────
+
+
+def dockerfile_sources(dockerfile: Path) -> list[str]:
+    """Build-context paths that the Dockerfile's COPY/ADD instructions read (not files copied from another stage)."""
+    sources: list[str] = []
+    for line in re.sub(r"\\\r?\n", " ", dockerfile.read_text()).splitlines():
+        words = line.split(None, 1)
+        if len(words) < 2 or words[0].upper() not in ("COPY", "ADD"):
+            continue
+        rest, flags = words[1].strip(), []
+        while rest.startswith("--"):
+            flag, _, rest = rest.partition(" ")
+            flags.append(flag)
+            rest = rest.strip()
+        if any(f.startswith("--from") for f in flags):
+            continue
+        args = json.loads(rest) if rest.startswith("[") else shlex.split(rest)
+        sources += [a for a in args[:-1] if not a.startswith("<<") and a not in sources]
+    return sources
+
+
+def build_ignore(sources: list[str]) -> list[str]:
+    """A .gcloudignore that uploads only these context paths, minus BUILD_SKIP (gitignore rules; the last match wins).
+
+    The upstream repository has no ignore file for the image, and without one Cloud Build uploads all of it."""
+    if any(s.rstrip("/") in (".", "") for s in sources):
+        return list(BUILD_SKIP)
+    lines = ["**"]
+    for src in sources:
+        path = PurePosixPath(src.rstrip("/"))
+        # an excluded directory hides everything below it, so re-include each parent before the path itself
+        for line in (*(f"!{parent}/" for parent in reversed(path.parents[:-1])), f"!{path}", f"!{path}/**"):
+            if line not in lines:
+                lines.append(line)
+    return [*lines, *BUILD_SKIP]
+
+
+def build_image(src: Path, image: str, project: str, region: str, env: dict[str, str]) -> None:
+    """Build and push the render image with Cloud Build from a HyperFrames source checkout."""
+    sources = dockerfile_sources(src / DOCKERFILE)
+    missing = [s for s in sources if not glob.glob(s.rstrip("/"), root_dir=src)]
+    if not sources or missing:
+        raise CloudRenderError(f"{src / DOCKERFILE} copies files the checkout does not have: "
+                               f"{', '.join(missing) or 'no COPY sources found'}")
+    ignore = src / ".gcloudignore-hyperframes"
+    ignore.write_text("\n".join(build_ignore(sources)) + "\n")
+    config = src / ".cloudbuild-hyperframes.yaml"
+    config.write_text("\n".join([
+        "steps:", "- name: gcr.io/cloud-builders/docker", '  env: ["DOCKER_BUILDKIT=1"]',
+        f'  args: ["build","--build-arg","TARGETARCH={IMAGE_ARCH}","-f","{DOCKERFILE}","-t","{image}","."]',
+        f'images: ["{image}"]', "timeout: 3600s", "options:", "  machineType: E2_HIGHCPU_8", ""]))
+    run(["gcloud", "builds", "submit", str(src), "--project", project, "--region", region,
+         "--config", str(config), "--ignore-file", str(ignore), "--timeout", "3600s"], env)
+
+
 # ── subcommands ──────────────────────────────────────────────────────────────────────────────────────────────────
 
 
@@ -466,21 +531,21 @@ def cmd_deploy(args: argparse.Namespace) -> int:
             "This enables APIs, builds an image with Cloud Build, and creates billable resources", args.yes)
 
     run(["gcloud", "services", "enable", *GCP_APIS, "--project", project], env)
+    # Google creates the Workflows service agent lazily, and creating the workflow fails until it exists
+    agent = ["gcloud", "beta", "services", "identity", "create", "--service=workflows.googleapis.com", "--project", project]
+    res = quiet(agent, {**env, "CLOUDSDK_CORE_DISABLE_PROMPTS": "1"})
+    if res.returncode:
+        print(f"warning: could not create the Workflows service agent ({res.stderr.strip()[-300:]}); if creating "
+              f"the workflow fails, run `{' '.join(agent)}` and deploy again", file=sys.stderr)
     if quiet(["gcloud", "artifacts", "repositories", "describe", ARTIFACT_REPO, "--location", region, "--project", project], env).returncode:
         run(["gcloud", "artifacts", "repositories", "create", ARTIFACT_REPO, "--repository-format=docker",
              "--location", region, "--project", project], env)
     if not args.image:
         src = cache_dir() / "hyperframes-src" / version
-        if not (src / "packages" / "gcp-cloud-run" / "Dockerfile").exists():
+        if not (src / DOCKERFILE).exists():
             src.parent.mkdir(parents=True, exist_ok=True)
             run(["git", "clone", "--depth", "1", "--branch", f"v{version}", HYPERFRAMES_REPO, str(src)], dict(os.environ))
-        build = src / ".cloudbuild-hyperframes.yaml"
-        build.write_text("\n".join([
-            "steps:", "- name: gcr.io/cloud-builders/docker",
-            f'  args: ["build","-f","packages/gcp-cloud-run/Dockerfile","-t","{image}","."]',
-            f'images: ["{image}"]', "timeout: 3600s", "options:", "  machineType: E2_HIGHCPU_8", ""]))
-        run(["gcloud", "builds", "submit", str(src), "--project", project, "--region", region,
-             "--config", str(build), "--timeout", "3600s"], env)
+        build_image(src, image, project, region, env)
 
     if quiet(["gcloud", "storage", "buckets", "describe", f"gs://{state_bucket}", "--project", project], env).returncode:
         run(["gcloud", "storage", "buckets", "create", f"gs://{state_bucket}", "--project", project,
