@@ -122,7 +122,6 @@ Avoid these 13 patterns — they have been proven to produce broken or low-quali
 11. **Editing before confirming strategy with user** — Violates Hard Rule 11. Use explicit approval of the editing plan or an autonomous request covering that scope.
 12. **Cutting inside a word** — Violates Hard Rule 6. Always cut at word boundaries to preserve speech clarity.
 13. **Assuming content type** — Never assume a file is "podcast", "interview", etc. Always generalize processing to work for any spoken-media content.
-{{MANAGED_BLOCK_END}}
 
 For vertical edits, use EDL `reframe` for source-pixel geometry before draft scaling
 and `transcripts` to map source names to existing JSON transcripts. Preserve
@@ -130,3 +129,4 @@ reviewed SRT copy and timing with `subtitles.rechunk: false`.
 `media-verify` covers duration, internal cut discontinuities/audio pops, and grade.
 Record separate subtitle/overlay visual review and loudness measurements. Contrast
 checks with zero measurements need assembled-frame review, including endpoints.
+{{MANAGED_BLOCK_END}}

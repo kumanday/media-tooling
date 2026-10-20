@@ -97,6 +97,26 @@ class ProjectInitTests(unittest.TestCase):
             self.assertNotIn("old block", contents)
             self.assertEqual(contents.count(MANAGED_BLOCK_START), 1)
 
+    def test_rendered_block_has_nothing_after_its_end_marker(self) -> None:
+        # anything after the marker would land outside the block and be added again on every re-run
+        block = render_project_agents_block(Path("/tmp/skills"))
+        self.assertTrue(block.rstrip().endswith(MANAGED_BLOCK_END))
+
+    def test_upsert_project_agents_twice_changes_nothing(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_dir = Path(temp_dir)
+            agents_path = project_dir / "AGENTS.md"
+            agents_path.write_text("# Notes before\n\n", encoding="utf-8")
+            upsert_project_agents(project_dir=project_dir, skills_dir=Path("/tmp/skills"))
+            agents_path.write_text(agents_path.read_text(encoding="utf-8") + "\nMy notes after.\n", encoding="utf-8")
+            first = agents_path.read_text(encoding="utf-8")
+
+            upsert_project_agents(project_dir=project_dir, skills_dir=Path("/tmp/skills"))
+
+            self.assertEqual(agents_path.read_text(encoding="utf-8"), first)
+            self.assertEqual(first.count("For vertical edits"), 1)
+            self.assertEqual(first.count("My notes after."), 1)
+
     def test_render_project_agents_block_lists_all_skill_paths(self) -> None:
         block = render_project_agents_block(Path("/tmp/toolkit-skills"))
 
