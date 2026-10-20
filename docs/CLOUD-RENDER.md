@@ -106,11 +106,17 @@ account is not the profile's `account`, and shows whether it found `terraform` o
 media-cloud-render deploy --profile client
 ```
 
-Enables the Cloud Run, Workflows, Artifact Registry, Cloud Build, Monitoring and Storage APIs; builds the render
+Enables the Cloud Run, Workflows, Artifact Registry, Cloud Build, Monitoring and Storage APIs, and creates the
+Workflows service agent (Google creates it lazily, and until it exists creating the workflow fails); builds the render
 image with Cloud Build from the HyperFrames source at the profile's version (the npm package cannot build it); creates
 the Terraform state bucket; applies the stack (render bucket, Cloud Run service, Workflows definition, two
 least-privilege service accounts, alert policies). The stack scales to zero when idle; costs come from renders, the
 image in Artifact Registry and objects in the buckets.
+
+The image build uploads only the files the image's Dockerfile copies (under 10 MB; the rest of the HyperFrames
+checkout is close to 1 GB, mostly test fixtures), stops before uploading if the checkout lacks one of them, and builds
+with BuildKit for `linux/amd64`, the platform Cloud Run runs. To redeploy with an image the profile's project already
+has (for example after a failed Terraform step), pass `--image REGISTRY/PATH:TAG` to skip the build.
 
 ## Render
 

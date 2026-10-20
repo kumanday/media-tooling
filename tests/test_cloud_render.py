@@ -15,6 +15,7 @@ from typing import Any
 from unittest import mock
 
 from media_tooling import cloud_render as cr
+from media_tooling.local_config import Resolved
 
 CONFIG = """
 default_profile = "personal"
@@ -66,6 +67,12 @@ def make_project(root: Path) -> Path:
     return proj
 
 
+def resolve(project_dir: Path, cfg: dict[str, Any], cli_profile: str | None = None) -> Resolved:
+    r = cr.resolve_profile(project_dir, cfg, cli_profile)
+    assert r is not None
+    return r
+
+
 class ProfileTests(unittest.TestCase):
     def setUp(self) -> None:
         self.tmp = tempfile.TemporaryDirectory()
@@ -88,16 +95,16 @@ class ProfileTests(unittest.TestCase):
         cfg = cr.load_config()
         work = self.home / "dev" / "work" / "blog" / "slot"
         other = self.home / "dev" / "other" / "slot"
-        self.assertEqual(cr.resolve_profile(work, cfg).name, "work")
-        self.assertEqual(cr.resolve_profile(other, cfg).name, "personal")
-        self.assertEqual(cr.resolve_profile(other, cfg).reason, "default_profile")
-        self.assertEqual(cr.resolve_profile(work, cfg, "personal").name, "personal")
+        self.assertEqual(resolve(work, cfg).name, "work")
+        self.assertEqual(resolve(other, cfg).name, "personal")
+        self.assertEqual(resolve(other, cfg).reason, "default_profile")
+        self.assertEqual(resolve(work, cfg, "personal").name, "personal")
 
     def test_project_pin_beats_rules(self) -> None:
         cfg = cr.load_config()
         blog = self.home / "dev" / "work" / "blog"
         (blog / "media-tooling.toml").write_text('render_profile = "personal"\n')
-        r = cr.resolve_profile(blog / "slot", cfg)
+        r = resolve(blog / "slot", cfg)
         self.assertEqual(r.name, "personal")
         self.assertIn("media-tooling.toml", r.reason)
 
@@ -412,6 +419,33 @@ class TerraformTests(CloudEnvCase):
         self.assertIn("brew tap hashicorp/tap && brew install hashicorp/tap/terraform", err)
         self.assertIn("brew install opentofu", err)
 
+    def test_deploy_creates_the_workflows_agent_before_terraform(self) -> None:
+        (self.cfg_dir / "adc").mkdir()
+        (self.cfg_dir / "adc" / "work.json").write_text("{}")
+        runtime = self.root / "rt"
+        (runtime / "node_modules" / "@hyperframes" / "gcp-cloud-run" / "terraform").mkdir(parents=True)
+        calls: list[list[str]] = []
+
+        def quiet(cmd: list[str], env: dict[str, str]) -> subprocess.CompletedProcess[str]:
+            calls.append(cmd)
+            return subprocess.CompletedProcess(cmd, 0, "", "")
+
+        def run(cmd: list[str], env: dict[str, str], cwd: Path | None = None, capture: bool = False,
+                check: bool = True) -> str:
+            calls.append(cmd)
+            return "out"
+
+        with mock.patch.object(cr, "quiet", side_effect=quiet), mock.patch.object(cr, "run", side_effect=run), \
+                mock.patch.object(cr, "ensure_runtime", return_value=runtime):
+            code, _, err = self.main("deploy", "--profile", "work", "--image", "reg/img:1", "--yes")
+        self.assertEqual(code, 0, err)
+        heads = [" ".join(c[:4]) for c in calls]
+        agent = heads.index("gcloud beta services identity")
+        self.assertLess(heads.index("gcloud services enable run.googleapis.com"), agent)
+        self.assertLess(agent, heads.index("terraform apply -input=false -auto-approve"))
+        self.assertEqual(calls[agent][-2:], ["--project", "work-proj"])
+        self.assertNotIn("gcloud builds submit", " | ".join(heads))   # --image skips the build
+
     def test_destroy_runs_tofu_when_terraform_is_missing(self) -> None:
         stack_dir = self.cfg_dir / "cloudrun" / "work"
         stack_dir.mkdir(parents=True)
@@ -422,6 +456,73 @@ class TerraformTests(CloudEnvCase):
         self.assertEqual(code, 0, err)
         self.assertEqual([c.args[0][:2] for c in run.call_args_list], [["tofu", "init"], ["tofu", "destroy"]])
         self.assertFalse((stack_dir / "stack.json").exists())
+
+
+DOCKERFILE = """\
+FROM node:22 AS base
+# COPY commented/out.txt nowhere
+COPY package.json bun.lock ./
+COPY packages/core/package.json \\
+     packages/core/package.json
+COPY --chown=node:node scripts/build.mjs scripts/build.mjs
+FROM base AS runtime
+COPY --from=base /app/dist /app/dist
+copy packages/core/ packages/core/
+ADD ["assets/logo.svg", "/app/logo.svg"]
+COPY <<EOF /app/inline.txt
+EOF
+RUN bun run build
+"""
+
+
+class RenderImageTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.tmp = tempfile.TemporaryDirectory()
+        self.src = Path(self.tmp.name)
+        dockerfile = self.src / cr.DOCKERFILE
+        dockerfile.parent.mkdir(parents=True)
+        dockerfile.write_text(DOCKERFILE)
+        for f in ("package.json", "bun.lock", "packages/core/package.json", "packages/core/src/index.ts",
+                  "scripts/build.mjs", "assets/logo.svg"):
+            (self.src / f).parent.mkdir(parents=True, exist_ok=True)
+            (self.src / f).write_text("x")
+
+    def tearDown(self) -> None:
+        self.tmp.cleanup()
+
+    def test_dockerfile_sources_reads_the_build_context_only(self) -> None:
+        self.assertEqual(cr.dockerfile_sources(self.src / cr.DOCKERFILE),
+                         ["package.json", "bun.lock", "packages/core/package.json", "scripts/build.mjs",
+                          "packages/core/", "assets/logo.svg"])
+
+    def test_build_ignore_reincludes_parents_before_paths(self) -> None:
+        lines = cr.build_ignore(["package.json", "packages/core/package.json", "packages/core/"])
+        self.assertEqual(lines[0], "**")
+        self.assertLess(lines.index("!packages/"), lines.index("!packages/core/"))
+        self.assertLess(lines.index("!packages/core/"), lines.index("!packages/core/package.json"))
+        self.assertIn("!packages/core/**", lines)
+        self.assertEqual(len(lines), len(set(lines)))
+        self.assertEqual(lines[-len(cr.BUILD_SKIP):], list(cr.BUILD_SKIP))   # skips win over re-includes
+        self.assertEqual(cr.build_ignore(["./", "package.json"]), list(cr.BUILD_SKIP))
+
+    def test_build_image_turns_on_buildkit_and_uploads_the_filtered_context(self) -> None:
+        with mock.patch.object(cr, "run") as run:
+            cr.build_image(self.src, "reg/img:1", "proj", "us-central1", {"X": "1"})
+        cmd = run.call_args.args[0]
+        self.assertEqual(cmd[:4], ["gcloud", "builds", "submit", str(self.src)])
+        ignore = Path(cmd[cmd.index("--ignore-file") + 1])
+        self.assertIn("!scripts/build.mjs", ignore.read_text().splitlines())
+        config = Path(cmd[cmd.index("--config") + 1]).read_text()
+        self.assertIn('env: ["DOCKER_BUILDKIT=1"]', config)
+        self.assertIn(f'"--build-arg","TARGETARCH={cr.IMAGE_ARCH}"', config)
+        self.assertIn('images: ["reg/img:1"]', config)
+
+    def test_build_image_stops_before_upload_when_a_copied_file_is_missing(self) -> None:
+        (self.src / "scripts" / "build.mjs").unlink()
+        with mock.patch.object(cr, "run") as run, self.assertRaises(cr.CloudRenderError) as ctx:
+            cr.build_image(self.src, "reg/img:1", "proj", "us-central1", {})
+        self.assertIn("scripts/build.mjs", str(ctx.exception))
+        run.assert_not_called()
 
 
 if __name__ == "__main__":
