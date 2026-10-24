@@ -185,6 +185,16 @@ def words_from_alignment(prepared: Prepared, alignment: dict[str, Any], frame: i
     return words
 
 
+def voice_settings(a: argparse.Namespace) -> dict[str, Any]:
+    return {"stability": a.stability, "similarity_boost": a.similarity_boost, "style": a.style,
+            "speed": a.speed, "use_speaker_boost": not a.no_speaker_boost}
+
+
+def cache_key(spoken: str, voice_id: str | None, model: str, language: str | None, settings: dict[str, Any]) -> str:
+    """The clip cache hash; a clip is re-voiced when this changes."""
+    return hashlib.sha256(json.dumps([spoken, voice_id, model, language, settings], sort_keys=True).encode()).hexdigest()[:16]
+
+
 def audio_duration(path: Path) -> float:
     out = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", str(path)],
                          capture_output=True, text=True, check=True).stdout
@@ -266,13 +276,12 @@ def main(argv: list[str] | None = None) -> int:
         if a.model.startswith("eleven_v4") and a.speed != 1.0:
             print(f"warning: {a.model} ignores --speed {a.speed}", file=sys.stderr)
         voice_id = None if a.dry_run else tts.resolve_voice_id(a.voice_id)
-        settings = {"stability": a.stability, "similarity_boost": a.similarity_boost, "style": a.style,
-                    "speed": a.speed, "use_speaker_boost": not a.no_speaker_boost}
+        settings = voice_settings(a)
         cache_path = voice_dir / CACHE_NAME
         cache: dict[str, Any] = json.loads(cache_path.read_text(encoding="utf-8")) if cache_path.exists() else {}
         voices: list[dict[str, Any]] = []
         for i, p in enumerate(prepared):
-            key = hashlib.sha256(json.dumps([p.spoken, voice_id, a.model, a.language, settings], sort_keys=True).encode()).hexdigest()[:16]
+            key = cache_key(p.spoken, voice_id, a.model, a.language, settings)
             clip = voice_dir / f"{p.frame:02d}.mp3"
             rec = cache.get(str(p.frame))
             wanted = only is None or p.frame in only

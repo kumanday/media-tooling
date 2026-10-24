@@ -188,6 +188,42 @@ windows, output-time word clocks and caption groups (see its docstring). Tune
 shot needs a scene lead of 2-4 s, so the shot plays before the first word. Use
 `--caption-chars 46` for landscape and 28 for portrait.
 
+### Surgical voice edits (media-tts-frames takes)
+
+Once a per-frame take is approved, small notes (a longer pause, a dropped
+phrase, one added sentence) don't need a re-voice, which would change the
+delivery of the whole line. These scripts edit the clip in place and keep
+`audio_meta.json` and the media-tts-frames cache coherent, so a later
+`media-tts-frames` run is a cache hit and writes the same timings back. Each
+copies the originals into `--backup` first; join points land on the quietest
+10 ms of an inter-word gap, never inside a word, with 30 ms fades. See each
+script's docstring.
+
+1. **Holds:** `scripts/insert_holds.py --backup qa/voice-backup 2:launch:1.5
+   4:today#2:2.0` adds 1.5 s of silence after "launch" in frame 2 and 2 s after
+   the second "today" in frame 4. The text and cache hash don't change.
+2. **Cuts:** edit `SCRIPT.md` first, keep the old copy, then `scripts/splice_takes.py
+   --backup qa/voice-backup --tts-args "<media-tts-frames options>" cut 3 Well,
+   today --old-script qa/SCRIPT.before.md` removes "Well," up to the gap before
+   "today". The hash, words, cues and `duration_s` are rebuilt for the new text.
+3. **Appends:** voice only the new sentence with `media-tts-frames` in a scratch
+   root (same frame number, voice and options), add it to the frame's line in
+   `SCRIPT.md`, then `scripts/splice_takes.py --backup qa/voice-backup --tts-args
+   "<options>" append 5 qa/scratch-frame-05 --gap 0.75`.
+4. **Frames:** run `scripts/retime_frames.py` with the backup's
+   `audio_meta.json` as `--old-audio-meta`, so built frames follow the edited take.
+5. **Storyboard:** when the composition keeps a scene source (`SOURCE.md`, one
+   `## Scene N — Title` block with fields, `### Visual` and `### Narration`),
+   `scripts/storyboard_from_source.py` rebuilds every `STORYBOARD.md` frame
+   block from it and the new `audio_meta.json`: durations, voiceover, the cue
+   timeline and `@cue [t=..]` marks in the visual direction. It keeps the
+   frontmatter (with the new total), "Video direction", and each frame's `src`
+   and `status`.
+
+`--tts-args` must repeat the options the take was voiced with (voice, model,
+language, settings, pronunciations, `--tail`): the cut refuses to run when the
+cached hash doesn't match.
+
 ## 8. Real footage capture
 
 - **Browser:** use Playwright with Google Chrome (`channel: 'chrome'`, headless)
@@ -378,6 +414,7 @@ the slot's `tools/` or this skill's `scripts/`.
 | Voice reads an acronym as a word | pronunciation | spell it in the TTS text |
 | `--speed` has no effect | `eleven_v4` ignores it | pace with gaps |
 | A session wrote its own TTS script, or used an older model | an upstream workflow's TTS step, or a reference naming another model | `media-tts` / `media-tts-frames`; extend media-tooling if a feature is missing |
+| A small voice note means re-voicing a whole approved line | no surgical edit path | `scripts/insert_holds.py` for pauses, `scripts/splice_takes.py` for cuts and appended sentences, then `scripts/retime_frames.py` |
 | Frames out of sync after re-voicing | cue times hard-coded from the old take | `scripts/retime_frames.py`; for cue tables and helpers whose start is not the last argument add `--time-keys` / `--helper NAME:IDX`, then read `--audit` |
 | Map or WebGL capture has missing or blurry tiles | screenshot taken before the app finished loading | `frame_capture.cjs` `frame` hook that awaits the app's readiness |
 | Timing reports "no silence before segment" | two sentences voiced without a pause | merged automatically; otherwise re-voice |
