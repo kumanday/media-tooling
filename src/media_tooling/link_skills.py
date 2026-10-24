@@ -6,6 +6,13 @@ AGENTS.md. This command links each toolkit skill into the shared store
 store (``~/.claude/skills``) to those entries with relative symlinks, so every
 agent reads the same files and an upgrade reaches all of them.
 
+Antigravity reads neither store, only its own folders (``~/.gemini/skills``,
+``~/.gemini/antigravity/skills`` and ``~/.gemini/antigravity-cli/skills``), so each
+skill is also linked there, relative to the Claude store (the shared store when
+Claude Code is not linked), e.g. ``~/.gemini/skills/media-tts ->
+../../.claude/skills/media-tts``. A folder is linked only when its parent exists,
+so agents that are not installed get nothing.
+
 Run it after installing or upgrading media-tooling. The link targets live inside
 the installed package, whose path can change when uv rebuilds the tool
 environment, so re-running is how stale links get repaired.
@@ -48,6 +55,16 @@ def default_claude_dir() -> Path:
     return (Path(base).expanduser() if base else Path.home() / ".claude") / "skills"
 
 
+def default_antigravity_dirs() -> tuple[Path, ...]:
+    gemini = Path.home() / ".gemini"
+    return (gemini / "skills", gemini / "antigravity" / "skills", gemini / "antigravity-cli" / "skills")
+
+
+def _relative(store: Path, name: str, link_dir: Path) -> str:
+    # realpath on the directories (not the link) so the relative path is the same on every run
+    return os.path.relpath(os.path.join(os.path.realpath(store), name), os.path.realpath(link_dir))
+
+
 def _same_target(link: Path, target: str) -> bool:
     return link.is_symlink() and os.readlink(link) == target
 
@@ -81,8 +98,10 @@ def place_link(link: Path, target: str, *, force: bool, dry_run: bool, repoint: 
 
 
 def link_skills(*, skills_dir: Path, agents_dir: Path, claude_dir: Path | None, names: tuple[str, ...],
-                force: bool = False, dry_run: bool = False, repoint: bool = True) -> list[Action]:
+                antigravity_dirs: tuple[Path, ...] = (), force: bool = False, dry_run: bool = False,
+                repoint: bool = True) -> list[Action]:
     actions: list[Action] = []
+    store = claude_dir if claude_dir is not None else agents_dir
     for name in names:
         source = skills_dir / name
         if not (source / "SKILL.md").is_file():
@@ -90,9 +109,11 @@ def link_skills(*, skills_dir: Path, agents_dir: Path, claude_dir: Path | None, 
         shared = agents_dir / name
         actions.append(place_link(shared, str(source.resolve()), force=force, dry_run=dry_run, repoint=repoint))
         if claude_dir is not None:
-            # realpath on the directories (not the link) so the relative path is the same on every run
-            relative = os.path.relpath(os.path.join(os.path.realpath(agents_dir), name), os.path.realpath(claude_dir))
-            actions.append(place_link(claude_dir / name, relative, force=force, dry_run=dry_run, repoint=repoint))
+            actions.append(place_link(claude_dir / name, _relative(agents_dir, name, claude_dir), force=force,
+                                      dry_run=dry_run, repoint=repoint))
+        for link_dir in antigravity_dirs:
+            actions.append(place_link(link_dir / name, _relative(store, name, link_dir), force=force,
+                                      dry_run=dry_run, repoint=repoint))
     return actions
 
 
@@ -102,14 +123,15 @@ def toolkit_skill_names(skills_dir: Path) -> set[str]:
 
 
 def link_private_skills(*, private_dir: Path, agents_dir: Path, claude_dir: Path | None, reserved: set[str],
-                        force: bool = False, dry_run: bool = False) -> list[Action]:
+                        antigravity_dirs: tuple[Path, ...] = (), force: bool = False,
+                        dry_run: bool = False) -> list[Action]:
     actions: list[Action] = []
     for name in private_skill_names(private_dir):
         if name in reserved:
             actions.append(Action(private_dir / name, "skipped", "same name as a toolkit skill; rename the private one"))
             continue
         actions.extend(link_skills(skills_dir=private_dir, agents_dir=agents_dir, claude_dir=claude_dir, names=(name,),
-                                   force=force, dry_run=dry_run, repoint=False))
+                                   antigravity_dirs=antigravity_dirs, force=force, dry_run=dry_run, repoint=False))
     return actions
 
 
@@ -120,6 +142,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--claude-dir", default=None,
                    help="Claude Code skill store (default $CLAUDE_CONFIG_DIR/skills or ~/.claude/skills)")
     p.add_argument("--no-claude", action="store_true", help="do not link into the Claude Code store")
+    p.add_argument("--antigravity-dir", action="append", default=None, metavar="DIR",
+                   help="Antigravity skill folder to link into; repeat for several. Replaces the defaults "
+                        "~/.gemini/skills, ~/.gemini/antigravity/skills and ~/.gemini/antigravity-cli/skills")
+    p.add_argument("--no-antigravity", action="store_true", help="do not link into any Antigravity skill folder")
     p.add_argument("--force", action="store_true",
                    help="move an existing non-symlink entry aside (renamed *.bak-<time>) instead of skipping it")
     p.add_argument("--dry-run", action="store_true", help="report what would change without touching the filesystem")
@@ -133,15 +159,21 @@ def main(argv: list[str] | None = None) -> int:
     if claude_dir is not None and not claude_dir.parent.exists():
         print(f"Claude Code not found ({claude_dir.parent} is missing); linking the shared store only.")
         claude_dir = None
+    antigravity_dirs: tuple[Path, ...] = ()
+    if not a.no_antigravity:
+        candidates = tuple(Path(d).expanduser() for d in a.antigravity_dir) if a.antigravity_dir \
+            else default_antigravity_dirs()
+        # like Claude Code above: a folder whose agent is not installed (parent missing) is left alone
+        antigravity_dirs = tuple(d for d in candidates if d.parent.is_dir())
     try:
         skills_dir = resolve_toolkit_skills_dir()
         actions = link_skills(skills_dir=skills_dir, agents_dir=Path(a.agents_dir).expanduser(), claude_dir=claude_dir,
-                              names=SKILL_NAMES, force=a.force, dry_run=a.dry_run)
+                              names=SKILL_NAMES, antigravity_dirs=antigravity_dirs, force=a.force, dry_run=a.dry_run)
         private_dir = None if a.no_private else private_skills_dir(load_config(required=False))
         if private_dir is not None and private_dir.is_dir():
             actions += link_private_skills(private_dir=private_dir, agents_dir=Path(a.agents_dir).expanduser(),
                                            claude_dir=claude_dir, reserved=toolkit_skill_names(skills_dir),
-                                           force=a.force, dry_run=a.dry_run)
+                                           antigravity_dirs=antigravity_dirs, force=a.force, dry_run=a.dry_run)
     except (OSError, FileNotFoundError, LocalConfigError) as exc:
         print(str(exc), file=sys.stderr)
         return 1
