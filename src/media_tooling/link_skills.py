@@ -13,6 +13,11 @@ Claude Code is not linked), e.g. ``~/.gemini/skills/media-tts ->
 ../../.claude/skills/media-tts``. A folder is linked only when its parent exists,
 so agents that are not installed get nothing.
 
+The Claude Code and Antigravity links only point into another store, so an
+existing one that points elsewhere but still resolves to a skill is reported as
+``kept`` and left alone (``--force`` repoints it); a dangling one is repaired.
+The shared-store links point into the installed package and are always repaired.
+
 Run it after installing or upgrading media-tooling. The link targets live inside
 the installed package, whose path can change when uv rebuilds the tool
 environment, so re-running is how stale links get repaired.
@@ -46,7 +51,7 @@ from media_tooling.project_init import SKILL_NAMES, resolve_toolkit_skills_dir
 @dataclass
 class Action:
     path: Path
-    status: str  # linked, relinked, current, skipped, backed-up
+    status: str  # linked, relinked, current, kept, skipped, backed-up
     detail: str = ""
 
 
@@ -69,14 +74,18 @@ def _same_target(link: Path, target: str) -> bool:
     return link.is_symlink() and os.readlink(link) == target
 
 
-def place_link(link: Path, target: str, *, force: bool, dry_run: bool, repoint: bool = True) -> Action:
+def place_link(link: Path, target: str, *, force: bool, dry_run: bool, repoint: bool = True,
+               keep_working: bool = False) -> Action:
     """Point ``link`` at ``target``; never deletes a real file or directory.
 
     ``repoint=False`` also leaves alone a symlink that points somewhere else (unless ``force``), so linking one
-    source never silently takes over another source's entry.
+    source never silently takes over another source's entry. ``keep_working=True`` leaves alone a symlink that
+    points somewhere else but still resolves to a skill (unless ``force``); only dangling ones are repaired.
     """
     if _same_target(link, target):
         return Action(link, "current")
+    if keep_working and link.is_symlink() and (link / "SKILL.md").is_file() and not force:
+        return Action(link, "kept", f"working link to {os.readlink(link)}; pass --force to repoint it")
     if link.is_symlink() and not repoint and not force:
         return Action(link, "skipped", f"already links to {os.readlink(link)}; pass --force to repoint it")
     existed = link.is_symlink() or link.exists()
@@ -110,10 +119,10 @@ def link_skills(*, skills_dir: Path, agents_dir: Path, claude_dir: Path | None, 
         actions.append(place_link(shared, str(source.resolve()), force=force, dry_run=dry_run, repoint=repoint))
         if claude_dir is not None:
             actions.append(place_link(claude_dir / name, _relative(agents_dir, name, claude_dir), force=force,
-                                      dry_run=dry_run, repoint=repoint))
+                                      dry_run=dry_run, repoint=repoint, keep_working=True))
         for link_dir in antigravity_dirs:
             actions.append(place_link(link_dir / name, _relative(store, name, link_dir), force=force,
-                                      dry_run=dry_run, repoint=repoint))
+                                      dry_run=dry_run, repoint=repoint, keep_working=True))
     return actions
 
 
