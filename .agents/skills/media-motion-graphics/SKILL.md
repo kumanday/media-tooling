@@ -225,6 +225,9 @@ Its scripts are in `scripts/`:
   word clocks and captions.
 - `finish_delivery.py`: loudnorm, a true-peak limiter, measurement and `media-verify`.
 - `retime_frames.py`: moves hard-coded cue times in built frames onto a re-voiced take.
+- `insert_holds.py` and `splice_takes.py`: surgical edits to an approved media-tts-frames take
+  (silent holds, cut words, an appended sentence) that keep `audio_meta.json` and the cache coherent.
+- `storyboard_from_source.py`: rebuilds the `STORYBOARD.md` frame blocks from `SOURCE.md` and `audio_meta.json`.
 - `elevenlabs_music.py` and `elevenlabs_sfx.py`: optional text-prompted bed and Foley, when the user wants them.
 - `html_still.cjs`: thumbnails.
 - `frame_capture.cjs`: deterministic frame-by-frame capture of a web page or app from a scenario file.
