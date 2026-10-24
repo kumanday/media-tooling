@@ -89,7 +89,7 @@ media-tooling-init "$PROJECT_DIR"
 cd "$PROJECT_DIR"
 ```
 
-`media-tooling-link-skills` makes the `media-*` skills discoverable by coding agents (`~/.agents/skills`, plus `~/.claude/skills` for Claude Code). `media-tooling-init` creates the standard project directories and writes a minimal project-local `AGENTS.md` block that points at the centrally installed media-tooling skills. If `AGENTS.md` already exists, the command updates only its managed block instead of clobbering the file.
+`media-tooling-link-skills` makes the `media-*` skills discoverable by coding agents (`~/.agents/skills`, plus `~/.claude/skills` for Claude Code and `~/.gemini/skills`, `~/.gemini/antigravity/skills` and `~/.gemini/antigravity-cli/skills` for Antigravity). `media-tooling-init` creates the standard project directories and writes a minimal project-local `AGENTS.md` block that points at the centrally installed media-tooling skills. If `AGENTS.md` already exists, the command updates only its managed block instead of clobbering the file.
 
 If you prefer ad hoc execution instead of a persistent tool install, run the same bootstrap with `uvx`:
 
@@ -269,7 +269,7 @@ The underlying commands are:
 - `media-tooling-init`
   Create the standard project directories and write or refresh the managed `AGENTS.md` block for a media project workspace, plus a block for your private rules when a local profile applies (see [`docs/LOCAL-CONFIG.md`](./docs/LOCAL-CONFIG.md)).
 - `media-tooling-link-skills`
-  Link the installed skills, and your private skills from your local config folder, into `~/.agents/skills` and `~/.claude/skills` so coding agents discover them. Re-run after each upgrade.
+  Link the installed skills, and your private skills from your local config folder, into `~/.agents/skills`, `~/.claude/skills` and Antigravity's `~/.gemini/` skill folders so coding agents discover them. Re-run after each upgrade.
 - `media-cloud-render`
   Render a HyperFrames project on Google Cloud Run in parallel chunks, billed to the GCP project its render profile names (client and personal work kept apart, for example). See [`docs/CLOUD-RENDER.md`](./docs/CLOUD-RENDER.md).
 - `hyperframes` (optional)

@@ -43,7 +43,13 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 2. **Make the skills visible to coding agents.** This links the toolkit skills
    into `~/.agents/skills`, which Codex and other agents read, and from
    `~/.claude/skills` to those entries for Claude Code. If Claude Code isn't
-   installed, it links the shared store only.
+   installed, it links the shared store only. Antigravity reads only its own
+   folders, so the skills are also linked into `~/.gemini/skills`,
+   `~/.gemini/antigravity/skills` and `~/.gemini/antigravity-cli/skills`,
+   pointing at the Claude Code store (for example
+   `~/.gemini/skills/media-tts -> ../../.claude/skills/media-tts`). A folder is
+   linked only when its parent exists. `--antigravity-dir DIR` (repeatable)
+   replaces those folders and `--no-antigravity` skips them.
 
    ```bash
    media-tooling-link-skills

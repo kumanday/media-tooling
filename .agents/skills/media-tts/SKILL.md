@@ -23,7 +23,7 @@ Install the optional backend and provide credentials through the environment:
 
 ```bash
 uv tool install --reinstall "media-tooling[elevenlabs] @ git+https://github.com/kumanday/media-tooling"
-media-tooling-link-skills
+media-tooling-link-skills  # ~/.agents, ~/.claude and Antigravity's ~/.gemini skill folders
 export ELEVENLABS_API_KEY="..."
 export ELEVENLABS_VOICE_ID_EN="..."
 ```

@@ -61,6 +61,6 @@ Re-running `media-tooling-init` refreshes the block, and removes it when no prof
 
 Put your own skills in `skills/<skill>/SKILL.md` (for example a complete "blog article → explainer video" workflow
 that strings the toolkit's commands together). `media-tooling-link-skills` links them next to the toolkit's skills
-into `~/.agents/skills` and the Claude Code store, so every agent harness finds them. A private skill may not reuse
+into `~/.agents/skills`, the Claude Code store and Antigravity's skill folders, so every agent harness finds them. A private skill may not reuse
 the name of any skill the toolkit packages, and it never repoints an existing link to another source unless you pass
 `--force`; `--no-private` skips private skills altogether.
