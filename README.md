@@ -227,6 +227,8 @@ The main skills are:
   End-to-end orchestration skill for finished, broadcast-ready video production from raw source media.
 - [`media-tts`](./.agents/skills/media-tts/SKILL.md)
   Generates narration audio from project scripts through the configured TTS backend.
+- [`media-teleprompter`](./.agents/skills/media-teleprompter/SKILL.md)
+  Builds a karaoke teleprompter page timed to a reference take, for recording a script to camera.
 
 The underlying commands are:
 
@@ -236,6 +238,8 @@ The underlying commands are:
   Generate narration audio from a text, Markdown, or SRT script. ElevenLabs is the current backend (default model `eleven_v4`).
 - `media-tts-frames`
   Generate per-frame narration clips with word timings and the `audio_meta.json` that HyperFrames workflows (such as `faceless-explainer`) consume, from their `SCRIPT.md`.
+- `media-teleprompter`
+  Build a karaoke teleprompter web page from word timings (a `media-subtitle` transcript, a narration `timing.json` or an `audio_meta.json`) and an optional Markdown script. One line scrolls right to left in a band at the top of the screen; each word reaches a reading line when the reference take speaks it. Spelled-out numbers can be shown as digits (English and Spanish).
 - `media-video-music`
   Optional: score a finished video with ElevenLabs video-to-music (separate music and SFX stems), then mix the stems under the narration. The mix measures the narration, sets the music and SFX gains relative to it, ducks the music under the voice, normalizes loudness with one linear gain and a true-peak limiter, and prints the measured margins.
 - `media-batch-subtitle`

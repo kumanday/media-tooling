@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>__TITLE__</title>
+<style>
+  :root { --top: 0px; --band: 132px; --font: 58px; --anchor: 50; --ink: #eef3f4; --done: #4b585d; --now: #7fd1c4; --cue: #7aacf6; }
+  html, body { margin: 0; height: 100%; background: #000; color: var(--ink); overflow: hidden;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif; -webkit-font-smoothing: antialiased; }
+  #band { position: fixed; left: 0; right: 0; top: var(--top); height: var(--band); background: #05080a; overflow: hidden;
+    border-bottom: 1px solid #16232a; cursor: pointer; }
+  #track { position: absolute; left: 0; top: 50%; white-space: nowrap; font-size: var(--font); font-weight: 600; will-change: transform; }
+  .w { display: inline-block; margin-right: 0.3em; color: var(--ink); }
+  .w.done { color: var(--done); }
+  .w.now { color: transparent; -webkit-background-clip: text; background-clip: text;
+    background-image: linear-gradient(90deg, var(--now) var(--p, 0%), var(--ink) var(--p, 0%)); }
+  .w.cue { text-decoration: underline; text-decoration-thickness: 3px; text-underline-offset: 0.18em;
+    text-decoration-color: color-mix(in srgb, var(--cue) 70%, transparent); }
+  .w.done.cue { text-decoration-color: color-mix(in srgb, var(--cue) 25%, transparent); }
+  .sep { display: inline-block; width: 2.4em; text-align: center; color: #2c3f46; font-weight: 400; font-size: 0.45em; vertical-align: middle; }
+  .breath { display: inline-block; margin-right: 0.3em; color: #3b5057; font-weight: 400; letter-spacing: 0.2em; }
+  #mark { position: absolute; top: 10px; bottom: 10px; width: 2px; left: calc(var(--anchor) * 1%);
+    background: color-mix(in srgb, var(--now) 30%, transparent); }
+  #hud, #beat { position: absolute; top: 6px; font: 12px/1.3 ui-monospace, Menlo, Consolas, monospace; color: #5d6d73; }
+  #hud { right: 14px; text-align: right; }
+  #hud b { color: #8fa0a6; font-weight: 500; }
+  #beat { left: 14px; max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #prog { position: absolute; left: 0; bottom: 0; height: 2px; width: 0; background: #1f6f66; }
+  #count { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(5, 8, 10, 0.86);
+    font-size: calc(var(--font) * 1.1); font-weight: 700; color: var(--now); }
+  #help { position: fixed; left: 28px; right: 28px; top: calc(var(--top) + var(--band) + 28px); max-width: 820px; color: #84959b;
+    font: 14px/1.7 ui-monospace, Menlo, Consolas, monospace; }
+  #help h1 { font: 600 18px/1.3 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #dbe5e8; margin: 0 0 10px; }
+  #help kbd { display: inline-block; min-width: 1.4em; padding: 0 6px; margin-right: 6px; border: 1px solid #2b3b41; border-radius: 5px;
+    color: #cfe0e4; text-align: center; font: inherit; }
+  #help .cols { display: flex; flex-wrap: wrap; gap: 8px 40px; }
+  .novoice .voice-only { display: none; }
+</style>
+</head>
+<body>
+<div id="band" title="click: play / pause">
+  <div id="mark"></div>
+  <div id="track"></div>
+  <div id="beat"></div>
+  <div id="hud"></div>
+  <div id="prog"></div>
+  <div id="count"></div>
+</div>
+<div id="help">
+  <h1 id="help-title"></h1>
+  <p>Each word reaches the thin line when it is spoken in the reference take and fills in as it is spoken.
+    Underlined words are cue words. "· · ·" marks a long pause; ◆ starts a new beat.</p>
+  <div class="cols">
+    <div>
+      <kbd>space</kbd>play / pause (3-2-1 first)<br>
+      <kbd>R</kbd>restart from the top<br>
+      <kbd>1</kbd>…<kbd>9</kbd>start at that beat<br>
+      <kbd>←</kbd><kbd>→</kbd>back / forward 3 s<br>
+      <kbd>,</kbd><kbd>.</kbd>slower / faster (5%)<br>
+      <span class="voice-only"><kbd>M</kbd>reference voice on / off (starts off)<br></span>
+    </div>
+    <div>
+      <kbd>+</kbd><kbd>−</kbd>text size<br>
+      <kbd>↑</kbd><kbd>↓</kbd>move the band up / down<br>
+      <kbd>⇧↑</kbd><kbd>⇧↓</kbd>band height<br>
+      <kbd>[</kbd><kbd>]</kbd>move the reading line left / right<br>
+      <kbd>C</kbd>countdown on / off · <kbd>F</kbd>full screen<br>
+      <kbd>H</kbd>hide / show this help<br>
+    </div>
+  </div>
+  <p>Put the reading line just above or below the camera. Settings are remembered in this browser.
+    <span class="voice-only">With the reference voice on, use headphones so the camera's microphone does not record it.</span></p>
+</div>
+<audio id="voice" preload="auto"></audio>
+<script>
+const DATA = __DATA__;
+const $ = (id) => document.getElementById(id);
+const track = $("track"), band = $("band"), audio = $("voice"), hud = $("hud"), beatEl = $("beat"), prog = $("prog"), count = $("count");
+const root = document.documentElement.style;
+$("help-title").textContent = DATA.title;
+if (DATA.voice) audio.src = "voice.mp3"; else document.body.classList.add("novoice");
+
+const KEY = "media-teleprompter:" + DATA.title;
+const S = { top: 0, band: 132, font: 58, anchor: 50, rate: 1, voice: false, countdown: true, help: true };
+try { Object.assign(S, JSON.parse(localStorage.getItem(KEY) || "{}")); } catch (e) {}
+const save = () => { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} };
+
+const W = DATA.words, els = [];
+W.forEach((w, i) => {
+  if (i && w.s - W[i - 1].e > 0.9) { const b = document.createElement("span"); b.className = "breath"; b.textContent = "· · ·"; track.appendChild(b); }
+  if (i && W[i - 1].b !== w.b) { const s = document.createElement("span"); s.className = "sep"; s.textContent = "◆"; track.appendChild(s); }
+  const el = document.createElement("span");
+  el.className = "w" + (w.c ? " cue" : "");
+  el.textContent = w.w;
+  track.appendChild(el);
+  els.push(el);
+});
+let centers = [];
+const measure = () => { centers = els.map((el) => el.offsetLeft + el.offsetWidth / 2); };
+
+// The clock follows the reference voice while it plays (muted or not) and runs on its own otherwise.
+const clk = { t: 0, at: 0, run: false };
+function curT() {
+  if (!clk.run) return clk.t;
+  if (DATA.voice && !audio.paused && audio.readyState >= 2) { clk.t = audio.currentTime; clk.at = performance.now(); return clk.t; }
+  return clk.t + ((performance.now() - clk.at) / 1000) * S.rate;
+}
+function seek(t) {
+  clk.t = Math.min(DATA.total, Math.max(0, t)); clk.at = performance.now();
+  if (DATA.voice) { try { audio.currentTime = clk.t; } catch (e) {} }
+  render(true);
+}
+
+function apply() {
+  if (clk.run) { clk.t = curT(); clk.at = performance.now(); }
+  root.setProperty("--top", S.top + "px");
+  root.setProperty("--band", S.band + "px");
+  root.setProperty("--font", S.font + "px");
+  root.setProperty("--anchor", S.anchor);
+  audio.playbackRate = S.rate;
+  audio.muted = !S.voice;
+  $("help").style.display = S.help ? "" : "none";
+  requestAnimationFrame(() => { measure(); render(true); });
+  save();
+}
+
+// Each word's centre reaches the reading line at its start time.
+function posAt(t) {
+  if (t <= W[0].s) return centers[0] - (W[0].s - t) * 260;
+  for (let i = 0; i < W.length - 1; i++) {
+    if (t < W[i + 1].s) return centers[i] + (centers[i + 1] - centers[i]) * ((t - W[i].s) / (W[i + 1].s - W[i].s));
+  }
+  return centers[W.length - 1];
+}
+
+const fmt = (v) => `${Math.floor(v / 60)}:${String(Math.floor(v % 60)).padStart(2, "0")}`;
+let lastNow = -2;
+function render(force) {
+  const t = curT();
+  const x = (band.clientWidth * S.anchor) / 100 - posAt(t);
+  track.style.transform = `translate(${x.toFixed(1)}px, -50%)`;
+  let now = -1;
+  for (let i = 0; i < W.length; i++) { if (W[i].s <= t) now = i; else break; }
+  const speaking = now >= 0 && t <= W[now].e + 0.05;
+  if (now !== lastNow || force) {
+    els.forEach((el, i) => { el.classList.toggle("done", i < now || (i === now && !speaking)); el.classList.toggle("now", i === now && speaking); });
+    lastNow = now;
+  }
+  if (speaking) {
+    const p = Math.min(100, Math.max(0, ((t - W[now].s) / Math.max(0.08, W[now].e - W[now].s)) * 100));
+    els[now].style.setProperty("--p", p.toFixed(1) + "%");
+  }
+  let beat = null;
+  DATA.beats.forEach((b) => { if (t >= b.start) beat = b; });
+  beatEl.textContent = !beat ? "" : /^\d/.test(beat.label) ? beat.label : `${DATA.beats.indexOf(beat) + 1} · ${beat.label}`;
+  hud.innerHTML = `${fmt(t)} / ${fmt(DATA.total)} · <b>${Math.round(S.rate * 100)}%</b>` +
+    (DATA.voice ? (S.voice ? " · <b>voice on</b>" : " · voice off") : "") + (S.countdown ? "" : " · no countdown");
+  prog.style.width = ((t / DATA.total) * 100).toFixed(2) + "%";
+}
+
+function go() {
+  clk.at = performance.now(); clk.run = true;
+  if (DATA.voice) { try { audio.currentTime = clk.t; } catch (e) {} audio.play().catch(() => {}); }
+}
+let counting = null;
+function start(from) {
+  if (from !== undefined) seek(from);
+  if (counting) return;
+  if (!S.countdown) { go(); return; }
+  let n = 3;
+  count.style.display = "flex";
+  count.textContent = n;
+  counting = setInterval(() => {
+    n -= 1;
+    if (n > 0) { count.textContent = n; return; }
+    clearInterval(counting); counting = null;
+    count.style.display = "none";
+    go();
+  }, 1000);
+}
+function stop() {
+  if (counting) { clearInterval(counting); counting = null; count.style.display = "none"; }
+  clk.t = curT(); clk.run = false;
+  audio.pause();
+  render(true);
+}
+const toggle = () => (!clk.run && !counting ? start() : stop());
+
+function loop() {
+  render(false);
+  if (clk.run && curT() >= DATA.total) stop();
+  requestAnimationFrame(loop);
+}
+
+document.addEventListener("keydown", (e) => {
+  const k = e.key;
+  if (k === " " || k === "k") { e.preventDefault(); toggle(); }
+  else if (k === "r" || k === "R") { stop(); start(0); }
+  else if (/^[1-9]$/.test(k) && DATA.beats[+k - 1]) { stop(); start(DATA.beats[+k - 1].start); }
+  else if (k === "ArrowLeft") { seek(curT() - 3); }
+  else if (k === "ArrowRight") { seek(curT() + 3); }
+  else if (k === "ArrowUp" && e.shiftKey) { e.preventDefault(); S.band = Math.max(70, S.band - 8); apply(); }
+  else if (k === "ArrowDown" && e.shiftKey) { e.preventDefault(); S.band = Math.min(400, S.band + 8); apply(); }
+  else if (k === "ArrowUp") { e.preventDefault(); S.top = Math.max(0, S.top - 4); apply(); }
+  else if (k === "ArrowDown") { e.preventDefault(); S.top = Math.min(600, S.top + 4); apply(); }
+  else if (k === "," || k === "<") { S.rate = Math.max(0.7, +(S.rate - 0.05).toFixed(2)); apply(); }
+  else if (k === "." || k === ">") { S.rate = Math.min(1.3, +(S.rate + 0.05).toFixed(2)); apply(); }
+  else if (k === "+" || k === "=") { S.font = Math.min(140, S.font + 4); apply(); }
+  else if (k === "-" || k === "_") { S.font = Math.max(24, S.font - 4); apply(); }
+  else if (k === "[") { S.anchor = Math.max(10, S.anchor - 2); apply(); }
+  else if (k === "]") { S.anchor = Math.min(90, S.anchor + 2); apply(); }
+  else if ((k === "m" || k === "M") && DATA.voice) { S.voice = !S.voice; apply(); }
+  else if (k === "c" || k === "C") { S.countdown = !S.countdown; apply(); }
+  else if (k === "h" || k === "H" || k === "?") { S.help = !S.help; apply(); }
+  else if (k === "f" || k === "F") { document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen(); }
+});
+band.addEventListener("click", toggle);
+window.addEventListener("resize", () => { measure(); render(true); });
+document.fonts.ready.then(() => { measure(); render(true); });
+apply();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>

@@ -54,6 +54,7 @@ media-fcpxml-export = "media_tooling.fcpxml_export:main"
 media-verify = "media_tooling.verify:main"
 media-generated = "media_tooling.generated_media:main"
 media-cloud-render = "media_tooling.cloud_render:main"
+media-teleprompter = "media_tooling.teleprompter:main"
 
 [tool.ruff]
 target-version = "py312"

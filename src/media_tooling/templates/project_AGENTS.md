@@ -9,6 +9,7 @@ Read these central media-tooling skills before routing media-processing work:
 Use installed toolkit commands from this project directory:
 - spoken media: `media-subtitle` or `media-batch-subtitle`
 - narration/TTS: `media-tts` (one file) or `media-tts-frames` (per-frame clips, word timings and `audio_meta.json` for HyperFrames workflows)
+- teleprompter for recording a script to camera on a reference take's timing: `media-teleprompter`
 - optional score and sound effects for a finished video, only when requested: `media-video-music`
 - silent or visual-first video: `media-contact-sheet` or `media-batch-contact-sheet`
 - rough-cut assembly: `media-rough-cut`
