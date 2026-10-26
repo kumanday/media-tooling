@@ -40,6 +40,7 @@ SKILL_NAMES = (
     "media-render-pipeline",
     "media-motion-graphics",
     "media-tts",
+    "media-teleprompter",
 )
 MANAGED_BLOCK_START = "<!-- media-tooling:init:start -->"
 MANAGED_BLOCK_END = "<!-- media-tooling:init:end -->"

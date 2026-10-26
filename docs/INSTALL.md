@@ -97,10 +97,13 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 media-tts-frames --help
 ```
 ```bash
+media-teleprompter --help
+```
+```bash
 media-tooling-link-skills --dry-run
 ```
 
-The first command should print usage. The second should report every entry as
+The first two commands should print usage. The third should report every entry as
 `current`. Then open a new agent session in the project directory and check that
 it lists the `media-*` skills, for example `media-tts`.
 
