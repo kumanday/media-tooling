@@ -29,6 +29,7 @@ Use installed toolkit commands from this project directory:
 Operational defaults:
 - use sequential processing to reduce resource contention. Have patience for long media jobs
 - use `--skip-existing` for resumable batches
+- scope searches to this project and the installed tool's source; uv tool Python is isolated from system Python, and editable installs resolve code to a checkout; use `media-motion-graphics/references/runtime-troubleshooting.md` for source lookup instead of whole-filesystem searches
 - keep `ELEVENLABS_API_KEY` and `ELEVENLABS_VOICE_ID_EN` in the environment, never in project files
 - synthesize all narration with `media-tts` or `media-tts-frames` (default model `eleven_v4`), including inside upstream HyperFrames workflows; do not write project-local TTS scripts or call the TTS API directly, and if a command lacks something a workflow needs, extend media-tooling instead
 - after installing or upgrading the toolkit, run `media-tooling-link-skills` (so agents discover the `media-*` skills) and re-run `media-tooling-init --agents-only` so these skill paths stay current; see the toolkit's `docs/INSTALL.md`
@@ -39,6 +40,7 @@ TTV generated-media workflow:
 - for narrated films that combine generated shots, real captures and a voice clone, follow `media-motion-graphics/references/generated-film-playbook.md` and its `scripts/`
 - use `media-generated request`, review the returned plan, and record exact approved variants with `approve` before submitting paid work
 - exchange immutable documents through `send --server` or `send --handoff`; import results with an explicit asset root or allowed delivery origins
+- write editable selection drafts under `rough-cuts/manifests/drafts/`; `media-generated select` owns immutable outputs under `rough-cuts/manifests/selections/` and `edit/edl-<id>.json`; keep input and output paths separate, preserve compiled records and use a new edit ID for changes
 - use `select` to freeze takes, trims and EDL, then `render` to run the existing renderer and verifier with provenance records
 - use `select --edl-options` for portrait `reframe`, transcripts, overlays, subtitles and grading; use imported generated clips as HyperFrames content layers
 - use new revisions for edits, regenerate only affected scenes, and explicitly resolve stale continuity decisions
@@ -48,11 +50,14 @@ Optional Hyperframes workflow:
 - use `hyperframes` for HTML-rendered video, animated overlays, title cards, kinetic captions, website/UI captures, GIFs, PNG sequences, batch variants, or standalone graphic segments
 - keep composition source and working renders under `$PROJECT_DIR/edit/hyperframes/<slot>/`; write each finished standalone video to `$PROJECT_DIR/renders/<slot>.mp4` (or the project root) so it is easy to find
 - route reference-led motion graphics, storyboard alternatives, scene stills, and director notes through `media-motion-graphics`, which uses the current upstream HyperFrames skills
+- on HyperFrames 0.8.142, author an explicit `<head><meta charset="utf-8"></head>` before `<body>` in the main `index.html` so nested scene CSS survives rendering; keep scene styles/scripts inside `<template>` and verify decoded MP4 frames
 - use upstream branded storyboard sketches before animation and composition snapshots plus a draft encode after building; carry reviewed layouts into motion
 - default to revision review; explicit autonomous requests select auto review with multimodal storyboard feedback and bounded corrections, recorded in BRIEF.md
 - use transparent composition backgrounds and verify encoded alpha; prefer MOV when WebM alpha is unavailable
 - in upstream HyperFrames workflows (`faceless-explainer`, `product-launch-video` and others), produce the narration step's `audio_meta.json` with `media-tts-frames` instead of the workflow's own TTS providers, then run the workflow's duration sync
 - use `hyperframes lint .` while editing and `hyperframes check . --snapshots --at-transitions` before using the render
+- review the actual encode across time; when the brief requires generated footage and explanatory motion, prove both in a short encode before expanding the film, retaining generation receipts and asset hashes
+- capture verifier exit codes directly; use `set -o pipefail` when piping output, since a successful `tail` or `grep` does not establish that the verifier passed
 - render long compositions with `media-cloud-render render <slot>` instead of a local `hyperframes render` when a profile stack is deployed; profiles live in the private `~/.config/media-tooling/profiles.toml`, a project pins one with `profile` in `media-tooling.toml`, and `deploy`/`destroy` create or remove billable resources only after confirmation
 - render alpha overlays with `hyperframes render . --format mov`; WebM is an option after verifying local alpha support
 - add rendered overlays to EDL specs with `overlays[].source`; `media-edl-render` composites overlays before burning subtitles

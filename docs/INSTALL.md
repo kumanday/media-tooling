@@ -41,7 +41,7 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
    run `uv tool update-shell` and open a new shell.
 
 2. **Make the skills visible to coding agents.** This links the toolkit skills
-   into `~/.agents/skills`, which Codex and other agents read, and from
+   into `~/.agents/skills`, which Codex, Pi 1.1.0 and other agents read, and from
    `~/.claude/skills` to those entries for Claude Code. If Claude Code isn't
    installed, it links the shared store only. Antigravity reads only its own
    folders, so the skills are also linked into `~/.gemini/skills`,
@@ -107,6 +107,24 @@ The first two commands should print usage. The third should report every entry a
 `current`. Then open a new agent session in the project directory and check that
 it lists the `media-*` skills, for example `media-tts`.
 
+### Pi sessions
+
+Pi uses the same links under `~/.agents/skills`. Run `/reload` after shared skill
+edits. If Pi reports a
+duplicate skill name, inspect which path won before continuing.
+
+To load the motion-graphics instructions explicitly:
+
+```text
+/skill:media-motion-graphics
+```
+
+Then pass the brief and existing project context. Pi's startup skill listing
+advertises available guidance; it does not read the full instructions. A custom
+launcher using `--no-skills` needs explicit skill paths. See the packaged
+[runtime troubleshooting reference](../.agents/skills/media-motion-graphics/references/runtime-troubleshooting.md)
+for tool-source lookup, edit arguments and provider image-history limits.
+
 ## Update
 
 ```bash
@@ -156,3 +174,4 @@ gates.
 | an agent doesn't list the `media-*` skills | run `media-tooling-link-skills` and start a new agent session |
 | `skipped` entries from `media-tooling-link-skills` | a real directory has that skill's name; inspect it, then re-run with `--force` |
 | `Could not locate the packaged media-tooling skills` | reinstall the tool; the package is incomplete |
+| Python imports fail while the installed CLI works | use the CLI's interpreter; uv tools have isolated environments, and editable code can live in the source checkout |

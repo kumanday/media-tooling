@@ -25,12 +25,15 @@ and toolkit commands into a single coherent production pipeline.
 | `media-corpus-ingest` | Inventory (Step 1) |
 | `media-subtitle-pipeline` | Inventory → Transcribe → Pack (Steps 1–2) |
 | `media-rough-cut-assembly` | Execute → Render (Steps 5, 8) |
+| `media-motion-graphics` | HyperFrames scenes, generated footage, visual review and render parity |
 
 Delegate to the appropriate sub-skill when a step's work falls entirely within
 its scope. This skill adds the conversation, strategy, self-evaluation, and
 iteration layers that the sub-skills do not cover.
 
-For generated footage, export reviewed `media-motion-graphics` storyboard scenes
+For HyperFrames motion or generated footage, read `media-motion-graphics` before
+building. It covers the root document contract, encoded-output review and
+selection draft paths. For generated footage, export its reviewed storyboard scenes
 using `docs/generated-media.md`, preserve stable IDs and visual review evidence,
 and use `media-generated` for provider plan approval, import, and take selection.
 Carry existing spending permission and budgets into the plan approval. Use
