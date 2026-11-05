@@ -109,7 +109,26 @@ media-generated --project /path/to/project import result result.json \
 
 Local file URIs must resolve beneath the explicit asset root. For durable `gs://` or `s3://` URIs, pass `--deliveries deliveries.json`, a transient mapping from each durable URI to a local path or download URL. HTTPS downloads also require `--allow-origin https://storage.example.com`. Signed URLs belong only in this mapping. The importer stores canonical source URIs, local paths, content hashes and measured properties. It verifies clips, keyframes and references before committing the result import. Source files remain untouched.
 
-Create a selection draft naming the reviewed takes. Include every clip exactly once, with explicit edit order and source in/out points. `trim_out_s` is the exclusive source out-point. The take's `clip_order` supplies its generated sequence; edit order expresses the reviewed editorial sequence.
+Create a selection draft naming the reviewed takes. Save editable input under
+`rough-cuts/manifests/drafts/`, for example `edit-1.source.json`. The CLI owns the
+compiled selection and EDL paths:
+
+| Path relative to the project | Writer | Purpose |
+| --- | --- | --- |
+| `rough-cuts/manifests/drafts/edit-1.source.json` | Agent or editor | Editable input |
+| `rough-cuts/manifests/selections/edit-1.json` | `media-generated select` | Immutable output |
+| `edit/edl-edit-1.json` | `media-generated select` | Generated EDL |
+
+Creating the input draft at the output path causes `Selection revision already
+exists`, including when the ID is new: the draft itself occupies that path.
+Preserve compiled outputs. Reuse an existing sealed selection for rendering;
+give changed editorial decisions a new `edit_revision_id` and a draft file under
+`drafts/`.
+
+Include every clip exactly once, with explicit edit order and source in/out
+points. `trim_out_s` is the exclusive source out-point. The take's `clip_order`
+supplies its generated sequence; edit order expresses the reviewed editorial
+sequence. Save this example as `rough-cuts/manifests/drafts/edit-1.source.json`:
 
 ```json
 {
@@ -130,7 +149,8 @@ Create a selection draft naming the reviewed takes. Include every clip exactly o
 ```
 
 ```sh
-media-generated --project /path/to/project select selection-draft.json
+media-generated --project /path/to/project select \
+  /path/to/project/rough-cuts/manifests/drafts/edit-1.source.json
 media-generated --project /path/to/project render \
   /path/to/project/rough-cuts/manifests/selections/edit-1.json --preview
 ```
@@ -155,6 +175,22 @@ Send and approve the request, then import its result. A new selection combines t
 `media-generated cost --selection selection.json` reports all attempts, selected successful outputs and unselected attempts. USD subtotals carry unknown-attempt counts; incomplete totals remain null. Raw provider units stay separate per attempt.
 
 ## Verification
+
+### Locate the installed implementation
+
+uv tools have their own Python environment. Use that tool's interpreter for
+import inspection. An editable installation resolves code to its source checkout;
+searching only the tool's `site-packages` may find packaged skills without the
+Python implementation. `generated_media.py` is a module file.
+
+```sh
+media_tool_python="$(uv tool dir)/media-tooling/bin/python"
+"$media_tool_python" -c 'import media_tooling.generated_media as m; print(m.__file__)'
+```
+
+Scope subsequent `rg` searches to the printed file or its source directory.
+An import failure from system `python3` does not establish that the installed
+CLI is broken. Locate its interpreter before changing the installation.
 
 The five schemas, raw-byte hash manifest and shared fixtures are vendored under `src/media_tooling/contracts/v1_0`. Runtime validation pins the version and manifest hash, rejects unknown fields and verifies canonical document hashes. Updating the contract requires replacing the bundle and deliberately updating the pin. `media-generated validate KIND FILE` validates a handoff independently.
 

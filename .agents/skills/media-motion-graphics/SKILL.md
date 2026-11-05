@@ -1,6 +1,6 @@
 ---
 name: media-motion-graphics
-description: Plan and revise reference-led product videos, branded motion graphics, and animated overlays using HyperFrames inside a media-tooling workspace. Use for storyboard alternatives, scene stills, or director notes on an existing composition.
+description: Plan, build and revise narrated explainers, product videos, motion graphics and animated overlays in a media-tooling workspace using HyperFrames and optional TTV footage. Use for storyboards, scene design, director notes and encoded visual review.
 ---
 
 # Motion graphics in a media-tooling workspace
@@ -31,9 +31,14 @@ those workflows to project assets, reference analysis, and media-tooling assembl
    effects only when the user asks (`media-video-music`). See the `media-tts`
    skill.
 4. Load only the domains needed: `hyperframes-creative` for brand and storyboard
-   design, `hyperframes-registry` for reusable treatments, `hyperframes-core` and
-   `hyperframes-keyframes` for timing and seekable motion, and `hyperframes-cli`
+   design, `hyperframes-registry` for reusable treatments,
+   `hyperframes-animation` for motion rules, `hyperframes-keyframes` for camera
+   moves, `hyperframes-core` for timing and seekable structure, and `hyperframes-cli`
    for checks, snapshots, preview, and rendering.
+
+For missing skills, provider image limits, or installed-package lookup, read
+`references/runtime-troubleshooting.md`. A skill listed by the harness is
+available for discovery; its instructions still need to be read.
 
 Keep compositions under `$PROJECT_DIR/edit/hyperframes/<slot>/`. Bind the upstream
 project root to that directory, including any `videos/<project>` subdirectory a
@@ -76,6 +81,8 @@ facility, in readable batches with stable scene IDs. Do not run HyperFrames
 actual images to an available multimodal LLM (the current agent's image input is
 sufficient), together with the brief, transcript excerpts, brand constraints,
 scene IDs, and durations. Inspect every scene; text-only feedback does not count.
+Account for the provider's image limit across the entire request, including
+retained history; see `references/runtime-troubleshooting.md` before batch review.
 Ask for concrete feedback on copy accuracy, legibility at delivery size, graphic
 placement relative to speaker and subtitles, brand consistency, and reading time.
 Request a pass/revise result and scene-specific changes. This is an approximation
@@ -162,6 +169,13 @@ both adjacent seams first, then check the assembled composition before delivery.
 
 ## Overlay authoring and render parity
 
+On HyperFrames 0.8.142, put an explicit
+`<head><meta charset="utf-8"></head>` before `<body>` in the main `index.html`.
+The render assembler needs that head to retain extracted nested scene CSS.
+Keep scene styles/scripts inside their `<template>`. Tiny unstyled text in an
+encode, despite a correct browser preview, is a reason to check this structure
+before changing typography or capture settings. See `docs/HYPERFRAMES.md`.
+
 Set page and composition backgrounds to `transparent` for alpha overlays; the
 blank scaffold starts opaque. Use timed `class="clip"` elements with `data-start`
 and `data-duration` to own scene visibility. GSAP can polish entry/exit motion
@@ -199,6 +213,10 @@ creating `media-generated approve`. Use a keyframe-only approval and a cited
 keyframe result when first/last frames need visual review before video generation.
 
 Import approved results and select their takes through `media-generated`.
+Write selection drafts under `rough-cuts/manifests/drafts/`; the CLI writes
+immutable `rough-cuts/manifests/selections/<id>.json` and `edit/edl-<id>.json`.
+An input draft at its intended output path collides with itself. Preserve compiled
+records and use a new edit ID for changed trims or take choices.
 Use the imported clips as content layers in HyperFrames; keep text, UI, layout,
 crop, timing, and overlays editable in the composition. Director notes on those
 elements revise HyperFrames source. Notes that change generated footage create a
@@ -242,6 +260,13 @@ Rules that are easy to miss:
 - `grade_consistency` on a whole multi-scene film needs visual judgment.
 
 ## Verification and handoff
+
+When the brief requires generated footage and explanatory motion, verify both
+in a short encoded proof before expanding the film. Mount the generated clip as
+an actual video layer, retain its receipt and hash lineage, and inspect its
+visible interval. Plan motion that develops the explanation across beats;
+entrance fades on paragraphs alone do not establish explanatory motion. Sample
+multiple times inside those sequences and review readability at phone size.
 
 Use `lint` for early feedback and `check --snapshots --at-transitions` for the
 final browser gate. Read findings and inspect the generated PNGs; a skipped

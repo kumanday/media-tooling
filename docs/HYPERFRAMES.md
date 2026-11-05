@@ -258,6 +258,15 @@ configuration.
 
 ## Encoded-output checks and overlay offsets
 
+For HyperFrames 0.8.142, author an explicit
+`<head><meta charset="utf-8"></head>` before `<body>` in the main `index.html`.
+The local render assembler appends extracted sub-composition styles to an
+existing head. Without one, a browser preview can show styled scenes while the
+MP4 contains tiny unstyled content at the top left. Keep each nested scene's
+styles and scripts inside its `<template>`; its own head does not replace the
+main document's head. Verify the fix in decoded MP4 frames before changing the
+design or capture mode.
+
 Timed `class="clip"` elements with `data-start` / `data-duration` own scene
 visibility; GSAP adds polish inside their windows. Check the actual draft encode
 at scene midpoints and immediately around entries/exits. The pilot found GSAP

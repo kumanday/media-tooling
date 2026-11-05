@@ -57,6 +57,16 @@ Export the reviewed scenes as `storyboards/storyboard-N/storyboard-N.source.json
   a `rights_note` saying where the image came from, and its SHA-256. Record every
   crop or extraction that produced a reference in
   `generation/references/derivations.json` (source, crop box, output hash).
+- **Anchors drawn by the composition:** to join a graphic scene and a generated
+  shot, use a rendered graphic frame as the shot's `first_frame` and prompt the
+  change into real footage ("within the first second the flat drawing becomes a
+  photograph of ..."). Add a `last_frame` only when the next scene needs that
+  exact object in that place. A last-frame anchor on a flat drawing pulls the
+  take back into the drawing, which then flashes as a drawn copy; two flat
+  anchors with a simple move between them get animated in 2D, so the shot no
+  longer reads as generated. Without an end anchor, cut while the take is still
+  footage and dissolve into the next scene. Check the draft's frames for both
+  before ordering finals.
 - **Continuity:** use `continuity.mode: continue_from_previous` for chains of
   generated shots, and `independent` for standalone shots and bridges.
 - **Delivery:** 1920×1080 or 1080×1920.
@@ -99,10 +109,26 @@ The runtime config goes to TTV through a pipe, so keys stay in the environment.
   models) before deciding.
 - **Takes run slightly long:** a "6 s" take can measure 6.6 s. Use the measured
   length when a bridge must land on its last frame.
+- **Takes with a last-frame anchor decelerate:** H3 eases into the supplied end
+  frame, so the last 1-3 s barely move and play as a pause. Do not prompt a
+  "settle" or a hold. Measure per-frame motion and play the tail faster from the
+  point where it falls off (about 3x worked), keeping the true last frame so the
+  anchor still matches; record the ramp on a derived copy.
 
-Selections are immutable. `media-generated select` refuses an existing
-`edit_revision_id`, so a corrected trim needs a new edit ID. Keep each draft in
+Selections are immutable. A changed selection needs a new `edit_revision_id`,
+including a corrected trim. Keep each draft in
 `rough-cuts/manifests/drafts/`.
+
+The input draft and compiled selection have different paths. The agent writes
+`rough-cuts/manifests/drafts/EDIT.source.json`; `media-generated select` writes
+`rough-cuts/manifests/selections/EDIT.json` and `edit/edl-EDIT.json`. A pre-created
+draft in `selections/` collides with its own output, even with a new ID. Preserve
+compiled selections and reuse them for rendering; changed edits get a new ID.
+
+For source inspection, use the interpreter named by the CLI's shebang. uv tool
+environments are isolated from system Python, and editable installs resolve
+implementation files to the source checkout. Scope searches to that checkout;
+`generated_media.py` is a file. See `docs/generated-media.md` for exact lookup.
 
 ## 5. Bridges onto real frames
 
@@ -185,8 +211,12 @@ own composition. `media-tts-frames` suits frame-based workflows such as
 `scripts/narration_timing.py` turns the take into placed voice segments, scene
 windows, output-time word clocks and caption groups (see its docstring). Tune
 `--gaps` and `--scene-lead` per boundary. A chapter that opens on a generated
-shot needs a scene lead of 2-4 s, so the shot plays before the first word. Use
-`--caption-chars 46` for landscape and 28 for portrait.
+shot gets a slight lead, about 0.5-1 s of shot before the first word (a
+paragraph gap near 2 s), and the narration continues over the rest of the shot.
+Longer silent holds read as stalls; add one only when the owner asks for a shot
+to be featured, and then for that shot alone (`scripts/insert_holds.py` on a
+media-tts-frames take). Use `--caption-chars 46` for landscape and 28 for
+portrait.
 
 ### Surgical voice edits (media-tts-frames takes)
 
@@ -324,6 +354,11 @@ a narrated film can also ship with narration alone.
 
 ## 10. Composition patterns (HyperFrames)
 
+- **Root document:** on HyperFrames 0.8.142, main `index.html` needs an explicit
+  `<head><meta charset="utf-8"></head>` before `<body>` so extracted nested scene
+  styles reach the encode. Keep scene styles/scripts inside their `<template>`.
+  Check the root head when a browser preview looks correct but the MP4 has tiny
+  unstyled content. See the render-parity guidance in `SKILL.md`.
 - **Build from data:** generate `index.html` from `timing.json` and a
   `data.json` that a prep script fills from project records: take IDs and hashes,
   plan and approval fields, cost rows, tables from source documents. Never
@@ -345,6 +380,9 @@ a narrated film can also ship with narration alone.
 - **Checks:** `hyperframes lint .`, then `hyperframes snapshot . --at <times>
   --describe false` at narration moments. Inspect the contact sheets, fix, and
   re-snapshot. Then render with `hyperframes render . -o renders/<name>-master.mp4`.
+  Decode and inspect frames from that MP4 at scene midpoints and cut boundaries;
+  snapshot styling does not establish encoded styling. Capture verifier exit
+  codes directly, or use `set -o pipefail` when piping output to `tail` or `grep`.
 
 ## 11. Finishing and verification
 
