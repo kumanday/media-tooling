@@ -229,6 +229,8 @@ The main skills are:
   Generates narration audio from project scripts through the configured TTS backend.
 - [`media-teleprompter`](./.agents/skills/media-teleprompter/SKILL.md)
   Builds a karaoke teleprompter page timed to a reference take, for recording a script to camera.
+- [`media-motion-raea`](./.agents/skills/media-motion-raea/SKILL.md) (pilot)
+  Builds standalone motion graphics as raea React/TypeScript compositions instead of HyperFrames HTML. See [`docs/RAEA.md`](./docs/RAEA.md).
 
 The underlying commands are:
 
@@ -240,6 +242,8 @@ The underlying commands are:
   Generate per-frame narration clips with word timings and the `audio_meta.json` that HyperFrames workflows (such as `faceless-explainer`) consume, from their `SCRIPT.md`.
 - `media-teleprompter`
   Build a karaoke teleprompter web page from word timings (a `media-subtitle` transcript, a narration `timing.json` or an `audio_meta.json`) and an optional Markdown script. One line scrolls right to left in a band at the top of the screen; each word reaches a reading line when the reference take speaks it. Spelled-out numbers can be shown as digits (English and Spanish).
+- `media-raea-timing` (pilot)
+  Convert `media-tts-frames` `audio_meta.json` or a narration `timing.json` into the words, scene windows and voice placements a raea composition reads.
 - `media-video-music`
   Optional: score a finished video with ElevenLabs video-to-music (separate music and SFX stems), then mix the stems under the narration. The mix measures the narration, sets the music and SFX gains relative to it, ducks the music under the voice, normalizes loudness with one linear gain and a true-peak limiter, and prints the measured margins.
 - `media-batch-subtitle`
@@ -314,6 +318,7 @@ Those directories are generated on demand, safe to delete, and ignored by Git.
 - [`docs/SETUP.md`](./docs/SETUP.md)
 - [`docs/WORKFLOWS.md`](./docs/WORKFLOWS.md)
 - [`docs/HYPERFRAMES.md`](./docs/HYPERFRAMES.md)
+- [`docs/RAEA.md`](./docs/RAEA.md) (pilot: raea as a motion-graphics backend)
 - [`docs/CLOUD-RENDER.md`](./docs/CLOUD-RENDER.md)
 - [`docs/LOCAL-CONFIG.md`](./docs/LOCAL-CONFIG.md)
 - [`docs/EXPORTING.md`](./docs/EXPORTING.md)
