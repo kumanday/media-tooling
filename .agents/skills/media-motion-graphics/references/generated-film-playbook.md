@@ -57,6 +57,16 @@ Export the reviewed scenes as `storyboards/storyboard-N/storyboard-N.source.json
   a `rights_note` saying where the image came from, and its SHA-256. Record every
   crop or extraction that produced a reference in
   `generation/references/derivations.json` (source, crop box, output hash).
+- **Anchors drawn by the composition:** to join a graphic scene and a generated
+  shot, use a rendered graphic frame as the shot's `first_frame` and prompt the
+  change into real footage ("within the first second the flat drawing becomes a
+  photograph of ..."). Add a `last_frame` only when the next scene needs that
+  exact object in that place. A last-frame anchor on a flat drawing pulls the
+  take back into the drawing, which then flashes as a drawn copy; two flat
+  anchors with a simple move between them get animated in 2D, so the shot no
+  longer reads as generated. Without an end anchor, cut while the take is still
+  footage and dissolve into the next scene. Check the draft's frames for both
+  before ordering finals.
 - **Continuity:** use `continuity.mode: continue_from_previous` for chains of
   generated shots, and `independent` for standalone shots and bridges.
 - **Delivery:** 1920×1080 or 1080×1920.
