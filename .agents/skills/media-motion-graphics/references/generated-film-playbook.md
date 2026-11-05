@@ -99,6 +99,11 @@ The runtime config goes to TTV through a pipe, so keys stay in the environment.
   models) before deciding.
 - **Takes run slightly long:** a "6 s" take can measure 6.6 s. Use the measured
   length when a bridge must land on its last frame.
+- **Takes with a last-frame anchor decelerate:** H3 eases into the supplied end
+  frame, so the last 1-3 s barely move and play as a pause. Do not prompt a
+  "settle" or a hold. Measure per-frame motion and play the tail faster from the
+  point where it falls off (about 3x worked), keeping the true last frame so the
+  anchor still matches; record the ramp on a derived copy.
 
 Selections are immutable. `media-generated select` refuses an existing
 `edit_revision_id`, so a corrected trim needs a new edit ID. Keep each draft in
@@ -185,8 +190,12 @@ own composition. `media-tts-frames` suits frame-based workflows such as
 `scripts/narration_timing.py` turns the take into placed voice segments, scene
 windows, output-time word clocks and caption groups (see its docstring). Tune
 `--gaps` and `--scene-lead` per boundary. A chapter that opens on a generated
-shot needs a scene lead of 2-4 s, so the shot plays before the first word. Use
-`--caption-chars 46` for landscape and 28 for portrait.
+shot gets a slight lead, about 0.5-1 s of shot before the first word (a
+paragraph gap near 2 s), and the narration continues over the rest of the shot.
+Longer silent holds read as stalls; add one only when the owner asks for a shot
+to be featured, and then for that shot alone (`scripts/insert_holds.py` on a
+media-tts-frames take). Use `--caption-chars 46` for landscape and 28 for
+portrait.
 
 ### Surgical voice edits (media-tts-frames takes)
 
