@@ -1,0 +1,108 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="800" viewBox="0 0 1600 800" font-family="Helvetica Neue, Helvetica, Arial, sans-serif">
+<title>Media processing flow</title>
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#98A2B3"/></marker></defs>
+<rect x="0.5" y="0.5" width="1599" height="799" rx="18" fill="#FFFFFF" stroke="#D0D5DD"/>
+<text x="36" y="48" font-size="24" font-weight="700" fill="#1D2433" text-anchor="start">Media processing flow</text>
+<text x="36" y="74" font-size="17" font-weight="400" fill="#5B6475" text-anchor="start">From raw recordings to a checked, finished video. Your agent runs the commands; you review the plan and the cut.</text>
+<text x="36" y="128" font-size="15" font-weight="700" fill="#64748B" text-anchor="start">1  SOURCE MEDIA</text>
+<text x="352" y="128" font-size="15" font-weight="700" fill="#2F6FEB" text-anchor="start">2  PROCESS</text>
+<text x="668" y="128" font-size="15" font-weight="700" fill="#7C4DDB" text-anchor="start">3  PLAN</text>
+<text x="984" y="128" font-size="15" font-weight="700" fill="#0E9384" text-anchor="start">4  ASSEMBLE</text>
+<text x="1300" y="128" font-size="15" font-weight="700" fill="#2E9E48" text-anchor="start">5  CHECK AND DELIVER</text>
+<rect x="36" y="188" width="264" height="70" rx="10" fill="#F7F8FA" stroke="#D0D5DD" stroke-width="1.2"/>
+<rect x="36" y="198" width="4" height="50" rx="2" fill="#64748B"/>
+<text x="54" y="217" font-size="19" font-weight="600" fill="#1D2433" text-anchor="start">Spoken audio and video</text>
+<text x="54" y="242" font-size="16" font-weight="400" fill="#5B6475" text-anchor="start">podcasts, interviews, talks</text>
+<rect x="352" y="188" width="264" height="92" rx="10" fill="#F7F8FA" stroke="#D0D5DD" stroke-width="1.2"/>
+<rect x="352" y="198" width="4" height="72" rx="2" fill="#2F6FEB"/>
+<text x="370" y="217" font-size="19" font-weight="600" fill="#1D2433" text-anchor="start">Transcripts and subtitles</text>
+<text x="370" y="242" font-size="16" font-weight="400" fill="#5B6475" text-anchor="start" font-family="Menlo, SFMono-Regular, Consolas, monospace">media-subtitle</text>
+<text x="370" y="264" font-size="16" font-weight="400" fill="#5B6475" text-anchor="start" font-family="Menlo, SFMono-Regular, Consolas, monospace">media-pack-transcript</text>
+<path d="M300,223.0 L348,223.0" fill="none" stroke="#98A2B3" stroke-width="1.6" marker-end="url(#arrow)"/>
+<rect x="36" y="308" width="264" height="70" rx="10" fill="#F7F8FA" stroke="#D0D5DD" stroke-width="1.2"/>
+<rect x="36" y="318" width="4" height="50" rx="2" fill="#64748B"/>
+<text x="54" y="337" font-size="19" font-weight="600" fill="#1D2433" text-anchor="start">Silent screen recordings</text>
+<text x="54" y="362" font-size="16" font-weight="400" fill="#5B6475" text-anchor="start">UI demos, walkthroughs</text>
+<rect x="352" y="308" width="264" height="92" rx="10" fill="#F7F8FA" stroke="#D0D5DD" stroke-width="1.2"/>
+<rect x="352" y="318" width="4" height="72" rx="2" fill="#2F6FEB"/>
+<text x="370" y="337" font-size="19" font-weight="600" fill="#1D2433" text-anchor="start">Contact sheets</text>
+<text x="370" y="362" font-size="16" font-weight="400" fill="#5B6475" text-anchor="start" font-family="Menlo, SFMono-Regular, Consolas, monospace">media-contact-sheet</text>
+<text x="370" y="384" font-size="16" font-weight="400" fill="#5B6475" text-anchor="start" font-family="Menlo, SFMono-Regular, Consolas, monospace">media-timeline-view</text>
+<path d="M300,343.0 L348,343.0" fill="none" stroke="#98A2B3" stroke-width="1.6" marker-end="url(#arrow)"/>
+<rect x="36" y="428" width="264" height="70" rx="10" fill="#F7F8FA" stroke="#D0D5DD" stroke-width="1.2"/>
+<rect x="36" y="438" width="4" height="50" rx="2" fill="#64748B"/>
+<text x="54" y="457" font-size="19" font-weight="600" fill="#1D2433" text-anchor="start">Screenshots and stills</text>
+<text x="54" y="482" font-size="16" font-weight="400" fill="#5B6475" text-anchor="start">slides, photos, captures</text>
+<rect x="352" y="428" width="264" height="70" rx="10" fill="#F7F8FA" stroke="#D0D5DD" stroke-width="1.2"/>
+<rect x="352" y="438" width="4" height="50" rx="2" fill="#2F6FEB"/>
+<text x="370" y="457" font-size="19" font-weight="600" fill="#1D2433" text-anchor="start">Indexed stills</text>
+<text x="370" y="482" font-size="16" font-weight="400" fill="#5B6475" text-anchor="start">inventory, by the ingest skill</text>
+<path d="M300,463.0 L348,463.0" fill="none" stroke="#98A2B3" stroke-width="1.6" marker-end="url(#arrow)"/>
+<rect x="668" y="188" width="264" height="332" rx="10" fill="#F7F8FA" stroke="#D0D5DD" stroke-width="1.2"/>
+<rect x="668" y="198" width="4" height="312" rx="2" fill="#7C4DDB"/>
+<text x="686" y="217" font-size="19" font-weight="600" fill="#1D2433" text-anchor="start">Plan with your agent</text>
+<line x1="686" y1="238" x2="914" y2="238" stroke="#D0D5DD"/>
+<text x="686" y="262" font-size="17" font-weight="600" fill="#1D2433" text-anchor="start">Inventory and analysis notes</text>
+<text x="686" y="286" font-size="16" font-weight="400" fill="#5B6475" text-anchor="start">what the footage contains</text>
+<line x1="686" y1="336" x2="914" y2="336" stroke="#D0D5DD"/>
+<text x="686" y="360" font-size="17" font-weight="600" fill="#1D2433" text-anchor="start">Shot list and storyboard</text>
+<text x="686" y="384" font-size="16" font-weight="400" fill="#5B6475" text-anchor="start">strongest clips, sequence</text>
+<line x1="686" y1="434" x2="914" y2="434" stroke="#D0D5DD"/>
+<text x="686" y="458" font-size="17" font-weight="600" fill="#1D2433" text-anchor="start">EDL or rough-cut spec</text>
+<text x="686" y="482" font-size="16" font-weight="400" fill="#5B6475" text-anchor="start">edl.json: ranges, overlays</text>
+<path d="M616,234 L664,234" fill="none" stroke="#98A2B3" stroke-width="1.6" marker-end="url(#arrow)"/>
+<path d="M616,354 L664,354" fill="none" stroke="#98A2B3" stroke-width="1.6" marker-end="url(#arrow)"/>
+<path d="M616,474 L664,474" fill="none" stroke="#98A2B3" stroke-width="1.6" marker-end="url(#arrow)"/>
+<rect x="984" y="188" width="264" height="92" rx="10" fill="#F7F8FA" stroke="#D0D5DD" stroke-width="1.2"/>
+<rect x="984" y="198" width="4" height="72" rx="2" fill="#0E9384"/>
+<text x="1002" y="217" font-size="19" font-weight="600" fill="#1D2433" text-anchor="start">Rough cut</text>
+<text x="1002" y="242" font-size="16" font-weight="400" fill="#5B6475" text-anchor="start" font-family="Menlo, SFMono-Regular, Consolas, monospace">media-rough-cut</text>
+<text x="1002" y="264" font-size="16" font-weight="400" fill="#5B6475" text-anchor="start">cards, holds, clip extracts</text>
+<rect x="984" y="308" width="264" height="114" rx="10" fill="#F7F8FA" stroke="#D0D5DD" stroke-width="1.2"/>
+<rect x="984" y="318" width="4" height="94" rx="2" fill="#0E9384"/>
+<text x="1002" y="337" font-size="19" font-weight="600" fill="#1D2433" text-anchor="start">Edited render</text>
+<text x="1002" y="362" font-size="16" font-weight="400" fill="#5B6475" text-anchor="start" font-family="Menlo, SFMono-Regular, Consolas, monospace">media-edl-render</text>
+<text x="1002" y="384" font-size="16" font-weight="400" fill="#5B6475" text-anchor="start">grade, fades, loudness,</text>
+<text x="1002" y="406" font-size="16" font-weight="400" fill="#5B6475" text-anchor="start">overlays, subtitles</text>
+<path d="M932,234.0 L980,234.0" fill="none" stroke="#98A2B3" stroke-width="1.6" marker-end="url(#arrow)"/>
+<path d="M932,354 L980,354" fill="none" stroke="#98A2B3" stroke-width="1.6" marker-end="url(#arrow)"/>
+<rect x="1300" y="308" width="264" height="92" rx="10" fill="#F7F8FA" stroke="#D0D5DD" stroke-width="1.2"/>
+<rect x="1300" y="318" width="4" height="72" rx="2" fill="#2E9E48"/>
+<text x="1318" y="337" font-size="19" font-weight="600" fill="#1D2433" text-anchor="start">Self-check</text>
+<text x="1318" y="362" font-size="16" font-weight="400" fill="#5B6475" text-anchor="start" font-family="Menlo, SFMono-Regular, Consolas, monospace">media-verify</text>
+<text x="1318" y="384" font-size="16" font-weight="400" fill="#5B6475" text-anchor="start">cuts, duration, grade, pops</text>
+<path d="M1248,354 L1296,354" fill="none" stroke="#98A2B3" stroke-width="1.6" marker-end="url(#arrow)"/>
+<rect x="1300" y="468" width="264" height="92" rx="10" fill="#F7F8FA" stroke="#D0D5DD" stroke-width="1.2"/>
+<rect x="1300" y="478" width="4" height="72" rx="2" fill="#2E9E48"/>
+<text x="1318" y="497" font-size="19" font-weight="600" fill="#1D2433" text-anchor="start">Finished video</text>
+<text x="1318" y="522" font-size="16" font-weight="400" fill="#5B6475" text-anchor="start" font-family="Menlo, SFMono-Regular, Consolas, monospace">renders/&lt;name&gt;.mp4</text>
+<text x="1318" y="544" font-size="16" font-weight="400" fill="#5B6475" text-anchor="start">or FCPXML for Resolve</text>
+<path d="M1432.0,400 L1432.0,464" fill="none" stroke="#98A2B3" stroke-width="1.6" marker-end="url(#arrow)"/>
+<path d="M1432.0,308 L1432.0,162 L800.0,162 L800.0,184" fill="none" stroke="#98A2B3" stroke-width="1.6" stroke-dasharray="6 5" marker-end="url(#arrow)"/>
+<text x="1116.0" y="154" font-size="15" font-weight="400" fill="#5B6475" text-anchor="middle" font-style="italic">iterate on the plan</text>
+<rect x="24" y="616" width="1552" height="148" rx="14" fill="#FFF8EB" stroke="#F5D9A8" stroke-width="1.2"/>
+<text x="36" y="656" font-size="15" font-weight="700" fill="#D97706" text-anchor="start">CREATE NEW MATERIAL</text>
+<text x="36" y="682" font-size="17" font-weight="400" fill="#5B6475" text-anchor="start">Made for the piece</text>
+<text x="36" y="704" font-size="17" font-weight="400" fill="#5B6475" text-anchor="start">when the footage alone</text>
+<text x="36" y="726" font-size="17" font-weight="400" fill="#5B6475" text-anchor="start">isn&#x27;t enough</text>
+<rect x="352" y="648" width="264" height="92" rx="10" fill="#F7F8FA" stroke="#D0D5DD" stroke-width="1.2"/>
+<rect x="352" y="658" width="4" height="72" rx="2" fill="#D97706"/>
+<text x="370" y="677" font-size="19" font-weight="600" fill="#1D2433" text-anchor="start">Narration</text>
+<text x="370" y="702" font-size="16" font-weight="400" fill="#5B6475" text-anchor="start" font-family="Menlo, SFMono-Regular, Consolas, monospace">media-tts</text>
+<text x="370" y="724" font-size="16" font-weight="400" fill="#5B6475" text-anchor="start" font-family="Menlo, SFMono-Regular, Consolas, monospace">media-tts-frames</text>
+<rect x="668" y="648" width="264" height="70" rx="10" fill="#F7F8FA" stroke="#D0D5DD" stroke-width="1.2"/>
+<rect x="668" y="658" width="4" height="50" rx="2" fill="#D97706"/>
+<text x="686" y="677" font-size="19" font-weight="600" fill="#1D2433" text-anchor="start">Motion graphics</text>
+<text x="686" y="702" font-size="16" font-weight="400" fill="#5B6475" text-anchor="start">HyperFrames, or raea (pilot)</text>
+<rect x="984" y="648" width="264" height="92" rx="10" fill="#F7F8FA" stroke="#D0D5DD" stroke-width="1.2"/>
+<rect x="984" y="658" width="4" height="72" rx="2" fill="#D97706"/>
+<text x="1002" y="677" font-size="19" font-weight="600" fill="#1D2433" text-anchor="start">Generated footage</text>
+<text x="1002" y="702" font-size="16" font-weight="400" fill="#5B6475" text-anchor="start" font-family="Menlo, SFMono-Regular, Consolas, monospace">media-generated</text>
+<text x="1002" y="724" font-size="16" font-weight="400" fill="#5B6475" text-anchor="start">via TTV providers</text>
+<rect x="1300" y="648" width="264" height="70" rx="10" fill="#F7F8FA" stroke="#D0D5DD" stroke-width="1.2"/>
+<rect x="1300" y="658" width="4" height="50" rx="2" fill="#D97706"/>
+<text x="1318" y="677" font-size="19" font-weight="600" fill="#1D2433" text-anchor="start">Music and effects</text>
+<text x="1318" y="702" font-size="16" font-weight="400" fill="#5B6475" text-anchor="start" font-family="Menlo, SFMono-Regular, Consolas, monospace">media-video-music</text>
+<path d="M1116.0,616 L1116.0,426" fill="none" stroke="#98A2B3" stroke-width="1.6" marker-end="url(#arrow)"/>
+<text x="1126.0" y="602" font-size="15" font-weight="400" fill="#5B6475" text-anchor="start" font-style="italic">cut into the edit</text>
+</svg>

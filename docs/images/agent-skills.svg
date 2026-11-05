@@ -1,0 +1,80 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900" font-family="Helvetica Neue, Helvetica, Arial, sans-serif">
+<title>Agent skills system</title>
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#98A2B3"/></marker></defs>
+<rect x="0.5" y="0.5" width="1599" height="899" rx="18" fill="#FFFFFF" stroke="#D0D5DD"/>
+<text x="36" y="48" font-size="24" font-weight="700" fill="#1D2433" text-anchor="start">Agent skills system</text>
+<text x="36" y="74" font-size="17" font-weight="400" fill="#5B6475" text-anchor="start">You ask for an outcome. The project&#x27;s AGENTS.md points the agent at the skills, and each skill runs the media-* commands.</text>
+<rect x="36" y="106" width="340" height="92" rx="10" fill="#F7F8FA" stroke="#D0D5DD" stroke-width="1.2"/>
+<rect x="36" y="116" width="4" height="72" rx="2" fill="#64748B"/>
+<text x="54" y="135" font-size="19" font-weight="600" fill="#1D2433" text-anchor="start">You</text>
+<text x="54" y="160" font-size="16" font-weight="400" fill="#5B6475" text-anchor="start">“Make a 3-minute recap of</text>
+<text x="54" y="182" font-size="16" font-weight="400" fill="#5B6475" text-anchor="start">this session”</text>
+<rect x="405" y="106" width="400" height="92" rx="10" fill="#F7F8FA" stroke="#D0D5DD" stroke-width="1.2"/>
+<rect x="405" y="116" width="4" height="72" rx="2" fill="#2F6FEB"/>
+<text x="423" y="135" font-size="19" font-weight="600" fill="#1D2433" text-anchor="start">Your coding agent</text>
+<text x="423" y="160" font-size="16" font-weight="400" fill="#5B6475" text-anchor="start">Claude Code, Codex, Antigravity,</text>
+<text x="423" y="182" font-size="16" font-weight="400" fill="#5B6475" text-anchor="start">or any agent that reads skills</text>
+<rect x="1100" y="106" width="464" height="92" rx="10" fill="#F7F8FA" stroke="#D0D5DD" stroke-width="1.2"/>
+<rect x="1100" y="116" width="4" height="72" rx="2" fill="#2F6FEB"/>
+<text x="1118" y="135" font-size="19" font-weight="600" fill="#1D2433" text-anchor="start">Skills on this machine</text>
+<text x="1118" y="160" font-size="16" font-weight="400" fill="#5B6475" text-anchor="start">media-tooling-link-skills  →  ~/.agents/skills,</text>
+<text x="1118" y="182" font-size="16" font-weight="400" fill="#5B6475" text-anchor="start">~/.claude/skills, ~/.gemini/…  (+ your private skills)</text>
+<path d="M376,152 L401,152" fill="none" stroke="#98A2B3" stroke-width="1.6" marker-end="url(#arrow)"/>
+<path d="M1100,152 L809,152" fill="none" stroke="#98A2B3" stroke-width="1.6" marker-end="url(#arrow)"/>
+<text x="955" y="140" font-size="15" font-weight="400" fill="#5B6475" text-anchor="middle" font-style="italic">discovered from</text>
+<rect x="36" y="236" width="340" height="70" rx="10" fill="#F7F8FA" stroke="#D0D5DD" stroke-width="1.2"/>
+<rect x="36" y="246" width="4" height="50" rx="2" fill="#7C4DDB"/>
+<text x="54" y="265" font-size="19" font-weight="600" fill="#1D2433" text-anchor="start">media-tooling-init</text>
+<text x="54" y="290" font-size="16" font-weight="400" fill="#5B6475" text-anchor="start" font-family="Menlo, SFMono-Regular, Consolas, monospace">sets up $PROJECT_DIR</text>
+<rect x="405" y="236" width="400" height="92" rx="10" fill="#F7F8FA" stroke="#D0D5DD" stroke-width="1.2"/>
+<rect x="405" y="246" width="4" height="72" rx="2" fill="#7C4DDB"/>
+<text x="423" y="265" font-size="19" font-weight="600" fill="#1D2433" text-anchor="start">Project AGENTS.md</text>
+<text x="423" y="290" font-size="16" font-weight="400" fill="#5B6475" text-anchor="start">which skills and commands to use;</text>
+<text x="423" y="312" font-size="16" font-weight="400" fill="#5B6475" text-anchor="start">keep all work in the project</text>
+<path d="M376,282 L401,282" fill="none" stroke="#98A2B3" stroke-width="1.6" marker-end="url(#arrow)"/>
+<path d="M605,198 L605,232" fill="none" stroke="#98A2B3" stroke-width="1.6" marker-end="url(#arrow)"/>
+<text x="615" y="222" font-size="15" font-weight="400" fill="#5B6475" text-anchor="start" font-style="italic">reads</text>
+<rect x="36" y="372" width="1139" height="92" rx="10" fill="#F7F8FA" stroke="#D0D5DD" stroke-width="1.2"/>
+<rect x="36" y="382" width="4" height="72" rx="2" fill="#2E9E48"/>
+<text x="54" y="401" font-size="19" font-weight="600" fill="#1D2433" text-anchor="start">media-render-pipeline</text>
+<text x="54" y="426" font-size="16" font-weight="400" fill="#5B6475" text-anchor="start">end-to-end: transcribe → plan → EDL → render → self-check → iterate;</text>
+<text x="54" y="448" font-size="16" font-weight="400" fill="#5B6475" text-anchor="start">delegates each step to the skills below</text>
+<path d="M605,328 L605,368" fill="none" stroke="#98A2B3" stroke-width="1.6" marker-end="url(#arrow)"/>
+<text x="615" y="358" font-size="15" font-weight="400" fill="#5B6475" text-anchor="start" font-style="italic">finished video from raw media</text>
+<path d="M805,282 L1383,282 L1383,524" fill="none" stroke="#98A2B3" stroke-width="1.6" marker-end="url(#arrow)"/>
+<text x="1094" y="270" font-size="15" font-weight="400" fill="#5B6475" text-anchor="middle" font-style="italic">or a single job, directly</text>
+<rect x="36" y="528" width="361" height="262" rx="10" fill="#F7F8FA" stroke="#D0D5DD" stroke-width="1.2"/>
+<rect x="36" y="528" width="361" height="6" rx="3" fill="#2F6FEB"/>
+<text x="56" y="566" font-size="15" font-weight="700" fill="#2F6FEB" text-anchor="start">INGEST AND TRANSCRIPTS</text>
+<text x="56" y="602" font-size="17" font-weight="700" fill="#1D2433" text-anchor="start" font-family="Menlo, SFMono-Regular, Consolas, monospace">media-corpus-ingest</text>
+<text x="56" y="628" font-size="16" font-weight="400" fill="#5B6475" text-anchor="start">inventory a mixed corpus of media</text>
+<text x="56" y="672" font-size="17" font-weight="700" fill="#1D2433" text-anchor="start" font-family="Menlo, SFMono-Regular, Consolas, monospace">media-subtitle-pipeline</text>
+<text x="56" y="698" font-size="16" font-weight="400" fill="#5B6475" text-anchor="start">transcripts, SRT subtitles, audio</text>
+<path d="M216.5,464 L216.5,524" fill="none" stroke="#98A2B3" stroke-width="1.6" marker-end="url(#arrow)"/>
+<rect x="425" y="528" width="361" height="262" rx="10" fill="#F7F8FA" stroke="#D0D5DD" stroke-width="1.2"/>
+<rect x="425" y="528" width="361" height="6" rx="3" fill="#0E9384"/>
+<text x="445" y="566" font-size="15" font-weight="700" fill="#0E9384" text-anchor="start">ASSEMBLY AND FINISHING</text>
+<text x="445" y="602" font-size="17" font-weight="700" fill="#1D2433" text-anchor="start" font-family="Menlo, SFMono-Regular, Consolas, monospace">media-rough-cut-assembly</text>
+<text x="445" y="628" font-size="16" font-weight="400" fill="#5B6475" text-anchor="start">EDL renders, grading, loudness,</text>
+<text x="445" y="650" font-size="16" font-weight="400" fill="#5B6475" text-anchor="start">self-check, quick rough cuts</text>
+<path d="M605.5,464 L605.5,524" fill="none" stroke="#98A2B3" stroke-width="1.6" marker-end="url(#arrow)"/>
+<rect x="814" y="528" width="361" height="262" rx="10" fill="#F7F8FA" stroke="#D0D5DD" stroke-width="1.2"/>
+<rect x="814" y="528" width="361" height="6" rx="3" fill="#DB2777"/>
+<text x="834" y="566" font-size="15" font-weight="700" fill="#DB2777" text-anchor="start">MOTION GRAPHICS</text>
+<text x="834" y="602" font-size="17" font-weight="700" fill="#1D2433" text-anchor="start" font-family="Menlo, SFMono-Regular, Consolas, monospace">media-motion-graphics</text>
+<text x="834" y="628" font-size="16" font-weight="400" fill="#5B6475" text-anchor="start">storyboards, HyperFrames, TTV shots</text>
+<text x="834" y="672" font-size="17" font-weight="700" fill="#1D2433" text-anchor="start" font-family="Menlo, SFMono-Regular, Consolas, monospace">media-motion-raea</text>
+<text x="834" y="698" font-size="16" font-weight="400" fill="#5B6475" text-anchor="start">the same on raea (pilot)</text>
+<text x="834" y="742" font-size="17" font-weight="700" fill="#5B6475" text-anchor="start" font-family="Menlo, SFMono-Regular, Consolas, monospace">manim-video</text>
+<text x="834" y="768" font-size="16" font-weight="400" fill="#5B6475" text-anchor="start" font-style="italic">math animation (optional extra)</text>
+<path d="M994.5,464 L994.5,524" fill="none" stroke="#98A2B3" stroke-width="1.6" marker-end="url(#arrow)"/>
+<rect x="1203" y="528" width="361" height="262" rx="10" fill="#F7F8FA" stroke="#D0D5DD" stroke-width="1.2"/>
+<rect x="1203" y="528" width="361" height="6" rx="3" fill="#D97706"/>
+<text x="1223" y="566" font-size="15" font-weight="700" fill="#D97706" text-anchor="start">NARRATION</text>
+<text x="1223" y="602" font-size="17" font-weight="700" fill="#1D2433" text-anchor="start" font-family="Menlo, SFMono-Regular, Consolas, monospace">media-tts</text>
+<text x="1223" y="628" font-size="16" font-weight="400" fill="#5B6475" text-anchor="start">ElevenLabs voiceover and timings</text>
+<text x="1223" y="672" font-size="17" font-weight="700" fill="#1D2433" text-anchor="start" font-family="Menlo, SFMono-Regular, Consolas, monospace">media-teleprompter</text>
+<text x="1223" y="698" font-size="16" font-weight="400" fill="#5B6475" text-anchor="start">prompter timed to a reference take</text>
+<rect x="36" y="818" width="1528" height="56" rx="10" fill="#F2F4F7" stroke="#D0D5DD" stroke-width="1.2"/>
+<text x="56" y="853" font-size="17" font-weight="400" fill="#1D2433" text-anchor="start">Each skill runs media-* commands (see Toolkit commands) and writes everything into $PROJECT_DIR.</text>
+</svg>

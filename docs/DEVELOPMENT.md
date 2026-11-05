@@ -37,7 +37,14 @@ uv run --group dev mypy src tests
 - `src/media_tooling/templates/project_AGENTS.md`
   the managed user-facing `AGENTS.md` block template written into project workspaces
 - `docs/`
-  developer-oriented setup, maintenance, and reference material
+  setup, reference and maintenance material; the README stays a short overview and links here
+- `docs/images/`
+  the README diagrams: edit `diagrams.py` and run `python3 docs/images/diagrams.py` to redraw the SVGs and PNGs
+  (needs `rsvg-convert`, from `brew install librsvg`)
+
+A checkout also creates local-only directories during normal use: `.venv/` for the Python environment, and cache
+directories for downloaded packages and runtime data. They are generated on demand, safe to delete, and ignored by
+Git.
 
 ## When editing the toolkit
 

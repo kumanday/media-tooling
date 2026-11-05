@@ -18,14 +18,22 @@ media-tooling: A Python CLI toolkit for media production workflows — transcrip
 
 ## Skills Structure
 
-Agent skills under `.agents/skills/`:
+Media skills under `.agents/skills/`, linked into agents by `media-tooling-link-skills` (the list is
+`SKILL_NAMES` in `src/media_tooling/project_init.py`; docs/SKILLS.md explains the routing):
 
+- `media-render-pipeline/` — End-to-end orchestration skill (top-level)
 - `media-corpus-ingest/` — Mixed-media ingestion (subtitle + contact-sheet pipelines)
 - `media-subtitle-pipeline/` — Spoken-media transcription, packing, and timeline drill-down
 - `media-rough-cut-assembly/` — EDL-driven rendering, grading, loudnorm, and card/image/clip assembly
-- `media-render-pipeline/` — End-to-end orchestration skill (top-level)
+- `media-motion-graphics/` — HyperFrames motion graphics, storyboards, TTV footage and visual review
 - `media-motion-raea/` — Pilot: motion graphics on raea instead of HyperFrames (docs/RAEA.md)
-- `manim-video/` — Manim animation production skill (optional)
+- `media-tts/` — ElevenLabs narration, single file or per-frame clips with word timings
+- `media-teleprompter/` — Karaoke teleprompter pages timed to a reference take
+- `manim-video/` — Manim animation production skill (optional, not linked)
+
+Development skills for working on this repository through OpenSymphony (not part of the media skill system,
+not linked into agents or project workspaces):
+
 - `linear/` — Linear issue tracker integration
 - `commit/` — Git commit conventions
 - `push/` — Remote push workflow
@@ -109,6 +117,9 @@ The following content was preserved from the repository's previous `AGENTS.md` d
 This `AGENTS.md` is only for developing `media-tooling` itself.
 
 - Read [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) before making substantial changes.
+- The README is a short overview. Detail lives in `docs/`: [COMMANDS.md](docs/COMMANDS.md) for each command,
+  [SKILLS.md](docs/SKILLS.md) for skill routing, [WORKFLOWS.md](docs/WORKFLOWS.md) for examples. Update those
+  (and the tables in the README) when commands or skills change.
 - Keep user-facing execution guidance out of this file. Project workspaces should get their managed `AGENTS.md` block from [src/media_tooling/templates/project_AGENTS.md](src/media_tooling/templates/project_AGENTS.md) via `media-tooling-init`.
 - When execution posture changes, update the packaged `.agents/skills/`, the project `AGENTS.md` template, and the user docs together.
 - Run `bash scripts/check.sh` from the repo root before committing.

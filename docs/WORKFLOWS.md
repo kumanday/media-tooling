@@ -84,7 +84,22 @@ Prompts work best when they include:
 
 Ask for outcomes and deliverables. The skills should handle the lower-level steps unless you are debugging or doing something unusual.
 
-In practice, short prompts usually work better than long procedural ones.
+In practice, short prompts usually work better than long procedural ones. These outcome-level directives are
+the main use case:
+
+```text
+Create a 5-minute highlight reel with representative samples of the different speakers and the topics discussed.
+```
+
+```text
+Turn this session into a short recap that explains the main workflows, tools, and takeaways.
+```
+
+```text
+Review this processed media project and propose a first-pass rough cut with the strongest clips and any obvious weak spots.
+```
+
+The examples below are more explicit, for when you want to name the inputs or deliverables.
 
 ## Example 1. Ingest a mixed corpus
 

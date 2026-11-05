@@ -27,6 +27,9 @@ Use installed toolkit commands from this project directory:
 - pilot, only when raea is requested: standalone motion graphics as raea compositions with the `media-motion-raea` skill; narration timing for them: `media-raea-timing`
 - cloud rendering of a HyperFrames project on Google Cloud Run, billed to the GCP project its render profile names: `media-cloud-render` (`which` shows the profile and account before anything runs)
 
+Command flags and behavior: run the command with `--help`, or read the toolkit's command reference at
+https://github.com/kumanday/media-tooling/blob/main/docs/COMMANDS.md
+
 Operational defaults:
 - use sequential processing to reduce resource contention. Have patience for long media jobs
 - use `--skip-existing` for resumable batches
