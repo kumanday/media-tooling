@@ -7,6 +7,8 @@ description: Plan, build and revise narrated explainers, product videos, motion 
 
 Use HyperFrames' installed skills for authoring and rendering. This skill connects
 those workflows to project assets, reference analysis, and media-tooling assembly.
+When the user asks for raea, build standalone videos with the `media-motion-raea`
+pilot instead; alpha overlays stay on HyperFrames.
 
 ## Start with upstream capabilities
 

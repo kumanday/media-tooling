@@ -24,6 +24,7 @@ Use installed toolkit commands from this project directory:
 - output verification: `media-verify`
 - generated-media requests, review and import: `media-generated`
 - optional HTML-rendered video and motion overlays: `hyperframes`
+- pilot, only when raea is requested: standalone motion graphics as raea compositions with the `media-motion-raea` skill; narration timing for them: `media-raea-timing`
 - cloud rendering of a HyperFrames project on Google Cloud Run, billed to the GCP project its render profile names: `media-cloud-render` (`which` shows the profile and account before anything runs)
 
 Operational defaults:

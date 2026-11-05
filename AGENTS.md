@@ -24,6 +24,7 @@ Agent skills under `.agents/skills/`:
 - `media-subtitle-pipeline/` — Spoken-media transcription, packing, and timeline drill-down
 - `media-rough-cut-assembly/` — EDL-driven rendering, grading, loudnorm, and card/image/clip assembly
 - `media-render-pipeline/` — End-to-end orchestration skill (top-level)
+- `media-motion-raea/` — Pilot: motion graphics on raea instead of HyperFrames (docs/RAEA.md)
 - `manim-video/` — Manim animation production skill (optional)
 - `linear/` — Linear issue tracker integration
 - `commit/` — Git commit conventions

@@ -41,6 +41,7 @@ SKILL_NAMES = (
     "media-motion-graphics",
     "media-tts",
     "media-teleprompter",
+    "media-motion-raea",
 )
 MANAGED_BLOCK_START = "<!-- media-tooling:init:start -->"
 MANAGED_BLOCK_END = "<!-- media-tooling:init:end -->"
