@@ -58,7 +58,7 @@ Optional Hyperframes workflow:
 - use upstream branded storyboard sketches before animation and composition snapshots plus a draft encode after building; carry reviewed layouts into motion
 - default to revision review; explicit autonomous requests select auto review with multimodal storyboard feedback and bounded corrections, recorded in BRIEF.md
 - use transparent composition backgrounds and verify encoded alpha; prefer MOV when WebM alpha is unavailable
-- in upstream HyperFrames workflows (`faceless-explainer`, `product-launch-video` and others), produce the narration step's `audio_meta.json` with `media-tts-frames` instead of the workflow's own TTS providers, then run the workflow's duration sync
+- in HyperFrames films, produce narration with `media-tts-frames` (per-frame clips, word timings and `audio_meta.json`) instead of HyperFrames' own voices, and time each frame to its `voices[].duration_s`; HyperFrames retired its workflow skills (faceless-explainer and others), so don't route work through them
 - use `hyperframes lint .` while editing and `hyperframes check . --snapshots --at-transitions` before using the render
 - review the actual encode across time; when the brief requires generated footage and explanatory motion, prove both in a short encode before expanding the film, retaining generation receipts and asset hashes
 - capture verifier exit codes directly; use `set -o pipefail` when piping output, since a successful `tail` or `grep` does not establish that the verifier passed
