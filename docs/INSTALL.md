@@ -57,8 +57,9 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 
    It never deletes a real file or directory. An existing entry that isn't a
    symlink is reported as `skipped`. Re-run with `--force` to rename it to
-   `<name>.bak-<time>` and link in its place. `--dry-run` shows what would
-   change.
+   `<name>.bak-<time>` and link in its place. A Claude Code or Antigravity link
+   that points somewhere else but still works is reported as `kept` and left
+   alone; `--force` repoints it. `--dry-run` shows what would change.
 
 3. **Provide credentials through the environment** (*ask* the user for values,
    or for the dotenv file that holds them).

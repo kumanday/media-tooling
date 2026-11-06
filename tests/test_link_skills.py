@@ -103,6 +103,30 @@ class LinkSkillsTests(unittest.TestCase):
                          {"media-a": "skipped", "media-b": "linked"})
         self.assertFalse((link_dir / "media-a").is_symlink())
 
+    def test_working_links_into_another_store_are_kept_and_dangling_ones_repaired(self) -> None:
+        link_dir = self.root / "home" / ".gemini" / "skills"
+        other = self.root / "other-store"
+        for name in NAMES:
+            (other / name).mkdir(parents=True)
+            (other / name / "SKILL.md").write_text("elsewhere", encoding="utf-8")
+        link_dir.mkdir(parents=True)
+        (link_dir / "media-a").symlink_to(other / "media-a")
+        (link_dir / "media-b").symlink_to(self.root / "deleted-tmp" / "media-b")
+        self.claude.mkdir()
+        (self.claude / "media-a").symlink_to(other / "media-a")
+        actions = link_skills(skills_dir=self.skills, agents_dir=self.agents, claude_dir=self.claude, names=NAMES,
+                              antigravity_dirs=(link_dir,))
+        status = {(a.path.parent, a.path.name): a.status for a in actions}
+        self.assertEqual(status[(link_dir, "media-a")], "kept")
+        self.assertEqual(status[(self.claude, "media-a")], "kept")
+        self.assertEqual(status[(link_dir, "media-b")], "relinked")
+        self.assertEqual(os.readlink(self.claude / "media-a"), str(other / "media-a"))
+        self.assertEqual(os.readlink(link_dir / "media-b"), "../../.claude/skills/media-b")
+        link_skills(skills_dir=self.skills, agents_dir=self.agents, claude_dir=self.claude, names=NAMES,
+                    antigravity_dirs=(link_dir,), force=True)
+        self.assertEqual(os.readlink(link_dir / "media-a"), "../../.claude/skills/media-a")
+        self.assertEqual(os.readlink(self.claude / "media-a"), "../../.agents/skills/media-a")
+
     def run_main(self, home: Path, *args: str) -> tuple[int, str]:
         with patch("media_tooling.link_skills.resolve_toolkit_skills_dir", return_value=self.skills), \
                 patch("media_tooling.link_skills.SKILL_NAMES", NAMES), \

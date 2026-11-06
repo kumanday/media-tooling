@@ -138,8 +138,10 @@ class PrivateSkillTests(unittest.TestCase):
             (cfg / "skills" / "blog-explainer").mkdir(parents=True)
             (cfg / "skills" / "blog-explainer" / "SKILL.md").write_text("---\nname: blog-explainer\n---\n")
             out = io.StringIO()
-            with mock.patch.dict(os.environ, {"MEDIA_TOOLING_CONFIG_DIR": str(cfg)}), redirect_stdout(out):
-                code = main(["--agents-dir", str(root / "agents"), "--no-claude"])
+            # a fake home as well as explicit dirs: the defaults (~/.gemini/...) must never reach the real one
+            with mock.patch.dict(os.environ, {"MEDIA_TOOLING_CONFIG_DIR": str(cfg)}), \
+                    mock.patch("pathlib.Path.home", return_value=root / "home"), redirect_stdout(out):
+                code = main(["--agents-dir", str(root / "agents"), "--no-claude", "--no-antigravity"])
             self.assertEqual(code, 0)
             self.assertIn("Private skills:", out.getvalue())
             self.assertTrue((root / "agents" / "blog-explainer").is_symlink())
