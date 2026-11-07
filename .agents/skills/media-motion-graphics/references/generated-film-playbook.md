@@ -178,10 +178,10 @@ implementation files to the source checkout. Scope searches to that checkout;
 
 Narration always goes through media-tooling: `media-tts` for one take, or
 `media-tts-frames` for per-frame clips with word timings and `audio_meta.json`.
-That holds inside upstream HyperFrames workflows too (see the `media-tts`
-skill). The single-take method below suits a long continuous film built in its
-own composition. `media-tts-frames` suits frame-based workflows such as
-`faceless-explainer`.
+That holds for HyperFrames films too (see the `media-tts` skill). The
+single-take method below suits a long continuous film built in its own
+composition. `media-tts-frames` suits a film built frame by frame, one
+narration clip per frame.
 
 - **Two files:**
   - `script.md` is the caption source: plain text, one paragraph per scene,

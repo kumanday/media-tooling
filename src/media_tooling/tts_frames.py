@@ -4,9 +4,8 @@ Reads the HyperFrames ``SCRIPT.md`` shape (one ``## ... (Frame N)`` section per
 spoken line, the spoken text in an indented block) and writes:
 
 - ``<voice-dir>/NN.mp3``: one clip per frame;
-- ``audio_meta.json``: the frame-keyed shape HyperFrames workflows consume
-  (``faceless-explainer``, ``product-launch-video`` and others): ``voices[]``
-  with ``frame``, ``path``, ``duration_s``, ``source: "host"`` and frame-relative
+- ``audio_meta.json``: the frame-keyed shape HyperFrames frame pipelines use:
+  ``voices[]`` with ``frame``, ``path``, ``duration_s``, ``source: "host"`` and frame-relative
   ``words[]`` (``id``, ``text``, ``start``, ``end``). Existing ``bgm``,
   ``bgm_pending`` and ``sfx`` entries are preserved.
 
@@ -28,8 +27,8 @@ Markup in the spoken text:
   not re-voice the line.
 
 Clips are cached by a hash of their spoken text and voice settings; re-running
-only re-voices lines that changed. Afterwards run the workflow's duration sync
-(for example ``node <skill>/scripts/audio.mjs sync-durations``).
+only re-voices lines that changed. Afterwards set each frame's duration from its
+``voices[].duration_s``; HyperFrames no longer ships a duration-sync script.
 """
 
 from __future__ import annotations

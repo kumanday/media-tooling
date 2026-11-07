@@ -6,7 +6,7 @@ description: Plan, build and revise narrated explainers, product videos, motion 
 # Motion graphics in a media-tooling workspace
 
 Use HyperFrames' installed skills for authoring and rendering. This skill connects
-those workflows to project assets, reference analysis, and media-tooling assembly.
+that work to project assets, reference analysis, and media-tooling assembly.
 When the user asks for raea, build standalone videos with the `media-motion-raea`
 pilot instead; alpha overlays stay on HyperFrames.
 
@@ -16,27 +16,33 @@ pilot instead; alpha overlays stay on HyperFrames.
    design spec before asking for information. Read `edit/project.md` for shared
    project context when the user's scope permits it. An independent pilot uses
    only its own slot's records and the current toolkit guidance.
-2. Check `hyperframes --version` and command help. Use the current upstream
-   `/hyperframes` router and its selected workflow. For standalone skill installs,
-   `hyperframes skills update` installs the core set; the router loads creation
-   workflows on demand. Plugin installs use the plugin's update mechanism.
+2. Check `hyperframes --version` and command help. Read the upstream
+   `hyperframes` skill first: it holds the render contract, the work loop and a
+   reference for each kind of video (`references/types/`). For standalone skill
+   installs, `hyperframes skills update` installs the core set (`hyperframes`,
+   `hyperframes-cli`, `hyperframes-registry`, `media-use`); name an on-demand
+   skill (`figma`, `slideshow`, `remotion-to-hyperframes`, `reverse-any-video`,
+   `style-sampling`) to install it. Plugin installs use the plugin's update
+   mechanism. HyperFrames retired its workflow skills (faceless-explainer,
+   product-launch-video and others) in heygen-com/hyperframes#5651; an older
+   install may still list them, but don't route new work through them.
    If required skills or commands are missing, report the gap and use the setup
    instructions in the toolkit's `docs/HYPERFRAMES.md`. Do not invent upstream
    commands or reconstruct missing skills from memory.
 3. **Narration and audio:** narration always comes from media-tooling. Use
    `media-tts` for one take or `media-tts-frames` for per-frame clips and
-   `audio_meta.json`, both with `eleven_v4`. This holds even when an upstream
-   workflow (`faceless-explainer`, `product-launch-video` and others) offers its
-   own TTS providers. In those workflows, write the narration step's
-   `audio_meta.json` with `media-tts-frames`, then run the workflow's
-   `sync-durations`. Don't write project-local TTS scripts. Add music or sound
+   `audio_meta.json`, both with `eleven_v4`. This holds even though HyperFrames
+   offers its own voices (`media-use`, `hyperframes tts`). A frame-based film
+   times each frame to its `voices[].duration_s`. Don't write project-local TTS
+   scripts. Add music or sound
    effects only when the user asks (`media-video-music`). See the `media-tts`
    skill.
-4. Load only the domains needed: `hyperframes-creative` for brand and storyboard
-   design, `hyperframes-registry` for reusable treatments,
-   `hyperframes-animation` for motion rules, `hyperframes-keyframes` for camera
-   moves, `hyperframes-core` for timing and seekable structure, and `hyperframes-cli`
-   for checks, snapshots, preview, and rendering.
+4. Read only the references needed: in the `hyperframes` skill, `look.md`,
+   `spec.md` and `storyboard.md` for brand and storyboard design, `motion.md`
+   for motion, cuts and camera moves, `format.md` for timing and seekable
+   structure, and `captions.md` or `overlays.md` for captions and cards over
+   footage. Use `hyperframes-registry` for reusable treatments and
+   `hyperframes-cli` for checks, snapshots, preview, and rendering.
 
 For missing skills, provider image limits, or installed-package lookup, read
 `references/runtime-troubleshooting.md`. A skill listed by the harness is

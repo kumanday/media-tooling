@@ -80,8 +80,8 @@ group source cues into larger translation windows, then re-segment the translate
   Generates narration audio from a text, Markdown, or SRT script. ElevenLabs is the current backend (default model
   `eleven_v4`).
 - `media-tts-frames`
-  Generates per-frame narration clips with word timings and the `audio_meta.json` that HyperFrames workflows (such
-  as `faceless-explainer`) consume, from their `SCRIPT.md`.
+  Generates per-frame narration clips with word timings and a frame-keyed `audio_meta.json` for HyperFrames films
+  built frame by frame, from a `SCRIPT.md`.
 - `media-teleprompter`
   Builds a karaoke teleprompter web page from word timings (a `media-subtitle` transcript, a narration
   `timing.json` or an `audio_meta.json`) and an optional Markdown script. One line scrolls right to left in a band

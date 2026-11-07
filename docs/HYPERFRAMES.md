@@ -5,8 +5,8 @@ Use it when a video needs browser-native motion graphics: animated captions, low
 
 Keep using media-tooling for transcription, contact sheets, packed transcripts, EDL assembly, grading, loudness normalization, subtitle burning, and output verification.
 
-For a copyable prompt that selects a spoken clip and packages it with the
-upstream `talking-head-recut` skill, see
+For a copyable prompt that selects a spoken clip and packages it with
+HyperFrames graphics (the `hyperframes` skill's `references/overlays.md`), see
 [Create a short from your own video](WORKFLOWS.md#example-13-create-a-short-from-your-own-video).
 
 ## Install
@@ -36,10 +36,16 @@ checked against CLI 0.8.116 and upstream commit
 Check `hyperframes --version` and command help before using them in an older project.
 
 For standalone agent skills, `hyperframes skills update` installs the core set
-and refreshes already installed skills; the upstream router installs creation
-workflows on demand. For a HyperFrames plugin, use its plugin update mechanism.
-Read the upstream `/hyperframes` skill first, then the selected creation workflow
-and required domains. See the [upstream skill catalog](https://github.com/heygen-com/hyperframes#skills). For agent runs, use these environment variables to keep CLI output predictable:
+(`hyperframes`, `hyperframes-cli`, `hyperframes-registry`, `media-use`) and
+refreshes already installed skills; `hyperframes skills update <name>` installs
+an on-demand skill. Since CLI 0.9.9 it installs the skills at the CLI's own
+release tag. For a HyperFrames plugin, use its plugin update mechanism. Read the
+upstream `/hyperframes` skill first, then the references it names for the kind
+of video. HyperFrames retired its workflow skills (faceless-explainer,
+product-launch-video and others) in heygen-com/hyperframes#5651; it never
+removes installed skills, so an older install may still list them. To keep one
+pinned set, pass `--skip-skills` to `hyperframes init` or set
+`HYPERFRAMES_SKIP_SKILLS=1`. See the [upstream skill catalog](https://github.com/heygen-com/hyperframes#skills). For agent runs, use these environment variables to keep CLI output predictable:
 
 ```bash
 export HYPERFRAMES_NO_TELEMETRY=1
@@ -147,11 +153,12 @@ Before a Hyperframes render is used in a media-tooling output:
 ## Narration and audio in HyperFrames workflows
 
 - **Narration:** synthesize all narration with media-tooling. Use
-  `media-tts-frames SCRIPT.md --hyperframes .` for frame-based workflows such as
-  `faceless-explainer` and `product-launch-video`: it writes per-frame clips and
-  the workflow's `audio_meta.json` (host voices with word timings). Then run the
-  workflow's `audio.mjs sync-durations`. Use `media-tts` for a single take. Both
-  default to `eleven_v4`; see the `media-tts` skill.
+  `media-tts-frames SCRIPT.md --hyperframes .` for a film built frame by frame:
+  it writes per-frame clips and a frame-keyed `audio_meta.json` (host voices with
+  word timings). Time each frame to its `voices[].duration_s`. HyperFrames
+  retired the workflow skills whose scripts used to do that
+  (heygen-com/hyperframes#5651). Use `media-tts` for a single take. Both default
+  to `eleven_v4`; see the `media-tts` skill.
 - **Cues:** mark where a visual should land with `{@name}` in the spoken text.
   `audio_meta.json` then carries each frame's `cues[]` with frame-relative times,
   so frame builders can time reveals to the narration without a project script.
@@ -168,11 +175,11 @@ director notes. It connects the project to upstream HyperFrames authoring:
 
 | Need | Upstream capability |
 | --- | --- |
-| Choose a creation workflow or resume an existing project | `hyperframes` router |
-| Product capture and promo planning | `product-launch-video` |
-| Brand design and static storyboard sketches | `hyperframes-creative` and shared review loop |
+| Plan a film by type, or resume an existing project | `hyperframes` skill and its `references/types/` |
+| Product capture and promo planning | `hyperframes capture` and `references/types/launch.md` |
+| Brand design and static storyboard sketches | `references/look.md`, `spec.md` and `storyboard.md` |
 | Named effects, components, and transitions | `hyperframes-registry` with `catalog` / `add` |
-| Seekable timing and camera moves | `hyperframes-core` and `hyperframes-keyframes` |
+| Seekable timing, motion and camera moves | `references/format.md` and `motion.md` |
 | Runtime, layout, motion, and contrast checks | `hyperframes-cli` with `check` |
 | Stills from the built composition | `snapshot --at` |
 

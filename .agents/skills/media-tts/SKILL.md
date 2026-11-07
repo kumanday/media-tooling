@@ -1,6 +1,6 @@
 ---
 name: media-tts
-description: Use whenever a video or media project needs narration or voiceover, including inside HyperFrames workflows such as faceless-explainer or product-launch-video. Generates ElevenLabs narration (eleven_v4) as one file or as per-frame clips with word timings and audio_meta.json.
+description: Use whenever a video or media project needs narration or voiceover, including HyperFrames films with per-frame narration. Generates ElevenLabs narration (eleven_v4) as one file or as per-frame clips with word timings and audio_meta.json.
 ---
 
 # Media TTS
@@ -80,17 +80,22 @@ elevenlabs`. For a narrated HyperFrames film built from one take, run
 placed voice segments, scene windows and captions. Then use `media-loudnorm`, or
 mux the narration through the rough-cut or render workflow.
 
-## Per-frame narration for HyperFrames workflows: `media-tts-frames`
+## Per-frame narration for HyperFrames films: `media-tts-frames`
 
-Upstream HyperFrames workflows (`faceless-explainer`, `product-launch-video` and
-the others that share their audio model) read narration from `audio_meta.json`.
-`media-tts-frames` produces it from the workflow's own `SCRIPT.md`:
+A HyperFrames film built frame by frame takes its narration from a frame-keyed
+`audio_meta.json`. `media-tts-frames` produces it from a `SCRIPT.md`:
 
 ```bash
 media-tts-frames SCRIPT.md --hyperframes . --voice-id "$ELEVENLABS_VOICE_ID_ES" --language es \
   [--pronunciations pronunciations.json] [--tail 0.6] [--last-tail 1.6]
-node <workflow-skill>/scripts/audio.mjs sync-durations --audio-meta ./audio_meta.json --storyboard ./STORYBOARD.md
 ```
+
+HyperFrames retired its workflow skills (faceless-explainer and the others) in
+heygen-com/hyperframes#5651, and with them the scripts that synced storyboard
+durations, built captions and assembled the index from `audio_meta.json`. The
+current `hyperframes` skill leaves those steps to the caller: time each frame
+to its `voices[].duration_s`, and build captions from `words[]` following the
+skill's `references/captions.md`.
 
 - **Input:** `SCRIPT.md` in the upstream shape, one `## Line N — label (Frame N)`
   section per frame with the spoken text in an indented block. `**Key:**` rows
@@ -103,10 +108,10 @@ node <workflow-skill>/scripts/audio.mjs sync-durations --audio-meta ./audio_meta
     `start` and `end`. These timings come from ElevenLabs character alignment,
     so no transcription pass is needed. Frames with cue markers also get
     `cues[]`. Existing `bgm`, `bgm_pending` and `sfx` entries are kept.
-- **In the workflow:** this replaces the voice part of the workflow's audio step.
-  When the storyboard has `music: none`, or music comes from
-  `media-video-music`, skip the workflow's audio generation entirely. Captions,
-  assembly and duration sync then read `audio_meta.json` as usual.
+- **In a HyperFrames film:** this replaces HyperFrames' own voice options
+  (`media-use` voices, `hyperframes tts`). Add music only from
+  `media-video-music`, on request. Frame timing, captions and assembly read
+  `audio_meta.json`.
 - **Checks:** `--dry-run` reports what would be voiced without calling the API;
   `--only 2,5` re-voices selected frames. Spot-check pronunciation by
   transcribing a clip with `media-subtitle --backend elevenlabs`.

@@ -242,9 +242,9 @@ Keep the work local; publication is a separate step.
 ## Example 13. Create a short from your own video
 
 Replace the bracketed fields before sharing this prompt with an agent. Use
-media-tooling to select and extract the short, then HyperFrames' upstream
-`talking-head-recut` skill to package that clip with transcript-timed graphics.
-The selected clip is the skill's input; it plays in full beneath the graphics.
+media-tooling to select and extract the short, then HyperFrames to package that
+clip with transcript-timed graphics (the `hyperframes` skill's
+`references/overlays.md`). The selected clip plays in full beneath the graphics.
 
 ```text
 Create one short from my long-form video using media-tooling's motion-graphics workflow.
@@ -258,13 +258,13 @@ Materials:
 
 Read the workspace's AGENTS.md and the toolkit's docs/HYPERFRAMES.md, then use
 the media-render-pipeline, media-motion-graphics, and subtitle skills. Read the
-upstream /hyperframes router and use its talking-head-recut skill to package
+upstream /hyperframes skill and its overlays and captions references to package
 the selected spoken clip with timed graphics. Verify installed commands and
 skill availability before using them.
 
 Find a strong, self-contained spoken moment of roughly 30-60 seconds, unless
 I supply a specific cut. Select and extract that clip with media-tooling before
-passing it to talking-head-recut. Preserve the speaker's meaning and develop
+packaging it. Preserve the speaker's meaning and develop
 your own creative direction. Use motion graphics to explain or reinforce the
 content, with the speaker's face unobstructed and subtitles readable.
 
