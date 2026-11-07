@@ -10,6 +10,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from media_tooling.tts_frames import (
+    CACHE_NAME,
     Line,
     cues_from_starts,
     main,
@@ -113,11 +114,13 @@ class TtsFramesTests(unittest.TestCase):
                 self.assertEqual(meta["voices"][0]["duration_s"], 2.6)
                 self.assertEqual(meta["voices"][1]["duration_s"], 3.6)
                 self.assertEqual(meta["voices"][1]["source"], "host")
-                self.assertTrue(calls[0]["url"].endswith("/voice/with-timestamps"))
-                self.assertEqual(calls[0]["payload"]["model_id"], "eleven_v4")
-                self.assertEqual(calls[0]["payload"]["language_code"], "en")
-                self.assertEqual(calls[0]["payload"]["next_text"], "[warm] Built in Rust.")
-                self.assertEqual(calls[1]["payload"]["previous_text"], "Ship a video in an afternoon.")
+                first = next(c for c in calls if c["payload"]["text"].startswith("Ship"))   # requests run concurrently
+                second = next(c for c in calls if c is not first)
+                self.assertTrue(first["url"].endswith("/voice/with-timestamps"))
+                self.assertEqual(first["payload"]["model_id"], "eleven_v4")
+                self.assertEqual(first["payload"]["language_code"], "en")
+                self.assertEqual(first["payload"]["next_text"], "[warm] Built in Rust.")
+                self.assertEqual(second["payload"]["previous_text"], "Ship a video in an afternoon.")
                 self.assertEqual(meta["voices"][1]["cues"], [{"name": "lang", "t": 0.65, "following": "in Rust."}])
                 self.assertNotIn("cues", meta["voices"][0])
                 # moving a cue reuses the cached clip and re-times the cue
@@ -126,6 +129,43 @@ class TtsFramesTests(unittest.TestCase):
                 self.assertEqual(len(calls), 2)
                 meta = json.loads((root / "audio_meta.json").read_text())
                 self.assertEqual(meta["voices"][1]["cues"][0]["following"], "Rust.")
+
+    def test_frames_are_voiced_concurrently_and_a_failure_keeps_the_others(self) -> None:
+        import threading
+        import time as _time
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            script = root / "SCRIPT.md"
+            script.write_text("".join(f"## Line {n} (Frame {n})\n\n    Line number {n} is spoken here.\n\n" for n in range(1, 6)),
+                              encoding="utf-8")
+            lock, live, peak = threading.Lock(), [0], [0]
+
+            def fake_post(url: str, params: dict, headers: dict, json: dict, timeout: int) -> MagicMock:  # noqa: A002
+                with lock:
+                    live[0] += 1
+                    peak[0] = max(peak[0], live[0])
+                _time.sleep(0.05)
+                with lock:
+                    live[0] -= 1
+                if "number 3" in json["text"]:
+                    return MagicMock(ok=False, status_code=400)
+                r = MagicMock(ok=True)
+                r.json.return_value = {"audio_base64": base64.b64encode(b"mp3").decode(), "alignment": alignment_for(json["text"])}
+                return r
+
+            requests = MagicMock()
+            requests.post.side_effect = fake_post
+            env = {"ELEVENLABS_API_KEY": "k", "ELEVENLABS_VOICE_ID_EN": "voice"}
+            with patch("media_tooling.tts._requests_module", requests), patch.dict(os.environ, env), \
+                    patch("media_tooling.tts_frames.audio_duration", return_value=2.0), \
+                    patch("sys.stdout", new_callable=io.StringIO), patch("sys.stderr", new_callable=io.StringIO) as err:
+                self.assertEqual(main([str(script), "--hyperframes", d, "--concurrency", "3"]), 1)
+                self.assertIn("frame 03", err.getvalue())
+            self.assertEqual(peak[0], 3)
+            cache = json.loads((root / "assets/voice" / CACHE_NAME).read_text())
+            clips = sorted(p.name for p in (root / "assets/voice").glob("*.mp3"))
+            self.assertEqual(clips, ["01.mp3", "02.mp3", "04.mp3", "05.mp3"])
+            self.assertEqual(sorted(cache), ["1", "2", "4", "5"])
 
     def test_dry_run_makes_no_calls(self) -> None:
         with tempfile.TemporaryDirectory() as d:

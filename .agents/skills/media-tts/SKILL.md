@@ -113,7 +113,9 @@ skill's `references/captions.md`.
   `media-video-music`, on request. Frame timing, captions and assembly read
   `audio_meta.json`.
 - **Checks:** `--dry-run` reports what would be voiced without calling the API;
-  `--only 2,5` re-voices selected frames. Spot-check pronunciation by
+  `--only 2,5` re-voices selected frames. Frames are voiced four requests at a
+  time (`--concurrency`, or `ELEVENLABS_CONCURRENCY`); lower it if your plan
+  allows fewer concurrent requests. Spot-check pronunciation by
   transcribing a clip with `media-subtitle --backend elevenlabs`.
 - **Built frames:** if frames were already built against an older take,
   re-time them instead of rebuilding them:

@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import concurrent.futures
 import hashlib
 import json
 import os
@@ -233,6 +234,46 @@ def synthesize_with_timestamps(*, text: str, voice_id: str, model_id: str, langu
     raise RuntimeError(f"ElevenLabs generation failed after {attempt} attempts. {last_error}")
 
 
+def synthesize_frames(todo: list[int], prepared: list[Any], keys: list[str], a: argparse.Namespace, voice_id: str,
+                      settings: dict[str, Any], voice_dir: Path, cache: dict[str, Any], cache_path: Path) -> set[int]:
+    """Voice the frames at indexes `todo`, up to --concurrency requests at a time. Each request carries its
+    neighbours' text (known up front), so the order of completion does not change the audio. Every finished clip is
+    written and cached as it arrives, so a failure keeps the clips already made. Returns the indexes voiced."""
+    if not todo:
+        return set()
+    voice_dir.mkdir(parents=True, exist_ok=True)
+
+    def one(i: int) -> dict[str, Any]:
+        return synthesize_with_timestamps(text=prepared[i].spoken, voice_id=voice_id, model_id=a.model, language=a.language,
+                                          previous=prepared[i - 1].spoken if i else None,
+                                          following=prepared[i + 1].spoken if i + 1 < len(prepared) else None,
+                                          settings=settings, output_format=a.output_format)
+
+    done: set[int] = set()
+    errors: list[str] = []
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, a.concurrency)) as pool:
+        futures = {pool.submit(one, i): i for i in todo}
+        for fut in concurrent.futures.as_completed(futures):
+            i = futures[fut]
+            p = prepared[i]
+            try:
+                body = fut.result()
+            except RuntimeError as exc:
+                errors.append(f"frame {p.frame:02d}: {exc}")
+                continue
+            clip = voice_dir / f"{p.frame:02d}.mp3"
+            clip.write_bytes(base64.b64decode(body["audio_base64"]))
+            alignment = body.get("alignment") or {}
+            cache[str(p.frame)] = {"hash": keys[i], "model": a.model, "audio_s": round(audio_duration(clip), 3),
+                                   "words": words_from_alignment(p, alignment, p.frame),
+                                   "char_starts": [round(float(x), 3) for x in alignment.get("character_start_times_seconds") or []]}
+            cache_path.write_text(json.dumps(cache, indent=1, ensure_ascii=False), encoding="utf-8")
+            done.add(i)
+    if errors:
+        raise RuntimeError("; ".join(sorted(errors)) + (f" ({len(done)} other clip(s) voiced and cached)" if done else ""))
+    return done
+
+
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Per-frame ElevenLabs narration and audio_meta.json for HyperFrames workflows.")
     p.add_argument("script", help="HyperFrames SCRIPT.md (## ... (Frame N) sections, spoken text indented)")
@@ -253,6 +294,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--output-format", default=tts.DEFAULT_OUTPUT_FORMAT)
     p.add_argument("--only", default=None, help="comma-separated frame numbers to (re)voice; others keep their cache")
     p.add_argument("--force", action="store_true", help="re-voice even when the cache matches")
+    p.add_argument("--concurrency", type=int, default=int(os.environ.get("ELEVENLABS_CONCURRENCY", "4")),
+                   help="ElevenLabs requests in flight at once (default 4, or ELEVENLABS_CONCURRENCY); keep it within your plan's limit")
     p.add_argument("--dry-run", action="store_true", help="parse and report what would be voiced; no API calls, no writes")
     return p.parse_args(argv)
 
@@ -279,28 +322,23 @@ def main(argv: list[str] | None = None) -> int:
         cache_path = voice_dir / CACHE_NAME
         cache: dict[str, Any] = json.loads(cache_path.read_text(encoding="utf-8")) if cache_path.exists() else {}
         voices: list[dict[str, Any]] = []
+        keys = [cache_key(p.spoken, voice_id, a.model, a.language, settings) for p in prepared]
+        todo = []
         for i, p in enumerate(prepared):
-            key = cache_key(p.spoken, voice_id, a.model, a.language, settings)
-            clip = voice_dir / f"{p.frame:02d}.mp3"
             rec = cache.get(str(p.frame))
-            wanted = only is None or p.frame in only
-            fresh = rec and rec.get("hash") == key and clip.exists() and not a.force
+            clip = voice_dir / f"{p.frame:02d}.mp3"
+            fresh = rec and rec.get("hash") == keys[i] and clip.exists() and not a.force
             if a.dry_run:
                 print(f"frame {p.frame:02d}: {'cached' if fresh else 'would voice'} ({len(p.spoken)} chars) {p.spoken[:70]!r}")
-                continue
-            if not fresh and wanted:
-                body = synthesize_with_timestamps(text=p.spoken, voice_id=voice_id or "", model_id=a.model, language=a.language,
-                                                  previous=prepared[i - 1].spoken if i else None,
-                                                  following=prepared[i + 1].spoken if i + 1 < len(prepared) else None,
-                                                  settings=settings, output_format=a.output_format)
-                voice_dir.mkdir(parents=True, exist_ok=True)
-                clip.write_bytes(base64.b64decode(body["audio_base64"]))
-                alignment = body.get("alignment") or {}
-                rec = {"hash": key, "model": a.model, "audio_s": round(audio_duration(clip), 3),
-                       "words": words_from_alignment(p, alignment, p.frame),
-                       "char_starts": [round(float(x), 3) for x in alignment.get("character_start_times_seconds") or []]}
-                cache[str(p.frame)] = rec
-                cache_path.write_text(json.dumps(cache, indent=1, ensure_ascii=False), encoding="utf-8")
+            elif not fresh and (only is None or p.frame in only):
+                todo.append(i)
+        if a.dry_run:
+            return 0
+        voiced = synthesize_frames(todo, prepared, keys, a, voice_id or "", settings, voice_dir, cache, cache_path)
+        for i, p in enumerate(prepared):
+            clip = voice_dir / f"{p.frame:02d}.mp3"
+            rec = cache.get(str(p.frame))
+            if i in voiced:
                 print(f"frame {p.frame:02d}: voiced {rec['audio_s']} s with {a.model}")
             elif rec:
                 print(f"frame {p.frame:02d}: cached {rec['audio_s']} s ({rec.get('model', 'unknown model')})")
@@ -318,8 +356,6 @@ def main(argv: list[str] | None = None) -> int:
                 for c in entry["cues"]:
                     print(f"  @{c['name']} t={c['t']:.2f}s  {c['following']!r}")
             voices.append(entry)
-        if a.dry_run:
-            return 0
         meta: dict[str, Any] = json.loads(out.read_text(encoding="utf-8")) if out.exists() else {}
         kept = [v for v in meta.get("voices", []) if v.get("frame") not in {v2["frame"] for v2 in voices}]
         meta = {"bgm": meta.get("bgm"), "bgm_pending": bool(meta.get("bgm_pending", False)),
