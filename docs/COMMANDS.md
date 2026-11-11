@@ -34,8 +34,13 @@ Most people never call these directly: they ask for an outcome, and the [skills]
   Batch-burns subtitles into a manifest of video files.
 
 Transcription uses a platform-appropriate backend: `lightning-whisper-mlx` on Apple Silicon macOS, and
-`faster-whisper` on other workstations. The subtitle commands accept `--backend auto|mlx|faster-whisper`; `auto`
-is the right choice in normal use.
+`faster-whisper` on other workstations. The subtitle commands accept `--backend auto|mlx|faster-whisper|elevenlabs`;
+`auto` is the right local choice in normal use.
+
+`--backend elevenlabs` sends the audio to ElevenLabs Scribe v3 (`scribe_v3`) with diarization, audio-event tags and
+word-level timestamps, using `ELEVENLABS_API_KEY` or `--api-key`. `--numbers-format digits|words|auto` sets how
+Scribe writes numbers: `digits` (`42`) by default, `words` (`forty-two`), or `auto` to let the model choose. Whisper
+backends ignore the flag.
 
 For MLX runs, `media-subtitle` performs a timestamp sanity check after transcription. It probes the media
 duration and compares it to the transcript's last segment end time. If the duration is near the observed `10x`
