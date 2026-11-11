@@ -60,6 +60,9 @@ AUDIO_SUFFIXES = {
 DEFAULT_MODEL = "small"
 DEFAULT_BACKEND = "whisper"
 ELEVENLABS_SCRIBE_URL = "https://api.elevenlabs.io/v1/speech-to-text"
+ELEVENLABS_SCRIBE_MODEL = "scribe_v3"
+NUMBERS_FORMAT_CHOICES = ("digits", "words", "auto")
+DEFAULT_NUMBERS_FORMAT = "digits"
 TIMESTAMP_RATIO_TOLERANCE = 0.02
 TIMESTAMP_EXPECTED_MLX_RATIO = 10
 SUBTITLE_TARGET_DURATION_SECONDS = 4.0
@@ -167,7 +170,20 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="API key for the transcription backend (e.g. ElevenLabs). Falls back to ELEVENLABS_API_KEY env var.",
     )
+    add_numbers_format_argument(parser)
     return parser.parse_args()
+
+
+def add_numbers_format_argument(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--numbers-format",
+        choices=NUMBERS_FORMAT_CHOICES,
+        default=DEFAULT_NUMBERS_FORMAT,
+        help=(
+            "How the ElevenLabs backend writes numbers: 'digits' (42, the default), "
+            "'words' (forty-two) or 'auto' (the model chooses). Whisper backends ignore it."
+        ),
+    )
 
 
 def main() -> int:
@@ -198,6 +214,7 @@ def main() -> int:
             initial_prompt=args.initial_prompt,
             disable_timestamp_correction=args.disable_timestamp_correction,
             api_key=args.api_key,
+            numbers_format=args.numbers_format,
         )
     except (ValueError, FileExistsError, RuntimeError, TypeError) as exc:
         print(str(exc), file=sys.stderr)
@@ -225,6 +242,7 @@ def run_transcription_job(
     initial_prompt: str | None,
     disable_timestamp_correction: bool,
     api_key: str | None = None,
+    numbers_format: str = DEFAULT_NUMBERS_FORMAT,
 ) -> None:
     resolved_backend = resolve_backend(backend, api_key=api_key)
     source_hash_value: str | None = None
@@ -310,6 +328,7 @@ def run_transcription_job(
                 compute_type=compute_type,
                 initial_prompt=initial_prompt,
                 api_key=api_key,
+                numbers_format=numbers_format,
             )
         segments = normalize_segments(result.get("segments", []))
         # Probe the original input for duration — the PCM WAV (for ElevenLabs)
@@ -440,10 +459,10 @@ def resolve_backend(requested_backend: str, *, api_key: str | None = None) -> st
 def resolve_model_name(backend: str, model_name: str) -> str:
     """Return the effective model name for a given backend.
 
-    ElevenLabs uses 'scribe_v2' regardless of the --model argument;
+    ElevenLabs uses ELEVENLABS_SCRIBE_MODEL regardless of the --model argument;
     Whisper backends pass through the user-supplied model name.
     """
-    return "scribe_v2" if backend == "elevenlabs" else model_name
+    return ELEVENLABS_SCRIBE_MODEL if backend == "elevenlabs" else model_name
 
 
 def mlx_backend_available() -> bool:
@@ -501,6 +520,7 @@ def transcribe_media(
     compute_type: str | None,
     initial_prompt: str | None,
     api_key: str | None = None,
+    numbers_format: str = DEFAULT_NUMBERS_FORMAT,
 ) -> dict[str, Any]:
     if backend == "mlx":
         return transcribe_with_mlx(
@@ -522,11 +542,12 @@ def transcribe_media(
             initial_prompt=initial_prompt,
         )
     if backend == "elevenlabs":
-        # model_name is intentionally not forwarded — ElevenLabs always uses scribe_v2
+        # model_name is intentionally not forwarded: ElevenLabs always uses ELEVENLABS_SCRIBE_MODEL
         return transcribe_with_elevenlabs(
             audio_path=audio_path,
             language=language,
             api_key=api_key,
+            numbers_format=numbers_format,
         )
     raise RuntimeError(f"Unsupported backend: {backend}")
 
@@ -602,9 +623,15 @@ def transcribe_with_elevenlabs(
     audio_path: Path,
     language: str | None,
     api_key: str | None = None,
+    numbers_format: str = DEFAULT_NUMBERS_FORMAT,
 ) -> dict[str, Any]:
     resolved_key = _resolve_elevenlabs_api_key(api_key=api_key)
-    return call_scribe_api(audio_path=audio_path, api_key=resolved_key, language=language)
+    return call_scribe_api(
+        audio_path=audio_path,
+        api_key=resolved_key,
+        language=language,
+        numbers_format=numbers_format,
+    )
 
 
 def call_scribe_api(
@@ -612,17 +639,25 @@ def call_scribe_api(
     audio_path: Path,
     api_key: str,
     language: str | None = None,
+    numbers_format: str = DEFAULT_NUMBERS_FORMAT,
 ) -> dict[str, Any]:
+    if numbers_format not in NUMBERS_FORMAT_CHOICES:
+        raise ValueError(
+            f"numbers_format must be one of {', '.join(NUMBERS_FORMAT_CHOICES)}; got {numbers_format!r}"
+        )
     if _requests_module is None:  # pragma: no cover — defense in depth
         raise RuntimeError("requests library is required for ElevenLabs transcription")
     data: dict[str, str] = {
-        "model_id": "scribe_v2",
+        "model_id": ELEVENLABS_SCRIBE_MODEL,
         "diarize": "true",
         "tag_audio_events": "true",
         "timestamps_granularity": "word",
     }
     if language:
         data["language_code"] = language
+    if numbers_format != "auto":
+        # numbers_format is a Scribe v3 parameter; omitting it lets the model choose.
+        data["numbers_format"] = numbers_format
 
     max_retries = 3
     base_backoff = 2.0

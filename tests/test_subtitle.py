@@ -882,8 +882,41 @@ class ElevenLabsErrorHandlingTests(unittest.TestCase):
                 call_kwargs = mock_requests.post.call_args
                 self.assertEqual(call_kwargs.kwargs["headers"]["xi-api-key"], "test-key")
                 self.assertIn("language_code", call_kwargs.kwargs["data"])
+                self.assertEqual(call_kwargs.kwargs["data"]["model_id"], "scribe_v3")
+                self.assertEqual(call_kwargs.kwargs["data"]["numbers_format"], "digits")
         finally:
             os.unlink(wav_path)
+
+    def _post_data_for_numbers_format(self, numbers_format: str) -> dict:
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"text": "", "words": [], "audio_events": []}
+        mock_requests = MagicMock()
+        mock_requests.post.return_value = mock_response
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
+            f.write(b"fake wav data")
+            wav_path = Path(f.name)
+        try:
+            with patch("media_tooling.subtitle._requests_module", mock_requests):
+                transcribe_with_elevenlabs(
+                    audio_path=wav_path,
+                    language=None,
+                    api_key="test-key",
+                    numbers_format=numbers_format,
+                )
+        finally:
+            os.unlink(wav_path)
+        return mock_requests.post.call_args.kwargs["data"]
+
+    def test_transcribe_with_elevenlabs_numbers_format_words(self) -> None:
+        self.assertEqual(self._post_data_for_numbers_format("words")["numbers_format"], "words")
+
+    def test_transcribe_with_elevenlabs_numbers_format_auto_omits_field(self) -> None:
+        self.assertNotIn("numbers_format", self._post_data_for_numbers_format("auto"))
+
+    def test_transcribe_with_elevenlabs_rejects_unknown_numbers_format(self) -> None:
+        with self.assertRaises(ValueError):
+            self._post_data_for_numbers_format("roman")
 
     def test_transcribe_with_elevenlabs_uses_explicit_api_key(self) -> None:
         """When api_key is passed explicitly, it is used instead of env var."""
@@ -1203,11 +1236,11 @@ class SpeakerLabelOutputTests(unittest.TestCase):
 
 
 class ModelNameOverrideTests(unittest.TestCase):
-    """Verify that ElevenLabs runs report 'scribe_v2' as the model name."""
+    """Verify that ElevenLabs runs report 'scribe_v3' as the model name."""
 
     def test_elevenlabs_model_name_overrides_input(self) -> None:
-        """For ElevenLabs, resolve_model_name should return 'scribe_v2'."""
-        self.assertEqual(resolve_model_name("elevenlabs", "small"), "scribe_v2")
+        """For ElevenLabs, resolve_model_name should return 'scribe_v3'."""
+        self.assertEqual(resolve_model_name("elevenlabs", "small"), "scribe_v3")
 
     def test_whisper_model_name_unchanged(self) -> None:
         """For Whisper backends, model name should pass through unchanged."""

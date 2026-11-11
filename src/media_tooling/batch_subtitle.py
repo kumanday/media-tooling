@@ -4,7 +4,7 @@ import argparse
 from pathlib import Path
 
 from media_tooling.batch_utils import finish_batch, load_manifest_inputs, record_failure
-from media_tooling.subtitle import run_transcription_job
+from media_tooling.subtitle import add_numbers_format_argument, run_transcription_job
 
 
 def parse_args() -> argparse.Namespace:
@@ -99,6 +99,7 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="API key for the transcription backend (e.g. ElevenLabs). Falls back to ELEVENLABS_API_KEY env var.",
     )
+    add_numbers_format_argument(parser)
     return parser.parse_args()
 
 
@@ -139,6 +140,7 @@ def main() -> int:
                 initial_prompt=args.initial_prompt,
                 disable_timestamp_correction=args.disable_timestamp_correction,
                 api_key=args.api_key,
+                numbers_format=args.numbers_format,
             )
         except Exception as exc:  # noqa: BLE001
             record_failure(failures, item, str(exc))
