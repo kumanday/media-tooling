@@ -257,9 +257,10 @@ pass/revise decision and scene-specific feedback on copy accuracy, legibility,
 speaker/subtitle placement, brand consistency, and reading time. Record the images,
 feedback, and disposition in `review.md` next to the storyboard.
 
-Apply targeted corrections and review once more, with a maximum of two review
-passes. Continue when blocking findings are resolved. Unavailable visual review
-or persistent blocking issues stop delivery with artifacts preserved. Optional
+Apply targeted corrections and review again until no blocking finding remains.
+Stop early only when two passes in a row clear none of the remaining findings, or
+after eight passes. Unavailable visual review or blocking findings left when the
+loop stops end delivery with artifacts preserved. Optional
 style suggestions are advisory. This mode needs no separate service or rubric
 configuration.
 

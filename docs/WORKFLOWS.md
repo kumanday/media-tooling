@@ -233,8 +233,8 @@ capabilities and artifact paths used by these prompts.
 ```text
 Produce one short under our agreed brief using media-motion-graphics in auto
 review mode. Choose the storyboard direction, send images of every storyboard
-scene to a multimodal model for feedback, and apply blocking corrections with at
-most two review passes. Record feedback in review.md. Check the actual draft
+scene to a multimodal model for feedback, and keep applying corrections and
+reviewing until no blocking issue remains. Record feedback in review.md. Check the actual draft
 encode for scene visibility and layout, then render and verify the deliverable.
 Keep the work local; publication is a separate step.
 ```

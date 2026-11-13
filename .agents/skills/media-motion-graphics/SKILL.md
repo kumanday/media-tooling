@@ -97,10 +97,14 @@ Request a pass/revise result and scene-specific changes. This is an approximatio
 of creative review, not proof that pacing or audio works.
 
 Save image paths, reviewer/model identity when available, feedback, and disposition
-in `review.md` beside the storyboard. Apply targeted corrections, then repeat
-visual review once (two review passes total). Proceed when no blocking issue
-remains. If visual input is unavailable or a blocking issue survives the second
-pass, save the artifacts and report the blocker; do not call the item approved.
+in `review.md` beside the storyboard. Apply targeted corrections and review
+again, pass after pass, until no blocking issue remains; record what each pass
+leaves open in `review.md`. Stop early only on a stall (two passes in a row that
+clear none of the remaining blocking issues) or after eight passes. If visual
+input is unavailable or blocking issues remain when the loop stops, save the
+artifacts and report the blockers; do not call the item approved. Paid limits
+such as generation attempts bound regeneration, not review: when a generated
+take still fails on its last attempt, drop it and let the scene stand without it.
 Optional style suggestions need not prevent delivery. Reuse the same process on
 representative frames extracted from the draft encode to check storyboard fidelity
 and visibility before final delivery. Watch or inspect short boundary clips for
